@@ -92,7 +92,11 @@ class FeedNotifier extends Notifier<FeedState> {
 
   @override
   FeedState build() {
-    _init();
+    // Инициализацию запускаем ПОСЛЕ того, как build() вернёт состояние:
+    // запись в state прямо во время построения провайдера Riverpod запрещает
+    // (и в release это роняет построение дерева — приложение показывает
+    // пустой экран вместо ленты).
+    Future.microtask(_init);
     return const FeedState();
   }
 
@@ -124,11 +128,15 @@ class FeedNotifier extends Notifier<FeedState> {
   /// Realtime: опубликованная в админке карточка появляется сама.
   /// Поток отдаёт полный снимок — просто заменяем список.
   void _subscribe() {
-    ref.read(postsRepoProvider).watchPublished().listen((posts) {
+    final sub = ref.read(postsRepoProvider).watchPublished().listen((posts) {
       if (posts.isEmpty) return; // не затираем кэш пустотой от неудачной подписки
       state = state.copyWith(posts: _applyDeltas(posts), offline: false);
       ref.read(localStoreProvider).saveFeedCache(posts.map((p) => p.toJson()).toList());
     }, onError: (_) {/* realtime не критичен — есть pull-to-refresh */});
+
+    // подписка живёт ровно столько же, сколько провайдер: иначе при его
+    // пересоздании старые потоки копятся и пишут в мёртвое состояние
+    ref.onDispose(sub.cancel);
   }
 
   /// Возвращает ленту с учётом локальных дельт счётчиков.

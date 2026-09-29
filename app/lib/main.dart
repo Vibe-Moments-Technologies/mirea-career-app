@@ -7,8 +7,19 @@ import 'screens/root_shell.dart';
 import 'state/providers.dart';
 
 Future<void> main() async {
+  // release-сборка не показывает красный экран ошибки, поэтому любую проблему
+  // на старте надо поймать самим — иначе пользователь увидит белый экран
+  // без каких-либо объяснений.
   WidgetsFlutterBinding.ensureInitialized();
-  final boot = await bootstrap();
+
+  Bootstrap boot;
+  try {
+    boot = await bootstrap();
+  } catch (e, st) {
+    debugPrint('bootstrap упал: $e\n$st');
+    runApp(_StartupFailureScreen(error: '$e'));
+    return;
+  }
 
   runApp(
     ProviderScope(
@@ -20,6 +31,37 @@ Future<void> main() async {
       child: const MireaCareerApp(),
     ),
   );
+}
+
+/// Экран на случай, если приложение не смогло даже инициализироваться:
+/// лучше показать причину, чем пустоту.
+class _StartupFailureScreen extends StatelessWidget {
+  const _StartupFailureScreen({required this.error});
+  final String error;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline_rounded, size: 56, color: AppColors.danger),
+                const SizedBox(height: 16),
+                Text('Не удалось запустить', style: AppText.title, textAlign: TextAlign.center),
+                const SizedBox(height: 12),
+                Text(error, textAlign: TextAlign.center, style: AppText.footnote),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class MireaCareerApp extends ConsumerWidget {

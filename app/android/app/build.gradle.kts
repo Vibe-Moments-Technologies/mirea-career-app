@@ -45,18 +45,17 @@ android {
 
     buildTypes {
         release {
+            // Подпись: release-ключ, если он настроен, иначе debug
+            // (чтобы `flutter run --release` работал без настройки).
             signingConfig = if (rootProject.file("key.properties").exists()) {
                 signingConfigs.getByName("release")
             } else {
                 signingConfigs.getByName("debug")
             }
-            // R8 убирает неиспользуемый код — важно для размера APK на слабых устройствах
-            isMinifyEnabled = true
-            isShrinkResources = true
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro",
-            )
+            // Минификацию и shrinkResources здесь НЕ задаём: Flutter-плагин
+            // настраивает их сам (FlutterPluginUtils.shouldShrinkResources)
+            // и сам подключает свои proguard-правила. Повторная настройка
+            // в AGP 9 конфликтует с плагином и ломает release-сборку.
         }
     }
 }

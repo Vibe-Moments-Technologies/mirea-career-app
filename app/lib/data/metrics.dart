@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'local_store.dart';
@@ -67,16 +69,37 @@ class Bootstrap {
 }
 
 /// Инициализация Supabase и локального хранилища.
+///
+/// Никогда не бросает исключение: приложение обязано показать интерфейс
+/// даже при недоступной сети или неверных ключах. Любая проблема с Supabase
+/// означает лишь «работаем на кэше», а не белый экран на старте.
 Future<Bootstrap> bootstrap() async {
   final store = await LocalStore.open();
 
   if (!SupabaseConfig.isConfigured) {
-    return Bootstrap(store: store, metrics: Metrics(PostsRepo(_offline), store), configured: false);
+    return Bootstrap(
+      store: store,
+      metrics: Metrics(PostsRepo(_offline), store),
+      configured: false,
+    );
   }
 
-  await Supabase.initialize(url: SupabaseConfig.url, publishableKey: SupabaseConfig.anonKey);
-  final metrics = Metrics(PostsRepo(Supabase.instance.client), store);
-  await metrics.flush(); // досылаем накопленное офлайн
+  SupabaseClient client;
+  try {
+    await Supabase.initialize(url: SupabaseConfig.url, publishableKey: SupabaseConfig.anonKey);
+    client = Supabase.instance.client;
+  } catch (e) {
+    // Битый URL или ключ: показываем интерфейс на кэше, а не пустой экран.
+    return Bootstrap(
+      store: store,
+      metrics: Metrics(PostsRepo(_offline), store),
+      configured: false,
+    );
+  }
+
+  final metrics = Metrics(PostsRepo(client), store);
+  // Досылаем накопленное офлайн — но не ждём: сеть может быть недоступна.
+  unawaited(metrics.flush());
   return Bootstrap(store: store, metrics: metrics, configured: true);
 }
 
