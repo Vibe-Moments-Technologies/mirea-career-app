@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../data/catalogs.dart';
+import '../../data/crash_reporting.dart';
 import '../../data/local_store.dart';
 import '../../state/providers.dart';
 import '../onboarding/onboarding_screen.dart';
@@ -106,6 +107,23 @@ class MoreScreen extends ConsumerWidget {
               ),
             ],
           ),
+          // Тестовый инструмент: только в сборках, где Sentry включён
+          // и это не stable. Нужен, чтобы проверить отлов крашей, не ожидая
+          // настоящего падения.
+          if (CrashReporting.showTestTools) ...[
+            const SizedBox(height: 20),
+            _GroupTitle('Отладка (тестовая сборка)'),
+            _Group(
+              children: [
+                _Tile(
+                  icon: Icons.bug_report_outlined,
+                  title: 'Проверить Sentry',
+                  subtitle: 'Отправит тестовую ошибку в Sentry',
+                  onTap: () => _sendTestError(context),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 32),
           Center(
             child: Text(
@@ -151,6 +169,22 @@ class MoreScreen extends ConsumerWidget {
     await ref.read(profileProvider.notifier).reset();
     ref.invalidate(favoritesProvider);
     await ref.read(feedProvider.notifier).refresh();
+  }
+
+  /// Отправляет тестовую ошибку и сообщает, принял ли её Sentry.
+  /// Только для тестовых сборок.
+  Future<void> _sendTestError(BuildContext context) async {
+    try {
+      throw StateError('Проверка Sentry из приложения «Карьера РТУ МИРЭА»');
+    } catch (e, st) {
+      await CrashReporting.report(e, st, context: 'manual_test');
+    }
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Тестовая ошибка отправлена. Проверьте её в Sentry.'),
+      ),
+    );
   }
 }
 

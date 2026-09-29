@@ -10,6 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_riverpod: ^3.4.3
+  sentry_flutter: ^9.30.1
   shared_preferences: ^2.5.5
   supabase_flutter: 2.17.2
   url_launcher: ^6.3.2
@@ -19,6 +20,23 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^6.0.0
   test: ^1.31.1
+  sentry_dart_plugin: ^3.4.0
 
 flutter:
   uses-material-design: true
+
+# Настройки загрузки символов в Sentry. Плагин запускается ОТДЕЛЬНОЙ командой
+# в CI (`dart run sentry_dart_plugin`), а не при каждой сборке: он требует
+# SENTRY_AUTH_TOKEN, и без него падает. Локальная сборка его не касается.
+sentry:
+  project: mirea-career-app
+  org: l1ratch-dev
+  # Проект в DE-регионе Sentry (см. host в DSN): без этого плагин
+  # уйдёт на sentry.io/orgs/... и не найдёт организацию.
+  url: https://de.sentry.io/
+  # Куда Flutter кладёт .symbols при --split-debug-info (см. workflow).
+  # Плагин ищет файлы вида app*.symbols рекурсивно внутри этой папки.
+  symbols_path: build/symbols
+  upload_sources: true
+  upload_debug_symbols: true
+  upload_source_maps: false

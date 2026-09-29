@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/theme/app_theme.dart';
+import 'data/crash_reporting.dart';
 import 'data/metrics.dart';
 import 'screens/root_shell.dart';
 import 'state/providers.dart';
@@ -9,14 +10,23 @@ import 'state/providers.dart';
 Future<void> main() async {
   // release-сборка не показывает красный экран ошибки, поэтому любую проблему
   // на старте надо поймать самим — иначе пользователь увидит белый экран
-  // без каких-либо объяснений.
+  // без каких-либо объяснений. Отсюда два уровня защиты:
+  //   1) Sentry — чтобы узнать о сбое у тестировщика, а не гадать;
+  //   2) try/catch ниже — чтобы вместо пустоты показать причину.
   WidgetsFlutterBinding.ensureInitialized();
 
+  await CrashReporting.run(_start);
+}
+
+Future<void> _start() async {
   Bootstrap boot;
   try {
     boot = await bootstrap();
   } catch (e, st) {
     debugPrint('bootstrap упал: $e\n$st');
+    // Падение на старте — самое опасное: приложение вообще не открывается.
+    // Отправляем отдельно, потому что здесь Sentry уже поднят, но UI ещё нет.
+    await CrashReporting.report(e, st, context: 'bootstrap');
     runApp(_StartupFailureScreen(error: '$e'));
     return;
   }

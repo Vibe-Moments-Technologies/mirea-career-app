@@ -59,6 +59,10 @@ jobs:
     name: 🤖 Build Android APK (dev)
     runs-on: ubuntu-latest
     needs: resolve
+    env:
+      SENTRY_ENV: preview
+      SENTRY_REL: ${{ needs.resolve.outputs.version }}
+      SENTRY_DIST: ${{ needs.resolve.outputs.build_id }}
     steps:
       - uses: actions/checkout@v4
 
@@ -90,9 +94,27 @@ jobs:
       - name: 🔨 Build APK
         working-directory: app
         run: |
-          flutter build apk --release \
+          flutter build apk --release `
+            --split-debug-info=build/symbols/apk `
             --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
-            --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+            --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
+            --dart-define=SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
+            --dart-define=SENTRY_ENVIRONMENT=$SENTRY_ENV \
+            --dart-define=SENTRY_RELEASE=$SENTRY_REL \
+            --dart-define=SENTRY_DIST=$SENTRY_DIST
+
+      - name: 🕯️ Upload debug symbols to Sentry
+        # Символы дают читаемый stack trace вместо <unknown>.
+        # continue-on-error: secrets нельзя проверять в `if` (Actions это
+        # запрещает), а плагин падает без токена. Загрузка символов —
+        # вспомогательная: её сбой не должен валить готовую сборку.
+        continue-on-error: true
+        working-directory: app
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_RELEASE: ${{ needs.resolve.outputs.version }}
+          SENTRY_DIST: ${{ needs.resolve.outputs.build_id }}
+        run: dart run sentry_dart_plugin
 
       - name: 🏷️ Prepare preview APK
         run: |
@@ -110,6 +132,10 @@ jobs:
     name: 🍏 Build iOS Unsigned IPA (dev)
     runs-on: macos-latest
     needs: resolve
+    env:
+      SENTRY_ENV: preview
+      SENTRY_REL: ${{ needs.resolve.outputs.version }}
+      SENTRY_DIST: ${{ needs.resolve.outputs.build_id }}
     steps:
       - uses: actions/checkout@v4
 
@@ -133,10 +159,25 @@ jobs:
       - name: 🔨 Build iOS (no codesign)
         working-directory: app
         run: |
-          flutter build ios --release --no-codesign \
+          flutter build ios --release --no-codesign `
+            --split-debug-info=build/symbols/ios `
             --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
-            --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+            --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
+            --dart-define=SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
+            --dart-define=SENTRY_ENVIRONMENT=preview \
+            --dart-define=SENTRY_RELEASE=${{ needs.resolve.outputs.version }} \
+            --dart-define=SENTRY_DIST=${{ needs.resolve.outputs.build_id }}
 
+      - name: 🕯️ Upload debug symbols to Sentry
+        # Читаемый stack trace вместо <unknown>. continue-on-error: secrets
+        # нельзя проверять в `if`, а плагин падает без токена.
+        continue-on-error: true
+        working-directory: app
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_RELEASE: ${{ needs.resolve.outputs.version }}
+          SENTRY_DIST: ${{ needs.resolve.outputs.build_id }}
+        run: dart run sentry_dart_plugin
       - name: 📦 Package unsigned IPA
         working-directory: app/build/ios/iphoneos
         run: |
