@@ -1,0 +1,28 @@
+# Единые переводы строк: в репозитории всегда LF.
+#
+# Иначе Windows-чекаут превращает LF в CRLF, и файлы, которые исполняются
+# в CI (shell-скрипты, versioning.py), ломаются на "\r: command not found".
+* text=auto eol=lf
+
+# Бинарные файлы — не трогать
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.jar binary
+*.jks binary
+*.keystore binary
+*.ttf binary
+*.otf binary
+
+# Эти форматы на Windows traditionally CRLF, но в CI не исполняются
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Gradle wrapper должен остаться исполняемым
+gradlew text eol=lf
+*.sh text eol=lf
+
+# Lock-файлы не показывать в diff
+pubspec.lock linguist-generated=true
+package-lock.json linguist-generated=true
