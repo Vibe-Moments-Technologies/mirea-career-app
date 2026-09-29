@@ -1,0 +1,276 @@
+name: 🚀 Release Mobile (Tag v*)
+
+# Релизный сборщик. Запускается ТОЛЬКО пушем тега:
+#   v26.10        → stable
+#   v26.10.1      → stable (патч)
+#   v26.10-beta.1 → prerelease
+#   v26.10-rc.1   → prerelease
+# или вручную (workflow_dispatch с указанием тега).
+#
+# Push в main сюда НЕ попадает — тестовые сборки собирает preview-main.yml.
+#
+# Обе платформы собираются всегда: тестировщик на iPhone и тестировщик
+# на Android получают артефакты из одного релиза с одинаковым build-номером.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Тег релиза, например v26.10 или v26.10-beta.1'
+        required: true
+        type: string
+      publish:
+        description: 'Публиковать релиз? Выключи для сборки без публикации (например, для RuStore).'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  # ---------------------------------------------------------------- версия
+  resolve:
+    name: 🧭 Resolve Release Channel
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      channel: ${{ steps.ver.outputs.channel }}
+      prerelease: ${{ steps.ver.outputs.prerelease }}
+      build_id: ${{ steps.ver.outputs.build_id }}
+      commit_sha: ${{ steps.ver.outputs.commit_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'push' && github.ref || 'main' }}
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 🧭 Validate tag & resolve version
+        id: ver
+        env:
+          TAG: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
+        run: python tools/versioning.py resolve --tag "$TAG"
+
+  # --------------------------------------------------------------- android
+  build_apk:
+    name: 🤖 Build Android (APK + AAB)
+    runs-on: ubuntu-latest
+    needs: resolve
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'push' && github.ref || 'main' }}
+
+      - name: 🔖 Patch version files
+        env:
+          TAG: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
+        run: python tools/versioning.py prepare --tag "$TAG" --build-id "${{ needs.resolve.outputs.build_id }}"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+
+      - name: 📦 Dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: 🔒 Fail fast без секретов подписи
+        # Релиз без ключа опубликовать нельзя: Google Play отвергнет APK,
+        # подписанный debug-ключом, а обновление не встанет поверх предыдущего.
+        run: |
+          if [ -z "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 не задан — релиз не может быть подписан."
+            echo "Создай ключ и добавь секреты: docs/DEVELOPMENT.md"
+            exit 1
+          fi
+
+      - name: 🔑 Decode keystore
+        working-directory: app/android
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > mirea-career.jks
+          {
+            echo "storeFile=../mirea-career.jks"
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > key.properties
+
+      - name: ✅ Analyze & test
+        working-directory: app
+        run: |
+          flutter analyze
+          flutter test
+
+      - name: 🔨 Build APK
+        working-directory: app
+        run: |
+          flutter build apk --release \
+            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
+            --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+
+      - name: 🔨 Build AAB (Google Play)
+        working-directory: app
+        run: |
+          flutter build appbundle --release \
+            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
+            --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+
+      - name: 🧹 Remove keystore
+        if: always()
+        working-directory: app/android
+        run: rm -f mirea-career.jks key.properties
+
+      - name: 🏷️ Prepare artifacts
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          CHANNEL: ${{ needs.resolve.outputs.channel }}
+        run: |
+          mkdir -p dist
+          SUFFIX=""
+          [ "$CHANNEL" != "stable" ] && SUFFIX="-v${VERSION}"
+          cp app/build/app/outputs/flutter-apk/app-release.apk "dist/kariera-mirea${SUFFIX}.apk"
+          cp app/build/app/outputs/bundle/release/app-release.aab "dist/kariera-mirea${SUFFIX}.aab"
+          ls -lh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: dist/*
+          if-no-files-found: error
+
+  # ------------------------------------------------------------------- ios
+  build_ipa:
+    name: 🍏 Build iOS (unsigned IPA)
+    runs-on: macos-latest
+    needs: resolve
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'push' && github.ref || 'main' }}
+
+      - name: 🔖 Patch version files
+        env:
+          TAG: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
+        run: python tools/versioning.py prepare --tag "$TAG" --build-id "${{ needs.resolve.outputs.build_id }}"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+
+      - name: 📦 Dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: 🥥 CocoaPods
+        run: |
+          pod --version || (gem install cocoapods --no-document && pod --version)
+
+      - name: 🔨 Build iOS (no codesign)
+        working-directory: app
+        run: |
+          flutter build ios --release --no-codesign \
+            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
+            --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+
+      - name: 📦 Package unsigned IPA
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          CHANNEL: ${{ needs.resolve.outputs.channel }}
+        working-directory: app/build/ios/iphoneos
+        run: |
+          mkdir -p Payload
+          cp -r Runner.app Payload/
+          SUFFIX=""
+          [ "$CHANNEL" != "stable" ] && SUFFIX="-v${VERSION}"
+          zip -r -q "kariera-mirea${SUFFIX}.ipa" Payload
+          ls -lh *.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios
+          path: app/build/ios/iphoneos/*.ipa
+          if-no-files-found: error
+
+  # --------------------------------------------------------------- релиз
+  publish_release:
+    name: 🚀 Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: [resolve, build_apk, build_ipa]
+    # при пуше тега публикуем всегда; при ручном запуске — по флагу publish
+    if: >
+      always() &&
+      (needs.build_apk.result == 'success' || needs.build_ipa.result == 'success') &&
+      (github.event_name == 'push' || inputs.publish == 'true' || inputs.publish == true)
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'push' && github.ref || 'main' }}
+          fetch-depth: 0
+
+      - name: 📥 Download Android
+        uses: actions/download-artifact@v4
+        with:
+          name: android
+          path: download_android
+        continue-on-error: true
+
+      - name: 📥 Download iOS
+        uses: actions/download-artifact@v4
+        with:
+          name: ios
+          path: download_ios
+        continue-on-error: true
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 🚀 Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHANNEL: ${{ needs.resolve.outputs.channel }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          BUILD: ${{ needs.resolve.outputs.build_id }}
+          SHA: ${{ needs.resolve.outputs.commit_sha }}
+        run: |
+          APK=$(find download_android -name '*.apk' 2>/dev/null | head -n 1)
+          AAB=$(find download_android -name '*.aab' 2>/dev/null | head -n 1)
+          IPA=$(find download_ios    -name '*.ipa' 2>/dev/null | head -n 1)
+
+          ARGS=""
+          [ -n "$APK" ] && ARGS="$ARGS --apk $APK"
+          [ -n "$AAB" ] && ARGS="$ARGS --aab $AAB"
+          [ -n "$IPA" ] && ARGS="$ARGS --ipa $IPA"
+
+          # предыдущий тег — для генерации списка изменений
+          PREV=$(git tag --sort=-v:refname | grep -v "^v${VERSION}$" | head -n 1 || true)
+
+          python tools/publish_release.py \
+            --channel "$CHANNEL" \
+            --version "$VERSION" \
+            --build-number "$BUILD" \
+            --commit-sha "$SHA" \
+            --prev-tag "${PREV:-}" \
+            $ARGS

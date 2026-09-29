@@ -1,0 +1,178 @@
+name: 🧪 Test Build (any branch)
+
+# Сборка любой ветки или SHA руками: только Actions Artifacts.
+# НЕ трогает релизы, теги и не публикует ничего.
+#
+# Для чего: тестировщик хочет проверить конкретную ветку до мержа в main —
+# запускаешь вручную, качаешь APK (Android) и IPA (iOS) со страницы запуска.
+#
+# Версия {линия}-contrib.N, числовой код — epoch-секунды: свежая сборка
+# всегда встаёт поверх предыдущей.
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Ветка для сборки (пусто — ветка, из которой запущено)'
+        required: false
+        default: ''
+        type: string
+      build_apk:
+        description: 'Собрать Android APK'
+        required: true
+        type: boolean
+        default: true
+      build_ipa:
+        description: 'Собрать iOS IPA'
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    name: 🧭 Resolve Build Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      build_id: ${{ steps.ver.outputs.build_id }}
+      commit_sha: ${{ steps.ver.outputs.commit_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch != '' && inputs.branch || github.ref }}
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 🧭 Resolve version
+        id: ver
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: python tools/versioning.py resolve --channel contrib --run-number "$RUN_NUMBER"
+
+  build_apk:
+    name: 🤖 Test Build Android APK
+    runs-on: ubuntu-latest
+    needs: resolve
+    if: inputs.build_apk
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch != '' && inputs.branch || github.ref }}
+
+      - name: 🔖 Patch version (contrib)
+        run: python tools/versioning.py prepare --channel contrib --run-number "${{ github.run_number }}" --build-id "${{ needs.resolve.outputs.build_id }}"
+
+      - name: 🏷️ Artifact slug
+        id: slug
+        env:
+          BRANCH: ${{ inputs.branch != '' && inputs.branch || github.ref_name }}
+        run: |
+          SLUG=$(python3 -c "import re,sys; print(re.sub(r'[^a-zA-Z0-9._-]','-',sys.argv[1])[:32].strip('-'))" "$BRANCH")
+          echo "artifact_slug=${SLUG}-${{ needs.resolve.outputs.commit_sha }}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+
+      - name: 📦 Dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: ✅ Analyze & test
+        working-directory: app
+        run: |
+          flutter analyze
+          flutter test
+
+      - name: 🔨 Build APK
+        working-directory: app
+        run: |
+          flutter build apk --release \
+            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
+            --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+
+      - name: 🏷️ Prepare artifact
+        run: |
+          mkdir -p dist
+          NAME="kariera-mirea-${{ steps.slug.outputs.artifact_slug }}"
+          cp app/build/app/outputs/flutter-apk/app-release.apk "dist/${NAME}.apk"
+          ls -lh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk-${{ steps.slug.outputs.artifact_slug }}
+          path: dist/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  build_ipa:
+    name: 🍏 Test Build iOS Unsigned IPA
+    runs-on: macos-latest
+    needs: resolve
+    if: inputs.build_ipa
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch != '' && inputs.branch || github.ref }}
+
+      - name: 🔖 Patch version (contrib)
+        run: python tools/versioning.py prepare --channel contrib --run-number "${{ github.run_number }}" --build-id "${{ needs.resolve.outputs.build_id }}"
+
+      - name: 🏷️ Artifact slug
+        id: slug
+        env:
+          BRANCH: ${{ inputs.branch != '' && inputs.branch || github.ref_name }}
+        run: |
+          SLUG=$(python3 -c "import re,sys; print(re.sub(r'[^a-zA-Z0-9._-]','-',sys.argv[1])[:32].strip('-'))" "$BRANCH")
+          echo "artifact_slug=${SLUG}-${{ needs.resolve.outputs.commit_sha }}" >> "$GITHUB_OUTPUT"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+
+      - name: 📦 Dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: 🥥 CocoaPods
+        run: |
+          pod --version || (gem install cocoapods --no-document && pod --version)
+
+      - name: 🔨 Build iOS (no codesign)
+        working-directory: app
+        run: |
+          flutter build ios --release --no-codesign \
+            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
+            --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+
+      - name: 📦 Package unsigned IPA
+        env:
+          SLUG: ${{ steps.slug.outputs.artifact_slug }}
+        working-directory: app/build/ios/iphoneos
+        run: |
+          mkdir -p Payload
+          cp -r Runner.app Payload/
+          zip -r -q "kariera-mirea-${SLUG}.ipa" Payload
+          ls -lh *.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ipa-${{ steps.slug.outputs.artifact_slug }}
+          path: app/build/ios/iphoneos/*.ipa
+          if-no-files-found: error
+          retention-days: 14

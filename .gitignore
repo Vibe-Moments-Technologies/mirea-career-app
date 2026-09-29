@@ -1,0 +1,25 @@
+# секреты и локальные инструменты
+.env
+.pydeps/
+.tmp/
+tools/node_modules/
+
+# SDK и тяжёлые артефакты — живут внутри проекта, но не в репозитории
+.sdk/
+
+# Flutter/Dart
+app/.dart_tool/
+app/build/
+app/.flutter-plugins-dependencies
+app/windows/flutter/ephemeral/
+app/android/.gradle/
+app/android/local.properties
+app/android/key.properties
+app/ios/Pods/
+*.iml
+*.jks
+*.keystore
+
+# Node (веб-админка)
+admin/node_modules/
+admin/dist/

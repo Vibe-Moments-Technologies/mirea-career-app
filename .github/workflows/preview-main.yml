@@ -1,0 +1,206 @@
+name: 🚧 Main Preview Build (Rolling)
+
+# Тестовые сборки main: каждый push собирает версию {версия}-dev.N
+# и заменяет файлы в ОДНОМ rolling-prerelease `preview`.
+#
+# Релизы не плодятся, обычные пользователи этих сборок не видят.
+# Именно этим workflow пользуются тестировщики: они всегда качают два файла
+# из одного места — APK для Android и IPA для iOS.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'tools/**'
+      - '.github/workflows/preview-main.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Два push подряд не должны собираться одновременно: второй отменяет первый
+concurrency:
+  group: preview-main
+  cancel-in-progress: true
+
+jobs:
+  resolve:
+    name: 🧭 Resolve Build Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      build_id: ${{ steps.ver.outputs.build_id }}
+      commit_sha: ${{ steps.ver.outputs.commit_sha }}
+      prev_version: ${{ steps.ver.outputs.prev_version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # ЕДИНСТВЕННОЕ место вычисления номера сборки: один запуск = одно число
+      # для APK и IPA. Иначе свежая сборка не встанет поверх старой.
+      # Номер dev = прошлый номер той же линии +1 (имя релиза preview);
+      # отменённые прогоны номер не съедают.
+      - name: 🧭 Resolve version
+        id: ver
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 404 (релиза preview ещё нет) gh отдаёт JSON в stdout с кодом 1 —
+          # сбрасываем PREV, иначе JSON уедет в --prev-version
+          PREV="$(gh api "repos/${{ github.repository }}/releases/tags/preview" --jq .name 2>/dev/null)" || PREV=""
+          python tools/versioning.py resolve --channel dev --prev-version "${PREV:-}"
+
+  build_apk:
+    name: 🤖 Build Android APK (dev)
+    runs-on: ubuntu-latest
+    needs: resolve
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 🔖 Patch version (dev)
+        run: python tools/versioning.py prepare --channel dev --build-id "${{ needs.resolve.outputs.build_id }}"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+
+      - name: 📦 Dependencies
+        working-directory: app
+        run: flutter pub get
+
+      # dev-сборка подписывается debug-ключом: она для теста, не для Play.
+      - name: ✅ Analyze & test
+        working-directory: app
+        run: |
+          flutter analyze
+          flutter test
+
+      - name: 🔨 Build APK
+        working-directory: app
+        run: |
+          flutter build apk --release \
+            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
+            --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+
+      - name: 🏷️ Prepare preview APK
+        run: |
+          mkdir -p dist
+          cp app/build/app/outputs/flutter-apk/app-release.apk dist/kariera-mirea-preview.apk
+          ls -lh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-preview
+          path: dist/kariera-mirea-preview.apk
+          if-no-files-found: error
+
+  build_ipa:
+    name: 🍏 Build iOS Unsigned IPA (dev)
+    runs-on: macos-latest
+    needs: resolve
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 🔖 Patch version (dev)
+        run: python tools/versioning.py prepare --channel dev --build-id "${{ needs.resolve.outputs.build_id }}"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+
+      - name: 📦 Dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: 🥥 CocoaPods
+        run: |
+          pod --version || (gem install cocoapods --no-document && pod --version)
+
+      - name: 🔨 Build iOS (no codesign)
+        working-directory: app
+        run: |
+          flutter build ios --release --no-codesign \
+            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
+            --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+
+      - name: 📦 Package unsigned IPA
+        working-directory: app/build/ios/iphoneos
+        run: |
+          mkdir -p Payload
+          cp -r Runner.app Payload/
+          zip -r -q kariera-mirea-preview.ipa Payload
+          ls -lh *.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-preview
+          path: app/build/ios/iphoneos/kariera-mirea-preview.ipa
+          if-no-files-found: error
+
+  update_preview:
+    name: 📡 Update rolling preview release
+    runs-on: ubuntu-latest
+    needs: [resolve, build_apk, build_ipa]
+    if: always() && (needs.build_apk.result == 'success' || needs.build_ipa.result == 'success')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 📥 Download APK
+        uses: actions/download-artifact@v4
+        with:
+          name: android-preview
+          path: download_apk
+        continue-on-error: true
+
+      - name: 📥 Download IPA
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-preview
+          path: download_ipa
+        continue-on-error: true
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 📡 Publish preview
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHANNEL: dev
+          VERSION: ${{ needs.resolve.outputs.version }}
+          BUILD: ${{ needs.resolve.outputs.build_id }}
+          SHA: ${{ needs.resolve.outputs.commit_sha }}
+        run: |
+          APK=$(find download_apk -name '*.apk' 2>/dev/null | head -n 1)
+          IPA=$(find download_ipa -name '*.ipa' 2>/dev/null | head -n 1)
+
+          ARGS=""
+          [ -n "$APK" ] && ARGS="$ARGS --apk $APK"
+          [ -n "$IPA" ] && ARGS="$ARGS --ipa $IPA"
+
+          if [ -z "$ARGS" ]; then
+            echo "::error::нет артефактов для публикации"
+            exit 1
+          fi
+
+          python tools/publish_release.py \
+            --channel "$CHANNEL" \
+            --version "$VERSION" \
+            --build-number "$BUILD" \
+            --commit-sha "$SHA" \
+            $ARGS

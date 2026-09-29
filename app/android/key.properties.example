@@ -1,0 +1,14 @@
+# Образец файла подписи Android. Скопируй в key.properties и заполни.
+#
+# key.properties НЕ коммитится (в .gitignore): там пароль от ключа публикации.
+#
+# Как создать ключ (один раз):
+#   keytool -genkey -v -keystore mirea-career.jks -keyalg RSA -keysize 2048 ^
+#           -validity 10000 -alias mirea-career
+#
+# Путь storeFile — от каталога app/android/.
+
+storeFile=../mirea-career.jks
+storePassword=ЗАМЕНИ_МЕНЯ
+keyAlias=mirea-career
+keyPassword=ЗАМЕНИ_МЕНЯ
