@@ -7,3 +7,15 @@ analyzer:
     - ios/**
     - web/**
     - windows/**
+  errors:
+    # Устаревшие API ломают сборку: их надо чинить, а не копить.
+    deprecated_member_use: error
+    # Стилевые замечания остаются видимыми, но не валят CI:
+    # сборка не должна падать из-за подчёркивания в имени параметра.
+    unnecessary_underscores: warning
+
+linter:
+  rules:
+    # Явно включаем то, что важно для читаемости в команде
+    prefer_single_quotes: true
+    require_trailing_commas: true

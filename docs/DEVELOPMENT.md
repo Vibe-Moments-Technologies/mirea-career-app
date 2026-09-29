@@ -111,41 +111,79 @@ build-tools 36) — скрипт использует его. Если пона�
 На Windows сборка невозможна: нужен macOS с Xcode. Отсюда iOS собирается
 в GitHub Actions (см. ниже). Платформенная папка `app/ios/` готова.
 
-## Релизные сборки в GitHub Actions
+## Сборки в GitHub Actions
 
-`.github/workflows/build.yml` собирает обе платформы:
+Репозиторий: `Vibe-Moments-Technologies/mirea-career-app` (приватный).
 
-| Когда | Что происходит |
-|---|---|
-| PR в `main` | только проверка кода и тесты (быстро, минуты не тратятся) |
-| Тег `vX.Y.Z` | полная сборка Android + iOS |
-| Вручную | чекбоксами выбираешь, что собирать |
+Три workflow, схема взята из `krasava-app` и адаптирована под Flutter:
 
-Локальный запуск сборки в CI не нужен — поэтому workflow не висит на каждом
-коммите: полная сборка двух платформ занимает 10–20 минут.
+| Workflow | Когда запускается | Что даёт |
+|---|---|---|
+| `preview-main.yml` | каждый push в `main` | rolling-релиз `preview` с APK и IPA, версия `X.Y.Z-dev.N` |
+| `test-build.yml` | вручную, для любой ветки | артефакты на 14 дней, ничего не публикует |
+| `release-mobile.yml` | тег `v*` или вручную | релиз с APK + AAB + IPA |
+
+**Обе платформы собираются всегда.** Тестировщик с iPhone и тестировщик
+с Android качают свои файлы из одного и того же релиза, с одинаковым
+номером сборки — обновление встаёт поверх предыдущего.
+
+### Как тестировать сборки
+
+Самый простой путь — rolling-preview из main:
+
+1. Пуш в `main` (или Actions → Main Preview Build → Run workflow).
+2. Через ~10–20 минут: **Releases** → `preview`.
+3. Android-тестировщик ставит `kariera-mirea-preview.apk`.
+4. iOS-тестировщик скачивает `kariera-mirea-preview.ipa`.
+
+Для проверки отдельной ветки до мержа — `test-build.yml`: запускаешь вручную,
+указываешь ветку, забираешь артефакты со страницы запуска.
+
+### Версионирование
+
+Единый источник — `tools/versioning.py`. Версия в репозитории живёт только
+в `app/pubspec.yaml` (чистая линия, например `0.1.0+1`); CI подставляет полную
+версию с суффиксом и номером сборки.
+
+| Канал | Источник | Пример версии |
+|---|---|---|
+| stable | тег `v26.10` | `26.10` |
+| beta / rc | тег `v26.10-beta.1` | `26.10-beta.1` |
+| dev | push в `main` | `0.1.0-dev.5` |
+| contrib | ручная сборка ветки | `0.1.0-contrib.42` |
+
+**BUILD_NUMBER** (versionCode / CFBundleVersion) — epoch-секунды, вычисляются
+один раз в resolve-джобе и передаются во все остальные. Так APK и IPA получают
+одинаковый номер, и свежая сборка гарантированно встаёт поверх старой.
+
+Почему epoch, а не `github.run_id`: run_id (~34e9) не влезает в Int32, а это
+жёсткий потолок Android versionCode (2147483647). Epoch-секунды влезают
+с запасом до 2038 года.
+
+Выпуск версии:
 
 ```bash
-git tag v0.1.0 && git push origin v0.1.0
+git tag v26.10 && git push origin v26.10
 ```
-
-Артефакты (30 дней хранения): `app-release.apk`, `app-release.aab`,
-`kariera-mirea-ios.zip`. Скачиваются со страницы запуска в Actions.
 
 ### Секреты репозитория
 
-Settings → Secrets and variables → Actions:
+Уже настроены: `SUPABASE_URL`, `SUPABASE_ANON_KEY`.
+
+Осталось добавить для подписи Android (нужно для публикации в Play,
+для тестовых сборок не требуется):
 
 | Секрет | Значение |
 |---|---|
-| `SUPABASE_URL` | `https://<project>.supabase.co` |
-| `SUPABASE_ANON_KEY` | public anon-ключ |
 | `ANDROID_KEYSTORE_BASE64` | keystore в base64 (см. ниже) |
 | `ANDROID_KEYSTORE_PASSWORD` | пароль хранилища |
 | `ANDROID_KEY_ALIAS` | алиас ключа |
 | `ANDROID_KEY_PASSWORD` | пароль ключа |
 
-Без секретов подписи Android-сборка всё равно пройдёт — подпишется debug-ключом
-(годится для теста, **не** для Google Play), а в логе будет предупреждение.
+**Важно:** релизный workflow (по тегу) падает без ключа подписи — намеренно.
+APK, подписанный debug-ключом, Google Play отвергнет, а обновление не встанет
+поверх предыдущей версии. Тестовые сборки (`preview`, `test-build`)
+debug-ключом подписываются нормально.
 
 Как получить base64 от ключа:
 
@@ -153,7 +191,7 @@ Settings → Secrets and variables → Actions:
 [Convert]::ToBase64String([IO.File]::ReadAllBytes("mirea-career.jks")) | Set-Clipboard
 ```
 
-Само хранилище создаётся один раз:
+Хранилище создаётся один раз:
 
 ```powershell
 keytool -genkey -v -keystore mirea-career.jks -keyalg RSA -keysize 2048 `
@@ -163,13 +201,20 @@ keytool -genkey -v -keystore mirea-career.jks -keyalg RSA -keysize 2048 `
 Затем скопируй `app/android/key.properties.example` в `app/android/key.properties`
 и впиши пароли — для локальных release-сборок. Оба файла в `.gitignore`.
 
-### iOS и TestFlight
+### iOS: важное ограничение
 
-Workflow собирает `.app` **без подписи** — этого достаточно, чтобы убедиться,
-что проект собирается, и запустить на симуляторе. Для установки на реальный
-iPhone и TestFlight понадобится Apple Developer ($99/год): сертификат
-распространения и provisioning profile добавляются отдельными секретами,
-а шаг сборки меняется на `flutter build ipa`.
+Workflow собирает IPA **без подписи**. Это значит:
+
+* ✅ сборка компилируется — можно убедиться, что проект живой;
+* ✅ файл можно поставить на **симулятор**;
+* ❌ **на реальный iPhone его поставить нельзя**.
+
+Для установки на устройство и TestFlight нужен Apple Developer ($99/год):
+сертификат распространения и provisioning profile добавляются секретами,
+шаг сборки меняется на `flutter build ipa`. Пока этого нет — iOS-тестировщик
+сможет смотреть приложение только в симуляторе через Xcode на Mac.
+
+Это ограничение Apple, обойти его без аккаунта разработчика невозможно.
 
 ## Тесты
 

@@ -165,7 +165,7 @@ class _Cover extends StatelessWidget {
           Image.network(
             post.imageUrl!,
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Container(color: color.withValues(alpha: 0.25)),
+            errorBuilder: (_, _, _) => Container(color: color.withValues(alpha: 0.25)),
           )
         else
           Container(
@@ -257,7 +257,7 @@ class _Organizer extends StatelessWidget {
                 width: 40,
                 height: 40,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _orgFallback(scheme),
+                errorBuilder: (_, _, _) => _orgFallback(scheme),
               ),
             )
           else

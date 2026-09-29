@@ -120,7 +120,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     scrollDirection: Axis.horizontal,
                     padding: EdgeInsets.symmetric(horizontal: pad),
                     itemCount: personal.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 12),
+                    separatorBuilder: (_, _) => const SizedBox(width: 12),
                     itemBuilder: (_, i) => SizedBox(
                       width: 280,
                       child: _CompactCard(
@@ -149,7 +149,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
               sliver: SliverList.separated(
                 itemCount: rest.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
                 itemBuilder: (_, i) => PostCard(
                   post: rest[i],
                   isFavorite: favorites.contains(rest[i].id),
@@ -277,7 +277,7 @@ class _HeroCard extends StatelessWidget {
                 Image.network(
                   post.imageUrl!,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(color: color.withValues(alpha: 0.3)),
+                  errorBuilder: (_, _, _) => Container(color: color.withValues(alpha: 0.3)),
                 )
               else
                 Container(

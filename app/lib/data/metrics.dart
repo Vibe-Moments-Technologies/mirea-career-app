@@ -74,7 +74,7 @@ Future<Bootstrap> bootstrap() async {
     return Bootstrap(store: store, metrics: Metrics(PostsRepo(_offline), store), configured: false);
   }
 
-  await Supabase.initialize(url: SupabaseConfig.url, anonKey: SupabaseConfig.anonKey);
+  await Supabase.initialize(url: SupabaseConfig.url, publishableKey: SupabaseConfig.anonKey);
   final metrics = Metrics(PostsRepo(Supabase.instance.client), store);
   await metrics.flush(); // досылаем накопленное офлайн
   return Bootstrap(store: store, metrics: metrics, configured: true);

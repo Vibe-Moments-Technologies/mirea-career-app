@@ -121,7 +121,7 @@ class _Thumb extends StatelessWidget {
                 post.imageUrl!,
                 fit: BoxFit.cover,
                 // офлайн/битая ссылка — тип-заглушка вместо пустоты
-                errorBuilder: (_, __, ___) => _fallback(color),
+                errorBuilder: (_, _, _) => _fallback(color),
               )
             : _fallback(color),
       ),
@@ -175,7 +175,7 @@ class _OrgLine extends StatelessWidget {
                 width: 18,
                 height: 18,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const SizedBox(width: 18, height: 18),
+                errorBuilder: (_, _, _) => const SizedBox(width: 18, height: 18),
               ),
             ),
           if (hasLogo) const SizedBox(width: 6),

@@ -114,11 +114,11 @@ jobs:
             echo "keyPassword=$KEY_PASSWORD"
           } > key.properties
 
-      - name: ✅ Analyze & test
+      # проверка кода идёт отдельным workflow (analyze.yml),
+      # здесь запускаем только тесты: они быстрые и ловят регрессии в логике
+      - name: 🧪 Tests
         working-directory: app
-        run: |
-          flutter analyze
-          flutter test
+        run: flutter test
 
       - name: 🔨 Build APK
         working-directory: app

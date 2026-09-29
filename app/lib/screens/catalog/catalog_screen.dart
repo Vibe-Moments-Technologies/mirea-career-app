@@ -119,7 +119,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                     )
                   : SliverList.separated(
                       itemCount: posts.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      separatorBuilder: (_, _) => const SizedBox(height: 10),
                       itemBuilder: (_, i) => _card(posts[i], favorites),
                     ),
             ),

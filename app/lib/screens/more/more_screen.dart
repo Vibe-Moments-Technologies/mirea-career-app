@@ -51,22 +51,23 @@ class MoreScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 20),
           _GroupTitle('Оформление'),
-          _Group(
-            children: [
-              for (final m in const [
-                (ThemeMode.system, 'Как в системе'),
-                (ThemeMode.light, 'Светлая'),
-                (ThemeMode.dark, 'Тёмная'),
-              ])
-                RadioListTile<ThemeMode>(
-                  value: m.$1,
-                  groupValue: themeMode,
-                  title: Text(m.$2),
-                  onChanged: (v) {
-                    if (v != null) ref.read(themeModeProvider.notifier).set(v);
-                  },
-                ),
-            ],
+          // RadioGroup управляет выбором на уровне группы: сами плитки
+          // в новом Flutter не принимают groupValue/onChanged.
+          RadioGroup<ThemeMode>(
+            groupValue: themeMode,
+            onChanged: (v) {
+              if (v != null) ref.read(themeModeProvider.notifier).set(v);
+            },
+            child: _Group(
+              children: [
+                for (final m in const [
+                  (ThemeMode.system, 'Как в системе'),
+                  (ThemeMode.light, 'Светлая'),
+                  (ThemeMode.dark, 'Тёмная'),
+                ])
+                  RadioListTile<ThemeMode>(value: m.$1, title: Text(m.$2)),
+              ],
+            ),
           ),
           const SizedBox(height: 20),
           _GroupTitle('Приложение'),

@@ -61,7 +61,7 @@ class FavoritesScreen extends ConsumerWidget {
               padding: EdgeInsets.fromLTRB(pad, 8, pad, AppInsets.scrollBottom(context)),
               sliver: SliverList.separated(
                 itemCount: posts.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
                 itemBuilder: (_, i) {
                   final post = posts[i];
                   return Dismissible(

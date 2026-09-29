@@ -1,0 +1,55 @@
+name: ✅ Analyze & Test
+
+# Проверка кода и тесты. Отдельный workflow, чтобы:
+#   * сборки (release/preview/test) не дублировали эту работу;
+#   * на PR было видно результат проверки ещё до сборки.
+#
+# flutter analyze настроен так (см. app/analysis_options.yaml):
+#   * устаревшие API — ошибка (ломают сборку);
+#   * стилевые замечания — предупреждение (не ломают).
+# Поэтому здесь стоит `--no-fatal-warnings`: упасть должно только на реальной
+# поломке, а не на подчёркивании в имени параметра.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - '.github/workflows/analyze.yml'
+  pull_request:
+    paths:
+      - 'app/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: analyze-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: 🔍 Analyze & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+
+      - name: 📦 Dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: 🔍 Analyze
+        working-directory: app
+        # предупреждения показываем, но не валим сборку
+        run: flutter analyze --no-fatal-warnings
+
+      - name: 🧪 Tests
+        working-directory: app
+        run: flutter test --reporter expanded
