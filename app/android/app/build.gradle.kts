@@ -1,5 +1,3 @@
-package ru.mirea.career
-
 import java.util.Properties
 
 plugins {
@@ -11,7 +9,10 @@ plugins {
 android {
     namespace = "ru.mirea.career"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    // ndkVersion намеренно не задаём: у нас нет нативного кода, а требование
+    // NDK заставляет CI качать ~1 ГБ и падать, если он не установлен.
+    // Понадобится (плагин с C/C++) — вернуть flutter.ndkVersion и добавить
+    // установку NDK в workflow.
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
