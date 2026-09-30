@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/app_route.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/post_card.dart';
 import '../../state/providers.dart';
@@ -93,7 +94,7 @@ class FavoritesScreen extends ConsumerWidget {
                       isFavorite: true,
                       showPriority: false,
                       onTap: () => Navigator.of(context).push(
-                        CupertinoPageRoute(builder: (_) => PostDetailScreen(post: post)),
+                        appRoute(context, PostDetailScreen(post: post))
                       ),
                       onToggleFavorite: () {
                         ref.read(favoritesProvider.notifier).toggle(post.id);

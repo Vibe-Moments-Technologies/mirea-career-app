@@ -1,7 +1,9 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mirea_career/core/theme/app_theme.dart';
+import 'package:mirea_career/core/app_route.dart';
 import 'package:mirea_career/core/widgets/glass_dock.dart';
 import 'package:mirea_career/data/catalogs.dart';
 import 'package:mirea_career/data/crash_reporting.dart';
@@ -816,6 +818,43 @@ void main() {
       final f = FeedFilters.fromJson((saved['filters'] as Map).cast<String, dynamic>());
       expect(f.query, 'стажировка');
       expect(f.types, {'internship'});
+    });
+  });
+
+  group('Маршруты', () {
+    testWidgets('на iOS маршрут интерактивный, на Android — системный',
+        (tester) async {
+      // iOS: только CupertinoPageRoute умеет свайп-назад от левого края.
+      // Android: жест системный, принудительно его не включаем.
+      late BuildContext ctx;
+      await tester.pumpWidget(MaterialApp(
+        theme: buildAppTheme(Brightness.light),
+        home: Builder(builder: (c) {
+          ctx = c;
+          return const SizedBox();
+        }),
+      ));
+
+      expect(appRoute<void>(ctx, const SizedBox()),
+          isA<CupertinoPageRoute<void>>());
+
+      await tester.pumpWidget(MaterialApp(
+        theme: buildAppTheme(Brightness.light),
+        home: Builder(
+          builder: (c) => Theme(
+            data: Theme.of(c).copyWith(platform: TargetPlatform.android),
+            child: Builder(
+              builder: (c2) {
+                ctx = c2;
+                return const SizedBox();
+              },
+            ),
+          ),
+        ),
+      ));
+
+      expect(appRoute<void>(ctx, const SizedBox()),
+          isA<MaterialPageRoute<void>>());
     });
   });
 

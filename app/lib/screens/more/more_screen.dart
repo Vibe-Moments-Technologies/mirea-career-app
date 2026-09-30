@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/app_route.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/settings_list.dart';
 import '../../state/providers.dart';
@@ -35,7 +36,7 @@ class MoreScreen extends ConsumerWidget {
                 title: 'Профиль',
                 subtitle: profileSummary(profile),
                 onTap: () => Navigator.of(context).push(
-                  CupertinoPageRoute(builder: (_) => const ProfileScreen()),
+                  appRoute(context, const ProfileScreen())
                 ),
               ),
               SettingsTile(
@@ -43,7 +44,7 @@ class MoreScreen extends ConsumerWidget {
                 title: 'Настройки',
                 subtitle: 'Оформление, данные, о приложении',
                 onTap: () => Navigator.of(context).push(
-                  CupertinoPageRoute(builder: (_) => const SettingsScreen()),
+                  appRoute(context, const SettingsScreen())
                 ),
               ),
             ],

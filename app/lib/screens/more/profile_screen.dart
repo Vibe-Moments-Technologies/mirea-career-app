@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/glass_back_button.dart';
 import '../../core/widgets/settings_list.dart';
 import '../../data/catalogs.dart';
 import '../../data/local_store.dart';
@@ -17,7 +18,11 @@ class ProfileScreen extends ConsumerWidget {
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Профиль'), titleTextStyle: AppText.headline),
+      appBar: AppBar(
+        title: const Text('Профиль'),
+        titleTextStyle: AppText.headline,
+        leading: const GlassBackButton(),
+      ),
       body: ListView(
         padding: EdgeInsets.fromLTRB(
           pad,

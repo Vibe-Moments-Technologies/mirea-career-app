@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/glass_back_button.dart';
 import '../../core/widgets/settings_list.dart';
 
 /// Версия приложения. Совпадает с pubspec.yaml; CI подставляет свою.
@@ -23,6 +24,7 @@ class AboutScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('О приложении'),
         titleTextStyle: AppText.headline,
+        leading: const GlassBackButton(),
       ),
       body: ListView(
         padding: EdgeInsets.fromLTRB(

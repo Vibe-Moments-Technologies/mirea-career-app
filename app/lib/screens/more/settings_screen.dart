@@ -2,7 +2,9 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/app_route.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/glass_back_button.dart';
 import '../../core/widgets/settings_list.dart';
 import '../../state/providers.dart';
 import 'about_screen.dart';
@@ -23,6 +25,7 @@ class SettingsScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Настройки'),
         titleTextStyle: AppText.headline,
+        leading: const GlassBackButton(),
       ),
       body: ListView(
         padding: EdgeInsets.fromLTRB(
@@ -57,7 +60,7 @@ class SettingsScreen extends ConsumerWidget {
                 title: 'О приложении',
                 subtitle: 'Версия, назначение, контакты',
                 onTap: () => Navigator.of(context).push(
-                  CupertinoPageRoute(builder: (_) => const AboutScreen()),
+                  appRoute(context, const AboutScreen())
                 ),
               ),
             ],

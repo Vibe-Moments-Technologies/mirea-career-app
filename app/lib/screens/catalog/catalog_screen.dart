@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/app_route.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/post_card.dart';
 import '../../data/catalogs.dart';
@@ -280,8 +281,9 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
 
   void _openProfile(StudentProfile profile) {
     Navigator.of(context).push(
-      CupertinoPageRoute(
-        builder: (_) => OnboardingScreen(
+      appRoute(
+        context,
+        OnboardingScreen(
           initial: profile,
           onDone: (p) {
             ref.read(profileProvider.notifier).save(p);
@@ -296,7 +298,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
         post: post,
         isFavorite: favorites.contains(post.id),
         onTap: () => Navigator.of(context).push(
-          CupertinoPageRoute(builder: (_) => PostDetailScreen(post: post)),
+          appRoute(context, PostDetailScreen(post: post))
         ),
         onToggleFavorite: () async {
           final added = await ref.read(favoritesProvider.notifier).toggle(post.id);

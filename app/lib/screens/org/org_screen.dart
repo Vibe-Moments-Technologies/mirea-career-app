@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/app_route.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/post_card.dart';
 import '../../data/models.dart';
@@ -64,7 +65,7 @@ class OrgScreen extends ConsumerWidget {
                     post: p,
                     isFavorite: favorites.contains(p.id),
                     onTap: () => Navigator.of(context).push(
-                      CupertinoPageRoute(builder: (_) => PostDetailScreen(post: p)),
+                      appRoute(context, PostDetailScreen(post: p))
                     ),
                     onToggleFavorite: () async {
                       final added =

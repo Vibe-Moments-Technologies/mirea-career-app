@@ -4,7 +4,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/app_route.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/glass_back_button.dart';
 import '../../core/widgets/post_image.dart';
 import '../../data/catalogs.dart';
 import '../../data/models.dart';
@@ -54,7 +56,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
             pinned: true,
             expandedHeight: 220,
             backgroundColor: scheme.surface.withValues(alpha: 0.9),
-            leading: const _GlassBackButton(),
+            leading: const GlassBackButton(),
             flexibleSpace: FlexibleSpaceBar(
               background: _Cover(post: post),
             ),
@@ -118,26 +120,6 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _GlassBackButton extends StatelessWidget {
-  const _GlassBackButton();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(6),
-      child: Material(
-        color: Colors.black.withValues(alpha: 0.28),
-        shape: const CircleBorder(),
-        child: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: Colors.white),
-          onPressed: () => Navigator.of(context).maybePop(),
-          tooltip: 'Назад',
-        ),
       ),
     );
   }
@@ -232,7 +214,7 @@ class _Organizer extends StatelessWidget {
       child: InkWell(
         // Ведёт на профиль организатора: там контакты и все его предложения.
         onTap: () => Navigator.of(context).push(
-          CupertinoPageRoute(builder: (_) => OrgScreen(organizationId: post.organizationId)),
+          appRoute(context, OrgScreen(organizationId: post.organizationId))
         ),
         child: Padding(
           padding: const EdgeInsets.all(14),
