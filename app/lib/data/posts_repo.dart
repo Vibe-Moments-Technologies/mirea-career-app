@@ -5,9 +5,18 @@ import 'models.dart';
 /// Доступ к данным через Supabase. Анонимный клиент, без авторизации:
 /// RLS на стороне БД отдаёт только `published` (docs/DATABASE.md §4).
 class PostsRepo {
-  PostsRepo(this._client);
+  PostsRepo(this._client) : _realtime = true;
+
+  /// Репозиторий без сети: запросы падают, realtime-поток не открывается.
+  ///
+  /// Нужен, когда Supabase недоступен (нет ключей, не удалась инициализация,
+  /// тесты). Важно, что такой репозиторий НЕ открывает realtime-соединение:
+  /// иначе клиент бесконечно переподключается к несуществующему серверу,
+  /// оставляя за собой таймеры, и приложение не может корректно завершиться.
+  PostsRepo.offline(this._client) : _realtime = false;
 
   final SupabaseClient _client;
+  final bool _realtime;
 
   static const _select = '*, organizations(name, type, logo_url)';
 
@@ -31,6 +40,8 @@ class PostsRepo {
   /// получает только `published` (RLS), фильтр по дате — на всякий случай:
   /// отложенная публикация не должна просочиться раньше времени.
   Stream<List<Post>> watchPublished() {
+    if (!_realtime) return const Stream.empty();
+
     return _client
         .from('posts')
         .stream(primaryKey: ['id'])

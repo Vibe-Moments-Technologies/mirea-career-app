@@ -86,7 +86,7 @@ Future<Bootstrap> bootstrap() async {
   if (!SupabaseConfig.isConfigured) {
     return Bootstrap(
       store: store,
-      metrics: Metrics(PostsRepo(_offline), store),
+      metrics: Metrics(PostsRepo.offline(_offline), store),
       configured: false,
     );
   }
@@ -99,7 +99,7 @@ Future<Bootstrap> bootstrap() async {
     // Битый URL или ключ: показываем интерфейс на кэше, а не пустой экран.
     return Bootstrap(
       store: store,
-      metrics: Metrics(PostsRepo(_offline), store),
+      metrics: Metrics(PostsRepo.offline(_offline), store),
       configured: false,
     );
   }

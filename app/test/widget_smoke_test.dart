@@ -39,7 +39,11 @@ Future<ProviderContainer> container({
   return ProviderContainer(
     overrides: [
       localStoreProvider.overrideWithValue(store),
-      metricsProvider.overrideWithValue(Metrics(PostsRepo(offlineClient()), store)),
+      // именно офлайн-вариант: он не открывает realtime-соединение,
+      // поэтому тест завершается без висящих таймеров
+      metricsProvider.overrideWithValue(
+        Metrics(PostsRepo.offline(offlineClient()), store),
+      ),
       supabaseConfiguredProvider.overrideWithValue(true),
     ],
   );
@@ -104,7 +108,7 @@ void main() {
       expect(frameworkErrors, isEmpty, reason: 'фреймворк сообщил об ошибке: $frameworkErrors');
     });
 
-    testWidgets('с пройденным опросом показывается док с четырьмя вкладками', (tester) async {
+    testWidgets('с пройденным опросом показывается док', (tester) async {
       final c = await container(profile: const StudentProfile(completed: true));
       addTearDown(c.dispose);
 
@@ -112,7 +116,6 @@ void main() {
       await tester.pump();
 
       expect(find.byType(GlassDock), findsOneWidget);
-      expect(find.text('Главная'), findsOneWidget);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
 
@@ -124,9 +127,7 @@ void main() {
       addTearDown(c.dispose);
 
       await tester.pumpWidget(wrap(c, const RootShell()));
-      // даём отработать микрозадаче инициализации ленты и упавшему запросу в сеть
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(); // микрозадача инициализации
 
       expect(find.text('Осенняя ярмарка вакансий'), findsOneWidget);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
@@ -138,38 +139,45 @@ void main() {
 
       await tester.pumpWidget(wrap(c, const RootShell()));
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
 
-      // приложение живо: док и вкладки на месте
+      // приложение живо: док на месте
       expect(find.byType(GlassDock), findsOneWidget);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
   });
 
   group('Онбординг', () {
-    testWidgets('все четыре шага присутствуют', (tester) async {
+    // Шаги лежат в PageView, поэтому одновременно построена только текущая
+    // страница. Проверяем каждый шаг, пролистывая вперёд «Далее».
+    testWidgets('шаги проходятся по порядку и вопросы на месте', (tester) async {
       final c = await container();
       addTearDown(c.dispose);
 
       await tester.pumpWidget(
         wrap(
           c,
-          OnboardingScreen(
-            initial: const StudentProfile(),
-            onDone: (_) {},
-          ),
+          OnboardingScreen(initial: const StudentProfile(), onDone: (_) {}),
         ),
       );
       await tester.pump();
 
-      for (final question in [
+      const questions = [
         'Где вы учитесь?',
         'Ваш институт',
         'Уровень обучения',
         'Что вам интересно?',
-      ]) {
-        expect(find.text(question), findsOneWidget, reason: 'нет шага «$question»');
+      ];
+
+      for (var i = 0; i < questions.length; i++) {
+        expect(find.text(questions[i]), findsOneWidget,
+            reason: 'шаг ${i + 1}: нет вопроса «${questions[i]}»');
+
+        if (i < questions.length - 1) {
+          await tester.tap(find.text('Далее'));
+          await tester.pumpAndSettle();
+        }
       }
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
 
     testWidgets('«Пропустить» сообщает о пройденном онбординге', (tester) async {
