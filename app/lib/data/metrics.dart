@@ -77,9 +77,15 @@ class Bootstrap {
 
 /// Инициализация Supabase и локального хранилища.
 ///
-/// Никогда не бросает исключение: приложение обязано показать интерфейс
-/// даже при недоступной сети или неверных ключах. Любая проблема с Supabase
-/// означает лишь «работаем на кэше», а не белый экран на старте.
+/// Никогда не бросает исключение и НИКОГДА не висит: приложение обязано
+/// показать интерфейс даже при недоступной сети или неверных ключах.
+/// Любая проблема с Supabase означает лишь «работаем на кэше», а не
+/// пустой экран на старте.
+///
+/// Таймаут здесь принципиален. Если адрес невалиден, инициализация может
+/// просто не завершиться — и тогда runApp не вызовется, а пользователь
+/// увидит однотонный экран без каких-либо следов ошибки. Ровно так и
+/// произошло, когда секрет пришёл с BOM в начале URL.
 Future<Bootstrap> bootstrap() async {
   final store = await LocalStore.open();
 
@@ -93,10 +99,14 @@ Future<Bootstrap> bootstrap() async {
 
   SupabaseClient client;
   try {
-    await Supabase.initialize(url: SupabaseConfig.url, publishableKey: SupabaseConfig.anonKey);
+    await Supabase.initialize(
+      url: SupabaseConfig.url,
+      publishableKey: SupabaseConfig.anonKey,
+    ).timeout(const Duration(seconds: 10));
     client = Supabase.instance.client;
   } catch (e) {
-    // Битый URL или ключ: показываем интерфейс на кэше, а не пустой экран.
+    // Битый URL, ключ или зависшая инициализация: показываем интерфейс
+    // на кэше, а не пустой экран.
     return Bootstrap(
       store: store,
       metrics: Metrics(PostsRepo.offline(_offline), store),

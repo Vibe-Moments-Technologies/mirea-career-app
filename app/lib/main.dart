@@ -8,12 +8,21 @@ import 'screens/root_shell.dart';
 import 'state/providers.dart';
 
 Future<void> main() async {
-  // release-сборка не показывает красный экран ошибки, поэтому любую проблему
-  // на старте надо поймать самим — иначе пользователь увидит белый экран
-  // без каких-либо объяснений. Отсюда два уровня защиты:
-  //   1) Sentry — чтобы узнать о сбое у тестировщика, а не гадать;
-  //   2) try/catch ниже — чтобы вместо пустоты показать причину.
+  // release-сборка не показывает ни красного экрана, ни сообщений: при сбое
+  // пользователь видит однотонную заливку, и на устройстве не остаётся
+  // следов. Мы уже дважды искали причину вслепую — поэтому здесь сразу
+  // три уровня защиты:
+  //   1) видимая ошибка вместо пустоты (ErrorWidget.builder);
+  //   2) Sentry — чтобы узнать о сбое, не переспрашивая тестировщика;
+  //   3) try/catch, чтобы показать причину, если упал старт.
   WidgetsFlutterBinding.ensureInitialized();
+
+  // По умолчанию Flutter в release рисует на месте упавшего виджета
+  // серый прямоугольник без объяснений. Показываем текст ошибки.
+  ErrorWidget.builder = (details) => _VisibleError(
+        error: details.exceptionAsString(),
+        stack: details.stack?.toString(),
+      );
 
   await CrashReporting.run(_start);
 }
@@ -132,6 +141,62 @@ class _NotConfiguredScreen extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: AppText.footnote.copyWith(height: 1.5),
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Показывает текст ошибки вместо серого прямоугольника, которым release
+/// обычно заменяет упавший виджет.
+///
+/// Зачем: при первом запуске мы получили однотонный экран без подробностей
+/// и искали причину «на ощупь» — по бинарнику собранного APK. С этим виджетом
+/// причина видна прямо на устройстве.
+///
+/// Стили заданы явно: в момент ошибки дерево тем может быть недоступно,
+/// поэтому полагаться на Theme нельзя.
+class _VisibleError extends StatelessWidget {
+  const _VisibleError({required this.error, this.stack});
+
+  final String error;
+  final String? stack;
+
+  @override
+  Widget build(BuildContext context) {
+    // короткий stack: первые строки указывают на место падения
+    final shortStack = stack?.split('\n').take(6).join('\n');
+
+    return Material(
+      color: const Color(0xFFFFF3F3),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Ошибка в интерфейсе',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFFB3261E),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SelectableText(
+                error,
+                style: const TextStyle(fontSize: 14, color: Color(0xFF1A1A1A)),
+              ),
+              if (shortStack != null) ...[
+                const SizedBox(height: 16),
+                SelectableText(
+                  shortStack,
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF5F6368)),
+                ),
+              ],
             ],
           ),
         ),

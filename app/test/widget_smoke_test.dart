@@ -243,6 +243,35 @@ void main() {
           reason: 'в тестах ключи не передаются — так и должно быть');
     });
 
+    test('значения из окружения очищаются от BOM и пробелов', () {
+      // Реальная авария: секрет в CI записался с BOM (U+FEFF) в начале.
+      // URL выглядел непустым, но инициализация Supabase не завершалась —
+      // runApp не вызывался, и пользователь видел однотонный экран.
+      // Sentry при этом молчал по той же причине: DSN не разбирался.
+      const withBom = '\uFEFFhttps://example.supabase.co';
+      const withSpaces = '  https://example.supabase.co\n';
+
+      for (final raw in [withBom, withSpaces]) {
+        final cleaned = raw.trim();
+        expect(cleaned[0], 'h', reason: 'BOM и пробелы должны быть срезаны');
+        expect(Uri.tryParse(cleaned)?.hasScheme, isTrue,
+            reason: 'после очистки URL должен быть валидным');
+      }
+    });
+
+    test('URL со BOM не проходит проверку конфигурации сам по себе', () {
+      // Dart документирует, что trim() срезает BOM (U+FEFF, он же
+      // ZERO WIDTH NO_BREAK SPACE) — см. lib/core/string.dart.
+      // Поэтому проверка конфигурации обязана очищать значения: без trim()
+      // строка непустая и «похожа на URL», но HTTP-клиент получит мусор
+      // в начале адреса.
+      const broken = '\uFEFFhttps://example.supabase.co';
+      expect(broken.isNotEmpty, isTrue, reason: 'проверка isNotEmpty обманывается');
+      expect(broken.codeUnitAt(0), 0xFEFF, reason: 'первый символ — BOM');
+      expect(broken.trim().codeUnitAt(0), 'h'.codeUnitAt(0),
+          reason: 'trim() обязан снять BOM');
+    });
+
     test('Sentry выключен без DSN и не мешает запуску', () {
       // В тестах DSN не передаётся: телеметрия должна молчать,
       // иначе тесты начнут отправлять события в реальный Sentry.

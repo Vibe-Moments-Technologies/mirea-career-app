@@ -14,14 +14,16 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 class CrashReporting {
   const CrashReporting._();
 
-  static const _dsn = String.fromEnvironment('SENTRY_DSN');
-  static const _environment = String.fromEnvironment(
-    'SENTRY_ENVIRONMENT',
-    defaultValue: 'dev',
-  );
-  static const _release = String.fromEnvironment('SENTRY_RELEASE');
-  static const _dist = String.fromEnvironment('SENTRY_DIST');
+  static final _dsn = const String.fromEnvironment('SENTRY_DSN').trim();
+  static final _environment =
+      const String.fromEnvironment('SENTRY_ENVIRONMENT', defaultValue: 'dev').trim();
+  static final _release = const String.fromEnvironment('SENTRY_RELEASE').trim();
+  static final _dist = const String.fromEnvironment('SENTRY_DIST').trim();
 
+  /// trim() выше — не украшение. Значение из CI-секрета однажды пришло
+  /// с BOM (U+FEFF) в начале, и Sentry молча ничего не отправлял:
+  /// «Project ID not found in the URI path of the DSN URI». Снаружи это
+  /// выглядело как «Sentry подключён, но событий нет».
   static bool get isEnabled => _dsn.isNotEmpty;
 
   /// Показывать ли инструменты проверки телеметрии.
@@ -35,32 +37,41 @@ class CrashReporting {
   ///
   /// Оборачивать обязательно: без этого исключения в асинхронном коде
   /// останутся незамеченными, а именно там у нас живут сеть и хранилище.
+  ///
+  /// Если Sentry не поднялся (битый DSN, нет сети) — приложение всё равно
+  /// запускается: телеметрия не важнее интерфейса.
   static Future<void> run(Future<void> Function() appRunner) async {
     if (!isEnabled) {
       await appRunner();
       return;
     }
 
-    await SentryFlutter.init(
-      (options) {
-        options.dsn = _dsn;
-        options.environment = _environment;
-        if (_release.isNotEmpty) options.release = _release;
-        if (_dist.isNotEmpty) options.dist = _dist;
+    try {
+      await SentryFlutter.init(
+        (options) {
+          options.dsn = _dsn;
+          options.environment = _environment;
+          if (_release.isNotEmpty) options.release = _release;
+          if (_dist.isNotEmpty) options.dist = _dist;
 
-        // Stack trace к каждому событию: без него непонятно, где упало.
-        options.attachStacktrace = true;
+          // Stack trace к каждому событию: без него непонятно, где упало.
+          options.attachStacktrace = true;
 
-        // Производительность сэмплируем: 100% быстро съедает квоту,
-        // а для отлова крашей достаточно самих исключений.
-        options.tracesSampleRate = 0.2;
+          // Производительность сэмплируем: 100% быстро съедает квоту,
+          // а для отлова крашей достаточно самих исключений.
+          options.tracesSampleRate = 0.2;
 
-        // Персональных данных у нас нет (регистрации в приложении нет),
-        // и отправлять лишнее не нужно.
-        options.sendDefaultPii = false;
-      },
-      appRunner: appRunner,
-    );
+          // Персональных данных у нас нет (регистрации в приложении нет),
+          // и отправлять лишнее не нужно.
+          options.sendDefaultPii = false;
+        },
+        appRunner: appRunner,
+      );
+    } catch (_) {
+      // Телеметрия не поднялась — приложение обязано работать и без неё.
+      // Без этой защиты битый DSN оставлял пользователя с пустым экраном.
+      await appRunner();
+    }
   }
 
   /// Ручная отправка ошибки — для мест, где перехват не срабатывает сам

@@ -70,8 +70,13 @@ class PostsRepo {
 class SupabaseConfig {
   const SupabaseConfig._();
 
-  static const url = String.fromEnvironment('SUPABASE_URL');
-  static const anonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+  /// trim() обязателен: значение из CI-секрета легко приходит с BOM
+  /// (U+FEFF) или переводом строки в начале. Такой URL выглядит непустым,
+  /// но инициализация с ним не работает — приложение показывает пустой
+  /// экран вместо интерфейса. Один раз это уже случилось.
+  static final url = const String.fromEnvironment('SUPABASE_URL').trim();
+  static final anonKey = const String.fromEnvironment('SUPABASE_ANON_KEY').trim();
 
-  static bool get isConfigured => url.isNotEmpty && anonKey.isNotEmpty;
+  static bool get isConfigured =>
+      url.isNotEmpty && anonKey.isNotEmpty && Uri.tryParse(url)?.hasScheme == true;
 }
