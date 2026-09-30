@@ -92,6 +92,7 @@ class LocalStore {
   static const _kPending = 'pending_metrics';
   static const _kFeedCache = 'feed_cache';
   static const _kTheme = 'theme_mode';
+  static const _kCatalog = 'catalog_state';
 
   // ---------- Профиль ----------
   StudentProfile get profile {
@@ -106,6 +107,17 @@ class LocalStore {
   /// 'system' | 'light' | 'dark'
   String get themeMode => _prefs.getString(_kTheme) ?? 'system';
   Future<void> saveThemeMode(String mode) => _prefs.setString(_kTheme, mode);
+
+  // ---------- Состояние каталога (фильтры, вкладка, сортировка) ----------
+
+  Map<String, dynamic>? get catalogState {
+    final raw = _prefs.getString(_kCatalog);
+    if (raw == null) return null;
+    return jsonDecode(raw) as Map<String, dynamic>;
+  }
+
+  Future<void> saveCatalogState(Map<String, dynamic> value) =>
+      _prefs.setString(_kCatalog, jsonEncode(value));
 
   // ---------- Избранное ----------
   List<String> get favorites => _prefs.getStringList(_kFavorites) ?? const [];
@@ -160,7 +172,7 @@ class LocalStore {
 
   // ---------- Сброс ----------
   Future<void> reset() async {
-    for (final k in [_kProfile, _kFavorites, _kViewed, _kPending, _kFeedCache]) {
+    for (final k in [_kProfile, _kFavorites, _kViewed, _kPending, _kFeedCache, _kCatalog]) {
       await _prefs.remove(k);
     }
   }

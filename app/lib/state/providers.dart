@@ -74,15 +74,31 @@ final themeModeProvider =
 
 /// Лента: сеть + кэш на диске. При офлайне показывается кэш.
 class FeedState {
-  const FeedState({this.posts = const [], this.loading = false, this.offline = false});
+  const FeedState({
+    this.posts = const [],
+    this.loading = false,
+    this.offline = false,
+    this.updatedAt,
+  });
   final List<Post> posts;
   final bool loading;
   final bool offline;
 
-  FeedState copyWith({List<Post>? posts, bool? loading, bool? offline}) => FeedState(
+  /// Когда лента последний раз успешно обновилась из сети.
+  /// Показывается в шапке: снимает вопрос «устаревшая ли лента».
+  final DateTime? updatedAt;
+
+  FeedState copyWith({
+    List<Post>? posts,
+    bool? loading,
+    bool? offline,
+    DateTime? updatedAt,
+  }) =>
+      FeedState(
         posts: posts ?? this.posts,
         loading: loading ?? this.loading,
         offline: offline ?? this.offline,
+        updatedAt: updatedAt ?? this.updatedAt,
       );
 }
 
@@ -126,7 +142,12 @@ class FeedNotifier extends Notifier<FeedState> {
     try {
       final posts = await ref.read(postsRepoProvider).fetchPublished();
       if (!ref.mounted) return; // провайдер уничтожен, пока шёл запрос
-      state = state.copyWith(posts: _applyDeltas(posts), loading: false, offline: false);
+      state = state.copyWith(
+        posts: _applyDeltas(posts),
+        loading: false,
+        offline: false,
+        updatedAt: DateTime.now(),
+      );
       await ref.read(localStoreProvider).saveFeedCache(posts.map((p) => p.toJson()).toList());
     } catch (_) {
       // нет сети — остаёмся на кэше, показываем баннер

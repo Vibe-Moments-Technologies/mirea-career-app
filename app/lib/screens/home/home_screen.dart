@@ -74,6 +74,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               )
             else
               SliverToBoxAdapter(child: SizedBox(height: AppInsets.top(context))),
+            // Когда лента обновилась: снимает вопрос «устаревшая ли лента».
+            // Показываем только реальные данные — при кэше без сети отметка
+            // была бы враньём.
+            if (feed.updatedAt != null && !feed.loading && !feed.offline)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(pad, 0, pad, 2),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      'Обновлено в ${_hhmm(feed.updatedAt!)}',
+                      style: AppText.caption
+                          .copyWith(color: AppColors.secondaryLight),
+                    ),
+                  ),
+                ),
+              ),
             SliverToBoxAdapter(
               child: SizedBox(
                 height: 52,
@@ -99,16 +116,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
             SliverPadding(
               padding: EdgeInsets.fromLTRB(pad, 10, pad, 0),
-              sliver: SliverList.separated(
-                itemCount: shown.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 10),
-                itemBuilder: (_, i) => PostCard(
-                  post: shown[i],
-                  isFavorite: favorites.contains(shown[i].id),
-                  onTap: () => _open(shown[i]),
-                  onToggleFavorite: () => _toggleFavorite(shown[i].id),
-                ),
-              ),
+              // Первая загрузка: показываем форму карточек, а не
+              // «Пока ничего нет» — контент уже едет, просто не дошёл.
+              sliver: feed.loading && feed.posts.isEmpty
+                  ? SliverList.separated(
+                      itemCount: 4,
+                      separatorBuilder: (_, _) => const SizedBox(height: 10),
+                      itemBuilder: (_, i) =>
+                          PostCardSkeleton(withAction: i == 0),
+                    )
+                  : SliverList.separated(
+                      itemCount: shown.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 10),
+                      itemBuilder: (_, i) => PostCard(
+                        post: shown[i],
+                        isFavorite: favorites.contains(shown[i].id),
+                        onTap: () => _open(shown[i]),
+                        onToggleFavorite: () => _toggleFavorite(shown[i].id),
+                      ),
+                    ),
             ),
             SliverToBoxAdapter(
               child: Padding(
@@ -118,13 +144,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   pad,
                   AppInsets.scrollBottom(context),
                 ),
-                child: _ListTail(
-                  hasMore: all.length > shown.length,
-                  isEmpty: all.isEmpty && !feed.loading,
-                  loaded: shown.length,
-                  total: all.length,
-                  onMore: () => setState(() => _visible += _pageSize),
-                ),
+                // Пока грузится, хвост скрыт: он мигал поверх скелетонов.
+                child: feed.loading && feed.posts.isEmpty
+                    ? const SizedBox.shrink()
+                    : _ListTail(
+                        hasMore: all.length > shown.length,
+                        isEmpty: all.isEmpty && !feed.loading,
+                        loaded: shown.length,
+                        total: all.length,
+                        onMore: () => setState(() => _visible += _pageSize),
+                      ),
               ),
             ),
           ],
@@ -145,6 +174,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     await ref.read(metricsProvider).registerFavorite(id, added ? 1 : -1);
   }
 }
+
+/// Часы и минуты без `intl`: для одной строки подкладка не нужна.
+String _hhmm(DateTime t) =>
+    '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
 /// Чип быстрого фильтра: капсула с мягкой анимацией выбора.
 class _QuickChip extends StatelessWidget {

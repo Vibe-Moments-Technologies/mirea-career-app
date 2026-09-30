@@ -32,6 +32,39 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
   static const _pageSize = 10;
   int _visible = _pageSize;
 
+  /// Поиск. Поле `query` в фильтрах существовало, но ввода не было —
+  /// это была самая заметная дырка в каталоге.
+  final _search = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    // Фильтры — настройка интерфейса; сбрасывать их при каждом старте
+    // раздражает. Читаем синхронно из LocalStore, до первого кадра.
+    final saved = ref.read(localStoreProvider).catalogState;
+    if (saved != null) {
+      _source = saved['source'] as String? ?? _source;
+      _sortPopular = saved['sortByPopularity'] as bool? ?? _sortPopular;
+      final raw = saved['filters'];
+      if (raw is Map) {
+        _filters = FeedFilters.fromJson(raw.cast<String, dynamic>());
+      }
+      _search.text = _filters.query;
+    }
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  void _persist() => ref.read(localStoreProvider).saveCatalogState({
+        'source': _source,
+        'sortByPopularity': _sortPopular,
+        'filters': _filters.toJson(),
+      });
+
   void _openSheet() {
     showModalBottomSheet<void>(
       context: context,
@@ -44,7 +77,11 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
         organizations: _organizationsOf(ref.read(feedProvider).posts, _source),
         onApply: (f) => setState(() {
           _filters = f;
+          // «Сбросить» в панели фильтров должен очищать и строку поиска,
+          // иначе поле осталось бы с текстом, которого уже нет в фильтре.
+          if (_search.text != f.query) _search.text = f.query;
           _visible = _pageSize;
+          _persist();
         }),
       ),
     );
@@ -85,12 +122,28 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
           ),
           SliverToBoxAdapter(
             child: Padding(
-              padding: EdgeInsets.fromLTRB(pad, 4, pad, 12),
+              padding: EdgeInsets.fromLTRB(pad, 4, pad, 10),
               child: _SourceSwitcher(
                 value: _source,
                 onChanged: (v) => setState(() {
                   _source = v;
                   _visible = _pageSize;
+                  _persist();
+                }),
+              ),
+            ),
+          ),
+          // Поиск по заголовку, тегам и организатору. Фильтрация локальная и
+          // мгновенная: список уже в памяти, поэтому debounce не нужен.
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(pad, 0, pad, 10),
+              child: _SearchField(
+                controller: _search,
+                onChanged: (v) => setState(() {
+                  _filters = _filters.copyWith(query: v);
+                  _visible = _pageSize;
+                  _persist();
                 }),
               ),
             ),
@@ -134,14 +187,26 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                 onTap: () => _openProfile(profile),
               ),
             ),
-          if (posts.isEmpty && !feed.loading)
+          if (feed.loading && feed.posts.isEmpty)
+            // Первая загрузка: скелетоны, а не «ничего не нашлось».
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(pad, 8, pad, 0),
+              sliver: SliverList.separated(
+                itemCount: 4,
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
+                itemBuilder: (_, i) => PostCardSkeleton(withAction: i == 0),
+              ),
+            )
+          else if (posts.isEmpty && !feed.loading)
             SliverFillRemaining(
               hasScrollBody: false,
               child: _EmptyCatalog(
                 forYouMode: forYouMode,
                 onReset: () => setState(() {
                   _filters = const FeedFilters();
+                  _search.clear();
                   _visible = _pageSize;
+                  _persist();
                 }),
                 onFillProfile: () => _openProfile(profile),
               ),
@@ -233,6 +298,57 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
           await ref.read(metricsProvider).registerFavorite(post.id, added ? 1 : -1);
         },
       );
+}
+
+/// Поле поиска: по одному запуску на ввод, без задержки.
+class _SearchField extends StatelessWidget {
+  const _SearchField({required this.controller, required this.onChanged});
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return TextField(
+      controller: controller,
+      onChanged: onChanged,
+      textInputAction: TextInputAction.search,
+      style: AppText.body,
+      decoration: InputDecoration(
+        isDense: true,
+        hintText: 'Поиск по вакансиям и событиям',
+        hintStyle: AppText.body.copyWith(color: AppColors.secondaryLight),
+        prefixIcon: const Icon(Icons.search_rounded, size: 20),
+        prefixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+        suffixIcon: controller.text.isEmpty
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.close_rounded, size: 18),
+                tooltip: 'Очистить',
+                onPressed: () {
+                  controller.clear();
+                  onChanged('');
+                },
+              ),
+        filled: true,
+        fillColor: scheme.surface,
+        contentPadding: const EdgeInsets.symmetric(vertical: 12),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.field),
+          borderSide: BorderSide(color: AppColors.separator(context)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.field),
+          borderSide: BorderSide(color: AppColors.separator(context)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.field),
+          borderSide: BorderSide(color: scheme.primary, width: 1.5),
+        ),
+      ),
+    );
+  }
 }
 
 class _SourceSwitcher extends StatelessWidget {

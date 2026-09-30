@@ -77,13 +77,8 @@ class PostCard extends StatelessWidget {
                           ),
                         ],
                         if (post.tags.isNotEmpty) ...[
-                          const SizedBox(height: 6),
-                          Text(
-                            post.tags.take(3).map((t) => '#$t').join('  '),
-                            style: AppText.caption.copyWith(color: AppColors.secondaryLight),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                          const SizedBox(height: 8),
+                          _TagsRow(tags: post.tags),
                         ],
                       ],
                     ),
@@ -128,6 +123,68 @@ class PostCard extends StatelessWidget {
     if (uri == null) return;
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
+}
+
+/// Заглушка на время первой загрузки.
+///
+/// Без неё экран показывал «Пока ничего нет», пока посты ещё ехали из сети —
+/// выглядело как пустой каталог, а потом контент появлялся скачком.
+class PostCardSkeleton extends StatelessWidget {
+  const PostCardSkeleton({super.key, this.withAction = false});
+
+  /// Место под кнопку «Регистрация» — у карточек со ссылкой.
+  final bool withAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = AppColors.placeholder(Theme.of(context).brightness);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: AppColors.separator(context)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _block(color, 84, 84, AppRadius.thumb),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _block(color, 70, 10, AppRadius.pill),
+                    const SizedBox(height: 10),
+                    _block(color, double.infinity, 16, 6),
+                    const SizedBox(height: 8),
+                    _block(color, 140, 12, 6),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (withAction) ...[
+            const SizedBox(height: 12),
+            _block(color, double.infinity, 40, AppRadius.pill),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _block(Color color, double width, double height, double radius) =>
+      Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(radius),
+        ),
+      );
 }
 
 class _Thumb extends StatelessWidget {
@@ -180,8 +237,49 @@ class _TypeBadge extends StatelessWidget {
   }
 }
 
-class _OrgLine extends StatelessWidget {
-  const _OrgLine({required this.post});
+/// Теги: один чип и счётчик остальных.
+///
+/// Раньше это была строка текста `#карьера  #it  #дизайн` — при длинных
+/// тегах она занимала две строки и выглядела шумом. Один чип читается
+/// быстрее, а «+N» сразу показывает, что список не закончился.
+class _TagsRow extends StatelessWidget {
+  const _TagsRow({required this.tags});
+  final List<String> tags;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final extra = tags.length - 1;
+    return Row(
+      children: [
+        Flexible(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: scheme.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(AppRadius.pill),
+            ),
+            child: Text(
+              '#${tags.first}',
+              style: AppText.caption.copyWith(color: scheme.primary),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
+        if (extra > 0) ...[
+          const SizedBox(width: 6),
+          Text(
+            '+$extra',
+            style: AppText.caption.copyWith(color: AppColors.secondaryLight),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _OrgLine extends StatelessWidget {  const _OrgLine({required this.post});
   final Post post;
 
   @override

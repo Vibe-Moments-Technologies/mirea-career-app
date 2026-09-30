@@ -68,6 +68,34 @@ class FeedFilters {
   static const _unset = Object();
 
   FeedFilters cleared() => FeedFilters(source: source);
+
+  /// Сохранение между запусками: фильтры — настройка интерфейса, а не
+  /// серверные данные, и сбрасывать их при каждом старте раздражает.
+  Map<String, dynamic> toJson() => {
+        'query': query,
+        'types': types.toList(),
+        'campus': campus,
+        'institute': institute,
+        'format': format,
+        'organizationId': organizationId,
+        'tags': tags.toList(),
+        'source': source,
+        'onlyUpcoming': onlyUpcoming,
+        'sortByPopularity': sortByPopularity,
+      };
+
+  factory FeedFilters.fromJson(Map<String, dynamic> j) => FeedFilters(
+        query: j['query'] as String? ?? '',
+        types: {...?(j['types'] as List?)?.cast<String>()},
+        campus: j['campus'] as String?,
+        institute: j['institute'] as String?,
+        format: j['format'] as String?,
+        organizationId: j['organizationId'] as String?,
+        tags: {...?(j['tags'] as List?)?.cast<String>()},
+        source: j['source'] as String?,
+        onlyUpcoming: j['onlyUpcoming'] as bool? ?? false,
+        sortByPopularity: j['sortByPopularity'] as bool? ?? false,
+      );
 }
 
 /// Применяет фильтры к ленте. Чистая функция — тестируется без сети.

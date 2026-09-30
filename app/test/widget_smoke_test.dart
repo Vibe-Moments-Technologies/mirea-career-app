@@ -11,6 +11,7 @@ import 'package:mirea_career/data/posts_repo.dart';
 import 'package:mirea_career/screens/more/profile_screen.dart';
 import 'package:mirea_career/screens/onboarding/onboarding_screen.dart';
 import 'package:mirea_career/screens/root_shell.dart';
+import 'package:mirea_career/state/feed_filters.dart';
 import 'package:mirea_career/state/providers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -732,6 +733,60 @@ void main() {
       expect(c.read(profileProvider).institute, 'iit');
       expect(find.text('ИИТ'), findsOneWidget);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
+  });
+
+  group('Каталог', () {
+    testWidgets('поиск фильтрует ленту и переживает перезапуск', (tester) async {
+      final base = DateTime(2026, 1, 1);
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [
+          samplePost(
+            id: 'a',
+            title: 'Хакатон МИРЭА',
+            tags: const ['хакатон'],
+            publishedAt: base,
+          ),
+          samplePost(id: 'b', title: 'Обычная вакансия', publishedAt: base),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.grid_view_rounded));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Обычная вакансия'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), 'хакатон');
+      await tester.pumpAndSettle();
+
+      expect(find.text('Хакатон МИРЭА'), findsOneWidget);
+      expect(find.text('Обычная вакансия'), findsNothing);
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
+
+    testWidgets('состояние каталога сохраняется на устройстве', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await LocalStore.open();
+      addTearDown(store.reset);
+
+      await store.saveCatalogState({
+        'source': 'partner',
+        'sortByPopularity': true,
+        'filters': const FeedFilters(query: 'стажировка', types: {'internship'}).toJson(),
+      });
+
+      final reloaded = await LocalStore.open();
+      final saved = reloaded.catalogState!;
+      expect(saved['source'], 'partner');
+      expect(saved['sortByPopularity'], isTrue);
+      final f = FeedFilters.fromJson((saved['filters'] as Map).cast<String, dynamic>());
+      expect(f.query, 'стажировка');
+      expect(f.types, {'internship'});
     });
   });
 

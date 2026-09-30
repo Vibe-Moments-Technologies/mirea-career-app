@@ -172,6 +172,77 @@ void main() {
     });
   });
 
+  group('Сохранение фильтров', () {
+    test('фильтры переживают круговой обход через JSON', () {
+      const f = FeedFilters(
+        query: 'хакатон',
+        types: {'event'},
+        campus: 'stromynka',
+        institute: 'iit',
+        format: 'online',
+        organizationId: 'org1',
+        tags: {'it', 'design'},
+        source: 'partner',
+        onlyUpcoming: true,
+        sortByPopularity: true,
+      );
+      final back = FeedFilters.fromJson(f.toJson());
+      expect(back.query, 'хакатон');
+      expect(back.types, {'event'});
+      expect(back.tags, {'it', 'design'});
+      expect(back.campus, 'stromynka');
+      expect(back.institute, 'iit');
+      expect(back.format, 'online');
+      expect(back.organizationId, 'org1');
+      expect(back.source, 'partner');
+      expect(back.onlyUpcoming, isTrue);
+      expect(back.sortByPopularity, isTrue);
+    });
+
+    test('пустой JSON даёт пустые фильтры, а не исключение', () {
+      final f = FeedFilters.fromJson(const {});
+      expect(f.query, isEmpty);
+      expect(f.types, isEmpty);
+      expect(f.tags, isEmpty);
+      expect(f.sortByPopularity, isFalse);
+    });
+  });
+
+  group('Поиск', () {
+    test('находит по тегу и по организатору', () {
+      final posts = [
+        post(id: 'a', tags: ['хакатон'], orgName: 'Яндекс'),
+        post(id: 'b', orgName: 'Сбер'),
+      ];
+      expect(
+        applyFilters(posts, const FeedFilters(query: 'хакатон')).map((p) => p.id),
+        ['a'],
+      );
+      expect(
+        applyFilters(posts, const FeedFilters(query: 'сбер')).map((p) => p.id),
+        ['b'],
+      );
+    });
+
+    test('поиск нечувствителен к регистру и лишним пробелам', () {
+      final posts = [post(id: 'a', tags: ['Хакатон'])];
+      expect(
+        applyFilters(posts, const FeedFilters(query: '  хакатон ')).map((p) => p.id),
+        ['a'],
+      );
+    });
+
+    test('пустой запрос не отсекает ничего', () {
+      final posts = [post(id: 'a'), post(id: 'b')];
+      expect(applyFilters(posts, const FeedFilters()).length, 2);
+    });
+
+    test('пустой запрос не отсекает ничего даже при пробелах', () {
+      final posts = [post(id: 'a')];
+      expect(applyFilters(posts, const FeedFilters(query: '   ')).length, 1);
+    });
+  });
+
   group('Лента главной (homeFeed)', () {
     const profile = StudentProfile(
       institute: 'iit',
