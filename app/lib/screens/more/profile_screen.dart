@@ -151,7 +151,17 @@ class _ChoiceSheet extends StatelessWidget {
   final List<(String, String)> choices;
 
   @override
-  Widget build(BuildContext context) => SafeArea(
+  Widget build(BuildContext context) {
+    // RadioGroup владеет значением и обработкой нажатий: сами RadioListTile
+    // в Flutter 3.47 groupValue/onChanged больше не принимают (deprecated).
+    // Пустая строка = «не указывать», поэтому незаполненное поле и подсвечено
+    // правильно, и снимается одним нажатием.
+    return RadioGroup<String>(
+      groupValue: selected ?? '',
+      onChanged: (value) {
+        if (value != null) Navigator.of(context).pop(value);
+      },
+      child: SafeArea(
         top: false,
         child: ListView(
           shrinkWrap: true,
@@ -161,23 +171,13 @@ class _ChoiceSheet extends StatelessWidget {
               child: Text(title, style: AppText.title),
             ),
             for (final c in choices)
-              RadioListTile<String>(
-                value: c.$1,
-                groupValue: selected,
-                title: Text(c.$2),
-                onChanged: (v) => Navigator.of(context).pop(v),
-              ),
-            RadioListTile<String>(
-              value: '',
-              // пустое значение не должно подсвечиваться как выбранное,
-              // если поле уже снято
-              groupValue: selected == null ? null : selected,
-              title: const Text('Не указывать'),
-              onChanged: (_) => Navigator.of(context).pop(''),
-            ),
+              RadioListTile<String>(value: c.$1, title: Text(c.$2)),
+            const RadioListTile<String>(value: '', title: Text('Не указывать')),
           ],
         ),
-      );
+      ),
+    );
+  }
 }
 
 class _InterestsSheet extends StatefulWidget {
