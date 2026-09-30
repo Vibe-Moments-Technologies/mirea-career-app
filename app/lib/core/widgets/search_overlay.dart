@@ -1,0 +1,126 @@
+import 'package:flutter/material.dart';
+
+import '../theme/app_theme.dart';
+
+/// Поиск поверх экрана: затемняет фон и «выплывает» сверху из значка.
+///
+/// Живёт в дереве всегда и просто прячется через `IgnorePointer` + анимацию:
+/// так поле уезжает и обратно, а не исчезает по щелчку. Имя экрана под ним
+/// остаётся видимым — ориентироваться нужно где вы находитесь, а не в каком
+/// поле печатаете.
+class SearchOverlay extends StatelessWidget {
+  const SearchOverlay({
+    super.key,
+    required this.open,
+    required this.controller,
+    required this.onChanged,
+    required this.onClose,
+  });
+
+  final bool open;
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: IgnorePointer(
+        ignoring: !open,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 180),
+          opacity: open ? 1 : 0,
+          child: GestureDetector(
+            // тап мимо поля — закрыть
+            onTap: onClose,
+            behavior: HitTestBehavior.opaque,
+            child: Column(
+              children: [
+                SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      AppInsets.horizontal(MediaQuery.sizeOf(context).width),
+                      AppInsets.top(context),
+                      AppInsets.horizontal(MediaQuery.sizeOf(context).width),
+                      0,
+                    ),
+                    child: AnimatedSlide(
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOutCubic,
+                      offset: open ? Offset.zero : const Offset(0, -1),
+                      child: _Field(
+                        controller: controller,
+                        onChanged: onChanged,
+                        onClose: onClose,
+                      ),
+                    ),
+                  ),
+                ),
+                const Spacer(),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Field extends StatelessWidget {
+  const _Field({
+    required this.controller,
+    required this.onChanged,
+    required this.onClose,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.surface,
+      borderRadius: BorderRadius.circular(AppRadius.field),
+      clipBehavior: Clip.antiAlias,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(AppRadius.field),
+          border: Border.all(color: AppColors.separator(context)),
+          boxShadow: AppShadows.card(Theme.of(context).brightness),
+        ),
+        padding: const EdgeInsets.fromLTRB(12, 6, 4, 6),
+        child: Row(
+          children: [
+            const Icon(Icons.search_rounded, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                controller: controller,
+                autofocus: true,
+                onChanged: onChanged,
+                textInputAction: TextInputAction.search,
+                style: AppText.body,
+                decoration: InputDecoration(
+                  isDense: true,
+                  border: InputBorder.none,
+                  hintText: 'Поиск по заголовку, тегам, организациям',
+                  hintStyle:
+                      AppText.body.copyWith(color: AppColors.secondaryLight),
+                ),
+              ),
+            ),
+            IconButton(
+              onPressed: onClose,
+              icon: const Icon(Icons.close_rounded, size: 20),
+              tooltip: 'Закрыть поиск',
+              visualDensity: VisualDensity.compact,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

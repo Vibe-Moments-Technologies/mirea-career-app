@@ -4,16 +4,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_route.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/post_card.dart';
+import '../../core/widgets/screen_header.dart';
+import '../../core/widgets/search_overlay.dart';
 import '../../data/models.dart';
 import '../../state/feed_filters.dart';
 import '../../state/providers.dart';
 import '../post/post_detail_screen.dart';
 
-/// Главная: чипсы фильтров → единая лента.
+/// Главная: шапка → быстрые фильтры → лента, подсобранная под профиль.
 ///
-/// Приоритетные карточки (is_featured) — всегда вверху, с акцентной обводкой.
-/// Отдельной витрины-карусели больше нет: она дублировала эти же посты и
-/// съедала экран, а выделение в самой карточке читается лучше.
+/// Приоритетные карточки (is_featured) всегда вверху, с акцентной обводкой.
+/// Отдельной витрины-карусели нет: она дублировала эти же посты.
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -28,6 +29,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   static const _pageSize = 10;
   int _visible = _pageSize;
 
+  bool _searchOpen = false;
+  String _query = '';
+  final _search = TextEditingController();
+
   static const _quickChips = <({String id, String label})>[
     (id: 'all', label: 'Все'),
     (id: 'upcoming', label: 'Ближайшие'),
@@ -36,16 +41,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   ];
 
   FeedFilters _applyQuick(FeedFilters f) {
-    switch (_quick) {
-      case 'upcoming':
-        return f.copyWith(onlyUpcoming: true);
-      case 'internship':
-        return f.copyWith(types: {'internship'});
-      case 'event':
-        return f.copyWith(types: {'event'});
-      default:
-        return f;
-    }
+    final withQuery = f.copyWith(query: _query);
+    return switch (_quick) {
+      'upcoming' => withQuery.copyWith(onlyUpcoming: true),
+      'internship' => withQuery.copyWith(types: {'internship'}),
+      'event' => withQuery.copyWith(types: {'event'}),
+      _ => withQuery,
+    };
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
   }
 
   @override
@@ -59,112 +67,125 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // homeFeed уже ставит приоритетные выше остальных (docs/ARCHITECTURE.md §3)
     final all = homeFeed(filtered, profile);
     final shown = all.take(_visible).toList();
+    final loading = feed.loading && feed.posts.isEmpty;
 
     return Scaffold(
-      body: RefreshIndicator(
-        onRefresh: () => ref.read(feedProvider.notifier).refresh(),
-        child: CustomScrollView(
-          slivers: [
-            if (feed.offline)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.only(top: AppInsets.top(context)),
-                  child: const _OfflineBanner(),
+      // Поиск лежит поверх ленты, поэтому экран — Stack: поле затемняет
+      // контент целиком, а не торчит из-под дока.
+      body: Stack(
+        children: [
+          CustomScrollView(
+            slivers: [
+              if (feed.offline)
+                const SliverToBoxAdapter(child: _OfflineBanner())
+              else
+                SliverToBoxAdapter(
+                  child: SizedBox(height: AppInsets.top(context)),
                 ),
-              )
-            else
-              SliverToBoxAdapter(child: SizedBox(height: AppInsets.top(context))),
-            // Когда лента обновилась: снимает вопрос «устаревшая ли лента».
-            // Показываем только реальные данные — при кэше без сети отметка
-            // была бы враньём.
-            if (feed.updatedAt != null && !feed.loading && !feed.offline)
               SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(pad, 0, pad, 2),
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: Text(
-                      'Обновлено в ${_hhmm(feed.updatedAt!)}',
-                      style: AppText.caption
-                          .copyWith(color: AppColors.secondaryLight),
+                child: ScreenHeader(
+                  title: 'Карьера МИРЭА',
+                  actions: [
+                    HeaderAction(
+                      icon: Icons.refresh_rounded,
+                      tooltip: 'Обновить',
+                      onTap: () => ref.read(feedProvider.notifier).refresh(),
                     ),
-                  ),
-                ),
-              ),
-            SliverToBoxAdapter(
-              child: SizedBox(
-                height: 52,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  padding: EdgeInsets.fromLTRB(pad, 8, pad, 0),
-                  children: [
-                    for (final c in _quickChips)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: _QuickChip(
-                          label: c.label,
-                          selected: _quick == c.id,
-                          onTap: () => setState(() {
-                            _quick = c.id;
-                            _visible = _pageSize; // смена фильтра — с начала
-                          }),
-                        ),
-                      ),
+                    HeaderAction(
+                      icon: Icons.search_rounded,
+                      tooltip: 'Поиск',
+                      onTap: () => setState(() => _searchOpen = true),
+                    ),
                   ],
                 ),
               ),
-            ),
-            SliverPadding(
-              padding: EdgeInsets.fromLTRB(pad, 10, pad, 0),
-              // Первая загрузка: показываем форму карточек, а не
-              // «Пока ничего нет» — контент уже едет, просто не дошёл.
-              sliver: feed.loading && feed.posts.isEmpty
-                  ? SliverList.separated(
-                      itemCount: 4,
-                      separatorBuilder: (_, _) => const SizedBox(height: 10),
-                      itemBuilder: (_, i) =>
-                          PostCardSkeleton(),
-                    )
-                  : SliverList.separated(
-                      itemCount: shown.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 10),
-                      itemBuilder: (_, i) => PostCard(
-                        post: shown[i],
-                        isFavorite: favorites.contains(shown[i].id),
-                        onTap: () => _open(shown[i]),
-                        onToggleFavorite: () => _toggleFavorite(shown[i].id),
-                      ),
-                    ),
-            ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(
-                  pad,
-                  16,
-                  pad,
-                  AppInsets.scrollBottom(context),
+              SliverToBoxAdapter(
+                child: SizedBox(
+                  height: 48,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    padding: EdgeInsets.fromLTRB(pad, 4, pad, 0),
+                    children: [
+                      for (final c in _quickChips)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: _QuickChip(
+                            label: c.label,
+                            selected: _quick == c.id,
+                            onTap: () => setState(() {
+                              _quick = c.id;
+                              _visible = _pageSize; // смена фильтра — с начала
+                            }),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
-                // Пока грузится, хвост скрыт: он мигал поверх скелетонов.
-                child: feed.loading && feed.posts.isEmpty
-                    ? const SizedBox.shrink()
-                    : _ListTail(
-                        hasMore: all.length > shown.length,
-                        isEmpty: all.isEmpty && !feed.loading,
-                        loaded: shown.length,
-                        total: all.length,
-                        onMore: () => setState(() => _visible += _pageSize),
+              ),
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(pad, 8, pad, 0),
+                // Первая загрузка: показываем форму карточек, а не
+                // «Пока ничего нет» — контент уже едет, просто не дошёл.
+                sliver: loading
+                    ? SliverList.separated(
+                        itemCount: 4,
+                        separatorBuilder: (_, _) => const SizedBox(height: 10),
+                        itemBuilder: (_, _) => const PostCardSkeleton(),
+                      )
+                    : SliverList.separated(
+                        itemCount: shown.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 10),
+                        itemBuilder: (_, i) => PostCard(
+                          post: shown[i],
+                          isFavorite: favorites.contains(shown[i].id),
+                          onTap: () => _open(shown[i]),
+                          onToggleFavorite: () => _toggleFavorite(shown[i].id),
+                        ),
                       ),
               ),
-            ),
-          ],
-        ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    pad,
+                    16,
+                    pad,
+                    AppInsets.scrollBottom(context),
+                  ),
+                  // Пока грузится, хвост скрыт: он мигал поверх скелетонов.
+                  child: loading
+                      ? const SizedBox.shrink()
+                      : _ListTail(
+                          hasMore: all.length > shown.length,
+                          isEmpty: all.isEmpty && !feed.loading,
+                          loaded: shown.length,
+                          total: all.length,
+                          onMore: () => setState(() => _visible += _pageSize),
+                        ),
+                ),
+              ),
+            ],
+          ),
+          SearchOverlay(
+            open: _searchOpen,
+            controller: _search,
+            onChanged: (v) => setState(() {
+              _query = v;
+              _visible = _pageSize;
+            }),
+            onClose: () => setState(() {
+              _searchOpen = false;
+              _query = '';
+              _search.clear();
+            }),
+          ),
+        ],
       ),
     );
   }
 
   void _open(Post post) {
     Navigator.of(context).push(
-      appRoute(context, PostDetailScreen(post: post))
+      appRoute(context, PostDetailScreen(post: post)),
     );
   }
 
@@ -175,13 +196,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
-/// Часы и минуты без `intl`: для одной строки подкладка не нужна.
-String _hhmm(DateTime t) =>
-    '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-
 /// Чип быстрого фильтра: капсула с мягкой анимацией выбора.
 class _QuickChip extends StatelessWidget {
-  const _QuickChip({required this.label, required this.selected, required this.onTap});
+  const _QuickChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
   final String label;
   final bool selected;
@@ -197,7 +218,7 @@ class _QuickChip extends StatelessWidget {
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOut,
         alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
           color: selected ? scheme.primary : scheme.surface,
           borderRadius: BorderRadius.circular(AppRadius.pill),
@@ -276,7 +297,7 @@ class _OfflineBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: AppColors.warning.withValues(alpha: 0.12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
       child: Row(
         children: [
           const Icon(Icons.cloud_off_rounded, size: 16, color: AppColors.warning),

@@ -542,13 +542,29 @@ void main() {
   });
 
   group('Док', () {
-    testWidgets('док не залезает на системную полосу внизу', (tester) async {
-      // Реальная правка по iOS: док уходил ЗА home-indicator, и системная
-      // полоса ложилась поверх него. Теперь отступ считается от низа экрана.
-      tester.view.physicalSize = const Size(390, 844);
+    // iOS: home-indicator — тонкая полоска ПОВЕРХ контента, её не надо
+    // резервировать целиком, иначе док «висит» в воздухе.
+    // Android: панель настоящая, её перекрываем полностью.
+    void dockScreen(
+      WidgetTester tester,
+      Size size,
+      Brightness platform, {
+      double inset = 0,
+    }) {
+      tester.view.physicalSize = size;
       tester.view.devicePixelRatio = 1.0;
-      tester.view.viewPadding = const FakeViewPadding(bottom: 34);
+      tester.view.viewPadding = FakeViewPadding(bottom: inset);
       addTearDown(tester.view.reset);
+    }
+
+    testWidgets('на iOS док стоит у нижнего края, а не в воздухе',
+        (tester) async {
+      dockScreen(
+        tester,
+        const Size(390, 844),
+        Brightness.light,
+        inset: 34,
+      );
 
       final c = await container(
         profile: const StudentProfile(completed: true),
@@ -556,22 +572,30 @@ void main() {
       );
       addTearDown(c.dispose);
 
-      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildAppTheme(Brightness.light),
+          home: MediaQuery(
+            data: const MediaQueryData(size: Size(390, 844)),
+            child: Theme(
+              data: ThemeData(platform: TargetPlatform.iOS),
+              child: const RootShell(),
+            ),
+          ),
+        ),
+      );
       await tester.pump();
 
-      final dockBottom = tester.getRect(find.byType(GlassDock)).bottom;
-      // 844 — низ экрана; системная полоса занимает нижние 34 pt
-      expect(
-        dockBottom,
-        lessThanOrEqualTo(844 - 34),
-        reason: 'док ($dockBottom) перекрывает системную полосу (810)',
-      );
+      final bottom = tester.getRect(find.byType(GlassDock)).bottom;
+      // док вплотную к полоске-индикатору, но не на самом краю
+      expect(bottom, lessThanOrEqualTo(844 - 8));
+      expect(bottom, greaterThan(844 - 24));
     });
 
-    testWidgets('на Android док поднимается над панелью навигации', (tester) async {
-      // Кнопочная навигация Android — 48 pt, жестовая — 24 pt. Высота берётся
-      // из системного inset (viewPadding), поэтому док не уезжает под кнопки
-      // ни на одном из вариантов, а не только на «айфоновских» 34 pt.
+    testWidgets('на Android док перекрывает панель навигации', (tester) async {
+      // Кнопочная навигация — 48 pt, жестовая — 24 pt. Высота берётся из
+      // системного inset, поэтому док не уезжает под кнопки ни на одном
+      // из вариантов, а не только на «айфоновских» 34 pt.
       tester.view.physicalSize = const Size(412, 915);
       tester.view.devicePixelRatio = 1.0;
       tester.view.viewPadding = const FakeViewPadding(bottom: 48);
@@ -595,12 +619,6 @@ void main() {
     });
 
     testWidgets('док не растянут на всю ширину экрана', (tester) async {
-      // Реальная правка: ConstrainedBox(maxWidth:) внутри Positioned с
-      // left+right даёт ЖЁСТКУЮ ширину, и док занимал весь экран.
-      //
-      // Меряем BackdropFilter, а не GlassDock: виджет отдаёт Center, который
-      // по родительским ограничениям всегда во весь экран, независимо от
-      // ширины капсулы внутри.
       tester.view.physicalSize = const Size(430, 932);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
@@ -615,14 +633,12 @@ void main() {
       expect(capsule, findsOneWidget);
 
       final rect = tester.getRect(capsule);
-      expect(rect.width, lessThan(430), reason: 'док растянут на весь экран: $rect');
-      // и центрирован, а не прижат к краю
+      // жмётся под значки, а не под экран
+      expect(rect.width, lessThan(230), reason: 'док растянут: $rect');
       expect(rect.center.dx, moreOrLessEquals(430 / 2, epsilon: 1));
     });
 
     testWidgets('пункты дока не переполняются при выборе', (tester) async {
-      // Подпись выбранного пункта («Избранное» — самое длинное) не должна
-      // вылезать за границы дока.
       final c = await container(
         profile: const StudentProfile(completed: true),
         cache: [samplePost()],
@@ -644,6 +660,29 @@ void main() {
             frameworkErrors.where((e) => e.contains('overflowed')).toList();
         expect(overflows, isEmpty, reason: 'переполнение дока на $icon: $overflows');
       }
+    });
+    testWidgets('в доке только значки, без названий страниц', (tester) async {
+      // Подписи раздували док и выталкивали соседние кнопки. Название
+      // остаётся в Semantics для а11ы, но на экране его нет.
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [samplePost()],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+
+      expect(find.text('Главная'), findsNothing);
+      expect(find.text('Ещё'), findsNothing);
+
+      final sem = tester.widget<Semantics>(
+        find.descendant(
+          of: find.byType(GlassDock),
+          matching: find.byType(Semantics),
+        ).first,
+      );
+      expect(sem.properties.label, isNotEmpty);
     });
   });
 

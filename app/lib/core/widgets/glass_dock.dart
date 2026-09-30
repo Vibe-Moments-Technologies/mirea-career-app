@@ -40,19 +40,27 @@ class GlassDock extends StatelessWidget {
   /// Высота капсулы.
   static const height = 58.0;
 
-  /// Ширина капсулы: чуть уже экрана, но не «островок» на полпути к краям.
-  static double width(BuildContext context) {
-    final w = MediaQuery.sizeOf(context).width;
-    return w < 380 ? w - 48 : 340;
-  }
+  /// Сторона кнопки. Док по ширине = кнопки + внутренние отступы, то есть
+  /// жмётся под фактическое число значков, а не растягивается.
+  static const button = 46.0;
 
   /// Отступ от нижнего края ЭКРАНА до низа капсулы.
   ///
-  /// Берётся из системного inset, а не хардкодится: iOS home-indicator ~34 pt,
-  /// Android жестовая навигация ~24 pt, кнопочная ~48 pt.
-  /// `viewPadding`, а не `padding`, — клавиатура не должна поднимать док.
-  static double bottomInset(BuildContext context) =>
-      MediaQuery.viewPaddingOf(context).bottom + 8;
+  /// Разный по платформам не по вкусу, а по устройству:
+  ///  * iOS — home-indicator это тонкая полоска ПОВЕРХ контента, а не панель.
+  ///    Резервировать все ~34 pt не нужно: док уходил вверх и «висел» в
+  ///    воздухе. Держим его вплотную к полоске.
+  ///  * Android — панель навигации настоящая: жестовая ~24 pt, кнопочная
+  ///    ~48 pt. Её надо перекрыть целиком, поэтому берём системный inset.
+  ///
+  /// `viewPadding`, а не `padding`: клавиатура не должна поднимать док.
+  static double bottomInset(BuildContext context) {
+    final inset = MediaQuery.viewPaddingOf(context).bottom;
+    return switch (Theme.of(context).platform) {
+      TargetPlatform.iOS => inset > 0 ? 12 : 8,
+      _ => inset + 8,
+    };
+  }
 
   /// Полная высота дока вместе с отступом — отсюда экраны берут нижний
   /// отступ скролла, чтобы последняя карточка не пряталась под доком.
@@ -69,7 +77,7 @@ class GlassDock extends StatelessWidget {
 
     return Center(
       child: Container(
-        width: width(context),
+        // ширины нет: капсула жмётся под содержимое (кнопки + отступы)
         height: height,
         // Тень на внешнем контейнере, размытие — строго по капсуле.
         // Раньше BackdropFilter лежал ВНУТРИ отступов: размытая область была
@@ -97,22 +105,18 @@ class GlassDock extends StatelessWidget {
                 ),
               ),
               child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   for (var i = 0; i < items.length; i++)
-                    Expanded(
-                      // Выбранный пункт получает вдвое больше места: в него
-                      // помещается подпись. Остальные остаются квадратами.
-                      flex: selectedIndex == i ? 3 : 2,
-                      child: _DockButton(
-                        item: items[i],
-                        selected: selectedIndex == i,
-                        color: scheme.primary,
-                        inactive: inactive,
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          onSelected(i);
-                        },
-                      ),
+                    _DockButton(
+                      item: items[i],
+                      selected: selectedIndex == i,
+                      color: scheme.primary,
+                      inactive: inactive,
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        onSelected(i);
+                      },
                     ),
                 ],
               ),
@@ -152,39 +156,13 @@ class _DockButton extends StatelessWidget {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOutCubic,
-            height: 46,
-            padding: EdgeInsets.symmetric(horizontal: selected ? 12 : 0),
+            width: GlassDock.button,
+            height: GlassDock.button,
             decoration: BoxDecoration(
               color: selected ? color.withValues(alpha: 0.14) : Colors.transparent,
               borderRadius: BorderRadius.circular(AppRadius.pill),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(item.icon, size: 23, color: selected ? color : inactive),
-                if (selected) ...[
-                  const SizedBox(width: 8),
-                  // scaleDown как страховка: длинная подпись («Избранное»)
-                  // ужимается вместо переполнения строки.
-                  Flexible(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        item.label,
-                        maxLines: 1,
-                        style: TextStyle(
-                          color: color,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                          letterSpacing: -0.2,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
+            child: Icon(item.icon, size: 23, color: selected ? color : inactive),
           ),
         ),
       ),

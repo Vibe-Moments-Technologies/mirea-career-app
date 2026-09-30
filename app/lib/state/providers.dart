@@ -74,31 +74,16 @@ final themeModeProvider =
 
 /// Лента: сеть + кэш на диске. При офлайне показывается кэш.
 class FeedState {
-  const FeedState({
-    this.posts = const [],
-    this.loading = false,
-    this.offline = false,
-    this.updatedAt,
-  });
+  const FeedState({this.posts = const [], this.loading = false, this.offline = false});
   final List<Post> posts;
   final bool loading;
   final bool offline;
 
-  /// Когда лента последний раз успешно обновилась из сети.
-  /// Показывается в шапке: снимает вопрос «устаревшая ли лента».
-  final DateTime? updatedAt;
-
-  FeedState copyWith({
-    List<Post>? posts,
-    bool? loading,
-    bool? offline,
-    DateTime? updatedAt,
-  }) =>
+  FeedState copyWith({List<Post>? posts, bool? loading, bool? offline}) =>
       FeedState(
         posts: posts ?? this.posts,
         loading: loading ?? this.loading,
         offline: offline ?? this.offline,
-        updatedAt: updatedAt ?? this.updatedAt,
       );
 }
 
@@ -146,7 +131,6 @@ class FeedNotifier extends Notifier<FeedState> {
         posts: _applyDeltas(posts),
         loading: false,
         offline: false,
-        updatedAt: DateTime.now(),
       );
       await ref.read(localStoreProvider).saveFeedCache(posts.map((p) => p.toJson()).toList());
     } catch (_) {

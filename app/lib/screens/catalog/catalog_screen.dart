@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_route.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/post_card.dart';
+import '../../core/widgets/screen_header.dart';
+import '../../core/widgets/search_overlay.dart';
 import '../../data/catalogs.dart';
 import '../../data/local_store.dart';
 import '../../data/models.dart';
@@ -35,6 +37,8 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
   /// Поиск. Поле `query` в фильтрах существовало, но ввода не было —
   /// это была самая заметная дырка в каталоге.
   final _search = TextEditingController();
+  bool _searchOpen = false;
+  bool _filtersOpen = false;
 
   @override
   void initState() {
@@ -64,28 +68,6 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
         'sortByPopularity': _sortPopular,
         'filters': _filters.toJson(),
       });
-
-  void _openSheet() {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => _FilterSheet(
-        initial: _filters,
-        source: _source,
-        // список организаций собираем из уже загруженной ленты
-        organizations: _organizationsOf(ref.read(feedProvider).posts, _source),
-        onApply: (f) => setState(() {
-          _filters = f;
-          // «Сбросить» в панели фильтров должен очищать и строку поиска,
-          // иначе поле осталось бы с текстом, которого уже нет в фильтре.
-          if (_search.text != f.query) _search.text = f.query;
-          _visible = _pageSize;
-          _persist();
-        }),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -118,74 +100,80 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
     final hasMore = posts.length > shown.length;
 
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          // Заголовка страницы нет (по правкам): экран начинается сразу
-          // с переключателя разделов. Отступ — только safe area.
-          SliverToBoxAdapter(
-            child: SizedBox(height: AppInsets.top(context)),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(pad, 4, pad, 10),
-              child: _SourceSwitcher(
-                value: _source,
-                onChanged: (v) => setState(() {
-                  _source = v;
-                  _visible = _pageSize;
-                  _persist();
-                }),
+      // Поиск — поверх ленты (Stack), иначе поле не затемняет каталог.
+      body: Stack(
+        children: [
+          CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(
+                child: SizedBox(height: AppInsets.top(context)),
               ),
-            ),
-          ),
-          // Поиск по заголовку, тегам и организатору. Фильтрация локальная и
-          // мгновенная: список уже в памяти, поэтому debounce не нужен.
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(pad, 0, pad, 10),
-              child: _SearchField(
-                controller: _search,
-                onChanged: (v) => setState(() {
-                  _filters = _filters.copyWith(query: v);
-                  _visible = _pageSize;
-                  _persist();
-                }),
-              ),
-            ),
-          ),
-          // В режиме «Для вас» строка с фильтрами не нужна: фильтры скрыты,
-          // а одинокая цифра справа выглядит странно.
-          if (!forYouMode)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(pad, 12, pad, 4),
-                child: Row(
-                  children: [
-                    _FilterButton(
-                      activeCount: _filters.activeCount,
-                      onTap: _openSheet,
+              SliverToBoxAdapter(
+                child: ScreenHeader(
+                  title: 'Каталог',
+                  actions: [
+                    HeaderAction(
+                      icon: Icons.refresh_rounded,
+                      tooltip: 'Обновить',
+                      onTap: () => ref.read(feedProvider.notifier).refresh(),
                     ),
-                    const SizedBox(width: 8),
-                    ActionChip(
-                      onPressed: () => setState(() {
-                        _sortPopular = !_sortPopular;
-                        _visible = _pageSize;
-                      }),
-                      avatar: Icon(
-                        _sortPopular ? Icons.trending_up_rounded : Icons.schedule_rounded,
-                        size: 18,
-                      ),
-                      label: Text(_sortPopular ? 'По популярности' : 'По дате'),
+                    HeaderAction(
+                      icon: Icons.tune_rounded,
+                      tooltip: 'Фильтры',
+                      active: _filtersOpen && _filters.activeCount > 0,
+                      onTap: () =>
+                          setState(() => _filtersOpen = !_filtersOpen),
                     ),
-                    const Spacer(),
-                    Text(
-                      '${posts.length}',
-                      style: AppText.footnote.copyWith(color: AppColors.secondaryLight),
+                    HeaderAction(
+                      icon: Icons.search_rounded,
+                      tooltip: 'Поиск',
+                      onTap: () => setState(() => _searchOpen = true),
                     ),
                   ],
                 ),
               ),
-            ),
+              // Фильтры раскрываются прямо на странице: шторка снизу прятала
+              // выборку и требовала ещё одного тапа «Показать».
+              SliverToBoxAdapter(
+                child: AnimatedCrossFade(
+                  duration: const Duration(milliseconds: 220),
+                  crossFadeState: _filtersOpen
+                      ? CrossFadeState.showSecond
+                      : CrossFadeState.showFirst,
+                  firstChild: const SizedBox(width: double.infinity),
+                  secondChild: Padding(
+                    padding: EdgeInsets.fromLTRB(pad, 0, pad, 12),
+                    child: _FiltersPanel(
+                      filters: _filters,
+                      source: _source,
+                      organizations: _organizationsOf(
+                        ref.read(feedProvider).posts,
+                        _source,
+                      ),
+                      sortPopular: _sortPopular,
+                      onChanged: (f, sort) => setState(() {
+                        _filters = f;
+                        _sortPopular = sort;
+                        _visible = _pageSize;
+                        _persist();
+                      }),
+                    ),
+                  ),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(pad, 0, pad, 10),
+                  child: _SourceSwitcher(
+                    value: _source,
+                    onChanged: (v) => setState(() {
+                      _source = v;
+                      _visible = _pageSize;
+                      _persist();
+                    }),
+                  ),
+                ),
+              ),
           if (forYouMode && !profile.completed)
             SliverToBoxAdapter(
               child: _PromptFillProfile(
@@ -227,7 +215,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                         crossAxisSpacing: 10,
                         // Карточка выросла: блок контента + кнопка «Регистрация»
                         // внутри. 148 pt обрезали её на планшетах.
-                        mainAxisExtent: 210,
+                        mainAxisExtent: 190,
                       ),
                       itemCount: shown.length,
                       itemBuilder: (_, i) => _card(shown[i], favorites),
@@ -273,6 +261,23 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
               ),
             ),
           ],
+            ],
+          ),
+          SearchOverlay(
+            open: _searchOpen,
+            controller: _search,
+            onChanged: (v) => setState(() {
+              _filters = _filters.copyWith(query: v);
+              _visible = _pageSize;
+              _persist();
+            }),
+            onClose: () => setState(() {
+              _searchOpen = false;
+              _search.clear();
+              _filters = _filters.copyWith(query: '');
+              _persist();
+            }),
+          ),
         ],
       ),
     );
@@ -306,53 +311,235 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
       );
 }
 
-/// Поле поиска: по одному запуску на ввод, без задержки.
-class _SearchField extends StatelessWidget {
-  const _SearchField({required this.controller, required this.onChanged});
+/// Раскрывающаяся панель фильтров прямо на странице каталога.
+///
+/// Каждая группа — своя раскрывающаяся секция: на телефоне шесть групп
+/// чипов в один экран не влезали, а постоянно открытые — наоборот занимали
+/// весь первый экран. Секции с выбранными значениями открыты по умолчанию.
+class _FiltersPanel extends StatelessWidget {
+  const _FiltersPanel({
+    required this.filters,
+    required this.source,
+    required this.organizations,
+    required this.sortPopular,
+    required this.onChanged,
+  });
 
-  final TextEditingController controller;
-  final ValueChanged<String> onChanged;
+  final FeedFilters filters;
+  final String source;
+  final List<Organization> organizations;
+  final bool sortPopular;
+  final void Function(FeedFilters filters, bool sortPopular) onChanged;
+
+  void _apply(FeedFilters f) => onChanged(f, sortPopular);
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return TextField(
-      controller: controller,
-      onChanged: onChanged,
-      textInputAction: TextInputAction.search,
-      style: AppText.body,
-      decoration: InputDecoration(
-        isDense: true,
-        hintText: 'Поиск по вакансиям и событиям',
-        hintStyle: AppText.body.copyWith(color: AppColors.secondaryLight),
-        prefixIcon: const Icon(Icons.search_rounded, size: 20),
-        prefixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-        suffixIcon: controller.text.isEmpty
-            ? null
-            : IconButton(
-                icon: const Icon(Icons.close_rounded, size: 18),
-                tooltip: 'Очистить',
-                onPressed: () {
-                  controller.clear();
-                  onChanged('');
-                },
-              ),
-        filled: true,
-        fillColor: scheme.surface,
-        contentPadding: const EdgeInsets.symmetric(vertical: 12),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadius.field),
-          borderSide: BorderSide(color: AppColors.separator(context)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadius.field),
-          borderSide: BorderSide(color: AppColors.separator(context)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadius.field),
-          borderSide: BorderSide(color: scheme.primary, width: 1.5),
-        ),
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: AppColors.separator(context)),
       ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      child: Column(
+        children: [
+          _Section(
+            title: 'Сортировка',
+            initiallyOpen: true,
+            child: Wrap(
+              spacing: 8,
+              children: [
+                ChoiceChip(
+                  label: const Text('По дате'),
+                  selected: !sortPopular,
+                  onSelected: (_) => onChanged(filters, false),
+                ),
+                ChoiceChip(
+                  label: const Text('По популярности'),
+                  selected: sortPopular,
+                  onSelected: (_) => onChanged(filters, true),
+                ),
+              ],
+            ),
+          ),
+          _Section(
+            title: 'Тип',
+            open: filters.types.isNotEmpty,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final e in Catalogs.postTypes.entries)
+                  FilterChip(
+                    label: Text(e.value),
+                    selected: filters.types.contains(e.key),
+                    onSelected: (on) => setStateChip(filters.copyWith(
+                      types: _toggle(filters.types, e.key, on),
+                    )),
+                  ),
+              ],
+            ),
+          ),
+          _Section(
+            title: 'Формат',
+            open: filters.format != null,
+            child: Wrap(
+              spacing: 8,
+              children: [
+                for (final e in Catalogs.formats.entries)
+                  ChoiceChip(
+                    label: Text(e.value),
+                    selected: filters.format == e.key,
+                    onSelected: (sel) =>
+                        _apply(filters.copyWith(format: sel ? e.key : null)),
+                  ),
+              ],
+            ),
+          ),
+          _Section(
+            title: 'Кампус',
+            open: filters.campus != null,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final c in Catalogs.campuses)
+                  ChoiceChip(
+                    label: Text(c.title),
+                    selected: filters.campus == c.id,
+                    onSelected: (sel) =>
+                        _apply(filters.copyWith(campus: sel ? c.id : null)),
+                  ),
+              ],
+            ),
+          ),
+          _Section(
+            title: 'Институт',
+            open: filters.institute != null,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final i in Catalogs.institutes)
+                  ChoiceChip(
+                    label: Text(i.short),
+                    selected: filters.institute == i.id,
+                    onSelected: (sel) =>
+                        _apply(filters.copyWith(institute: sel ? i.id : null)),
+                  ),
+              ],
+            ),
+          ),
+          if (organizations.isNotEmpty)
+            _Section(
+              title: source == 'partner' ? 'Компания' : 'Подразделение',
+              open: filters.organizationId != null,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final o in organizations)
+                    ChoiceChip(
+                      label: Text(o.name),
+                      selected: filters.organizationId == o.id,
+                      onSelected: (sel) => _apply(
+                        filters.copyWith(organizationId: sel ? o.id : null),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          _Section(
+            title: 'Теги',
+            open: filters.tags.isNotEmpty,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final t in Catalogs.interests)
+                  FilterChip(
+                    label: Text(t.title),
+                    selected: filters.tags.contains(t.id),
+                    onSelected: (on) =>
+                        _apply(filters.copyWith(tags: _toggle(filters.tags, t.id, on))),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Мультивыбор: чипы сами меняют состояние фильтров — setState не нужен,
+  /// перерисовку делает родитель через [onChanged].
+  void setStateChip(FeedFilters f) => _apply(f);
+
+  static Set<String> _toggle(Set<String> current, String id, bool on) =>
+      on ? {...current, id} : ({...current}..remove(id));
+}
+
+/// Раскрывающаяся секция панели фильтров.
+class _Section extends StatefulWidget {
+  const _Section({
+    required this.title,
+    required this.child,
+    this.initiallyOpen = false,
+    this.open,
+  });
+
+  final String title;
+  final Widget child;
+  final bool initiallyOpen;
+
+  /// Открыть по наличию выбранных значений (управляется снаружи).
+  final bool? open;
+
+  @override
+  State<_Section> createState() => _SectionState();
+}
+
+class _SectionState extends State<_Section> {
+  late bool _expanded = widget.initiallyOpen || (widget.open ?? false);
+
+  @override
+  Widget build(BuildContext context) {
+    // внешний флаг важнее: выбрали фильтр — секция обязана раскрыться
+    final expanded = widget.open == true || _expanded;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _expanded = !expanded),
+          borderRadius: BorderRadius.circular(AppRadius.field),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(widget.title, style: AppText.headline),
+                ),
+                AnimatedRotation(
+                  turns: expanded ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 200),
+                  child: const Icon(Icons.expand_more_rounded),
+                ),
+              ],
+            ),
+          ),
+        ),
+        AnimatedCrossFade(
+          duration: const Duration(milliseconds: 200),
+          crossFadeState:
+              expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+          firstChild: const SizedBox(width: double.infinity),
+          secondChild: Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: widget.child,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -408,27 +595,6 @@ class _SourceSwitcher extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _FilterButton extends StatelessWidget {
-  const _FilterButton({required this.activeCount, required this.onTap});
-  final int activeCount;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return ActionChip(
-      onPressed: onTap,
-      avatar: Icon(
-        Icons.tune_rounded,
-        size: 18,
-        color: activeCount > 0 ? scheme.primary : null,
-      ),
-      label: Text(activeCount > 0 ? 'Фильтры · $activeCount' : 'Фильтры'),
-      backgroundColor: activeCount > 0 ? scheme.primary.withValues(alpha: 0.12) : null,
     );
   }
 }
@@ -521,207 +687,13 @@ class _PromptFillProfile extends StatelessWidget {
   }
 }
 
-/// Панель фильтров (docs/UI.md §5).
-class _FilterSheet extends StatefulWidget {
-  const _FilterSheet({
-    required this.initial,
-    required this.source,
-    required this.organizations,
-    required this.onApply,
-  });
-
-  final FeedFilters initial;
-  final String source;
-
-  /// Организации выбранного источника — берутся из уже загруженной ленты,
-  /// отдельного запроса к БД не нужно.
-  final List<Organization> organizations;
-  final ValueChanged<FeedFilters> onApply;
-
-  @override
-  State<_FilterSheet> createState() => _FilterSheetState();
-}
-
-class _FilterSheetState extends State<_FilterSheet> {
-  late FeedFilters _f = widget.initial.copyWith(source: widget.source);
-
-  @override
-  Widget build(BuildContext context) {
-    final organizations = widget.organizations;
-    final scheme = Theme.of(context).colorScheme;
-
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.75,
-      maxChildSize: 0.92,
-      builder: (_, controller) => Column(
-        children: [
-          Expanded(
-            child: ListView(
-              controller: controller,
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-              children: [
-                Text('Фильтры', style: AppText.title),
-                const SizedBox(height: 16),
-                const _Label('Тип'),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final e in Catalogs.postTypes.entries)
-                      FilterChip(
-                        label: Text(e.value),
-                        selected: _f.types.contains(e.key),
-                        onSelected: (_) => setState(() {
-                          final t = {..._f.types};
-                          t.contains(e.key) ? t.remove(e.key) : t.add(e.key);
-                          _f = _f.copyWith(types: t);
-                        }),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                const _Label('Формат'),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    for (final e in Catalogs.formats.entries)
-                      ChoiceChip(
-                        label: Text(e.value),
-                        selected: _f.format == e.key,
-                        onSelected: (sel) => setState(
-                          () => _f = _f.copyWith(format: sel ? e.key : null),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                const _Label('Кампус'),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    for (final c in Catalogs.campuses)
-                      ChoiceChip(
-                        label: Text(c.title),
-                        selected: _f.campus == c.id,
-                        onSelected: (sel) => setState(
-                          () => _f = _f.copyWith(campus: sel ? c.id : null),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                const _Label('Институт'),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final i in Catalogs.institutes)
-                      ChoiceChip(
-                        label: Text(i.short),
-                        selected: _f.institute == i.id,
-                        onSelected: (sel) => setState(
-                          () => _f = _f.copyWith(institute: sel ? i.id : null),
-                        ),
-                      ),
-                  ],
-                ),
-                if (organizations.isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  _Label(widget.source == 'partner' ? 'Компания' : 'Подразделение'),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final o in organizations)
-                        ChoiceChip(
-                          label: Text(o.name),
-                          selected: _f.organizationId == o.id,
-                          onSelected: (sel) => setState(
-                            () => _f = _f.copyWith(organizationId: sel ? o.id : null),
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
-                const SizedBox(height: 16),
-                const _Label('Теги'),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final t in Catalogs.interests)
-                      FilterChip(
-                        label: Text(t.title),
-                        selected: _f.tags.contains(t.id),
-                        onSelected: (_) => setState(() {
-                          final s = {..._f.tags};
-                          s.contains(t.id) ? s.remove(t.id) : s.add(t.id);
-                          _f = _f.copyWith(tags: s);
-                        }),
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-              child: Row(
-                children: [
-                  TextButton(
-                    onPressed: () => setState(() => _f = FeedFilters(source: widget.source)),
-                    child: const Text('Сбросить'),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () {
-                        widget.onApply(_f);
-                        Navigator.of(context).pop();
-                      },
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(50),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(AppRadius.pill),
-                        ),
-                        backgroundColor: scheme.primary,
-                      ),
-                      child: const Text('Показать'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Label extends StatelessWidget {
-  const _Label(this.text);
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Text(
-          text,
-          style: AppText.headline.copyWith(color: AppColors.secondaryLight, fontSize: 14),
-        ),
-      );
-}
 
 /// Организации выбранного источника, собранные из загруженной ленты.
 List<Organization> _organizationsOf(List<Post> posts, String source) {
-  final map = <String, Organization>{};
+  final byId = <String, Organization>{};
   for (final p in posts) {
     if (p.organizationType != source) continue;
-    map.putIfAbsent(
+    byId.putIfAbsent(
       p.organizationId,
       () => Organization(
         id: p.organizationId,
@@ -731,5 +703,5 @@ List<Organization> _organizationsOf(List<Post> posts, String source) {
       ),
     );
   }
-  return map.values.toList()..sort((a, b) => a.name.compareTo(b.name));
+  return byId.values.toList()..sort((a, b) => a.name.compareTo(b.name));
 }
