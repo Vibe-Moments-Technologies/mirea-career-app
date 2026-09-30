@@ -127,8 +127,8 @@ jobs:
       - name: 🔨 Build APK
         working-directory: app
         run: |
-          flutter build apk --release `
-            --split-debug-info=build/symbols/apk `
+          flutter build apk --release \
+            --split-debug-info=build/symbols/apk \
             --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
             --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
             --dart-define=SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
@@ -139,8 +139,8 @@ jobs:
       - name: 🔨 Build AAB (Google Play)
         working-directory: app
         run: |
-          flutter build appbundle --release `
-            --split-debug-info=build/symbols/aab `
+          flutter build appbundle --release \
+            --split-debug-info=build/symbols/aab \
             --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
             --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
             --dart-define=SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
@@ -217,8 +217,8 @@ jobs:
       - name: 🔨 Build iOS (no codesign)
         working-directory: app
         run: |
-          flutter build ios --release --no-codesign `
-            --split-debug-info=build/symbols/ios `
+          flutter build ios --release --no-codesign \
+            --split-debug-info=build/symbols/ios \
             --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
             --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
             --dart-define=SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
