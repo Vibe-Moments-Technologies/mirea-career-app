@@ -447,6 +447,15 @@ void main() {
       // нажатие докладывает следующий блок
       await tester.tap(find.text('Показать ещё (10 из 25)'));
       await tester.pump();
+
+      // после тапа список стал длиннее, и кнопка снова уехала вниз —
+      // прокручиваем к ней, как это сделал бы пользователь
+      await tester.scrollUntilVisible(
+        find.textContaining('Показать ещё'),
+        400,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pump();
       expect(find.text('Показать ещё (20 из 25)'), findsOneWidget);
     });
 
