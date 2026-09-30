@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../data/local_store.dart';
 import '../data/metrics.dart';
@@ -16,9 +15,13 @@ final metricsProvider = Provider<Metrics>((ref) => throw UnimplementedError());
 /// true, если Supabase сконфигурирован (иначе показываем подсказку).
 final supabaseConfiguredProvider = Provider<bool>((ref) => true);
 
-final postsRepoProvider = Provider<PostsRepo>((ref) {
-  return PostsRepo(Supabase.instance.client);
-});
+/// Репозиторий карточек. Берётся из Metrics — тем самым исключается
+/// обращение к Supabase.instance напрямую: она существует только при
+/// успешной инициализации, а лента должна открываться и без неё
+/// (офлайн, тестовая сборка без ключей, недоступная сеть).
+final postsRepoProvider = Provider<PostsRepo>(
+  (ref) => ref.watch(metricsProvider).repo,
+);
 
 // ---------------- Профиль студента ----------------
 
