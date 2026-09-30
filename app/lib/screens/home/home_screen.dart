@@ -6,10 +6,14 @@ import '../../core/widgets/post_card.dart';
 import '../../data/models.dart';
 import '../../state/feed_filters.dart';
 import '../../state/providers.dart';
-import '../onboarding/onboarding_screen.dart';
 import '../post/post_detail_screen.dart';
 
-/// Главная: приоритетная карусель → чипсы → «Для вас» → «Новое» (docs/UI.md §4).
+/// Главная: приоритетная карусель → чипсы → лента «Новое» (docs/UI.md §4).
+///
+/// Секции «Для вас» здесь намеренно нет: главная — это хронологическая лента
+/// всего нового, а персональный подбор живёт в каталоге, где его можно
+/// осмысленно отфильтровать. Дублировать одно и то же на двух экранах
+/// смысла не было.
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -20,15 +24,22 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   String _quick = 'all';
 
+  /// Сколько карточек показываем изначально и сколько докладываем.
+  ///
+  /// Раньше лента отдавалась целиком (`latest(..., limit: 50)`), и страница
+  /// бесконечно листалась в пустоту: высота списка не соответствовала
+  /// реальному числу карточек, а конца у него не было видно.
+  static const _pageSize = 10;
+  int _visible = _pageSize;
+
   static const _quickChips = <({String id, String label})>[
     (id: 'all', label: 'Все'),
     (id: 'upcoming', label: 'Ближайшие'),
     (id: 'internship', label: 'Стажировки'),
     (id: 'event', label: 'События'),
-    (id: 'mycampus', label: 'Мой кампус'),
   ];
 
-  FeedFilters _applyQuick(FeedFilters f, String profileCampus) {
+  FeedFilters _applyQuick(FeedFilters f) {
     switch (_quick) {
       case 'upcoming':
         return f.copyWith(onlyUpcoming: true);
@@ -36,8 +47,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         return f.copyWith(types: {'internship'});
       case 'event':
         return f.copyWith(types: {'event'});
-      case 'mycampus':
-        return f.copyWith(campus: profileCampus);
       default:
         return f;
     }
@@ -46,27 +55,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final feed = ref.watch(feedProvider);
-    final profile = ref.watch(profileProvider);
     final favorites = ref.watch(favoritesProvider);
-    final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
+    final width = MediaQuery.sizeOf(context).width;
+    final pad = AppInsets.horizontal(width);
 
-    final base = const FeedFilters();
-    final filtered = applyFilters(feed.posts, _applyQuick(base, profile.campus ?? ''));
+    final filtered = applyFilters(feed.posts, _applyQuick(const FeedFilters()));
     final featured = filtered.where((p) => p.isFeatured).take(5).toList();
-    final personal = forYou(filtered, profile, limit: 10);
-    final personalIds = personal.map((p) => p.id).toSet();
-    final rest = latest(filtered, exclude: personalIds);
+    // приоритетные уже показаны в карусели — в списке не дублируем
+    final featuredIds = featured.map((p) => p.id).toSet();
+    final all = latest(filtered, exclude: featuredIds);
+
+    // Блочная подгрузка: отдаём не больше _visible карточек за раз.
+    final shown = all.take(_visible).toList();
+    final hasMore = all.length > shown.length;
 
     return Scaffold(
       body: RefreshIndicator(
         onRefresh: () => ref.read(feedProvider.notifier).refresh(),
         child: CustomScrollView(
           slivers: [
-            SliverAppBar(
-              floating: true,
-              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-              titleSpacing: pad,
-              title: Text('Карьера МИРЭА', style: AppText.title),
+            // Крупный заголовок с учётом верхнего safe area. SliverAppBar
+            // прижимал текст к кромке экрана (вырез, статус-бар).
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(pad, AppInsets.top(context), pad, 10),
+              sliver: SliverToBoxAdapter(
+                child: ScreenTitle('Карьера РТУ МИРЭА'),
+              ),
             ),
             if (feed.offline)
               const SliverToBoxAdapter(child: _OfflineBanner()),
@@ -87,7 +101,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             SliverToBoxAdapter(
               child: SizedBox(
-                height: 44,
+                height: 46,
                 child: ListView(
                   scrollDirection: Axis.horizontal,
                   padding: EdgeInsets.symmetric(horizontal: pad),
@@ -98,68 +112,51 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         child: FilterChip(
                           label: Text(c.label),
                           selected: _quick == c.id,
-                          onSelected: (_) => setState(() => _quick = c.id),
+                          onSelected: (_) => setState(() {
+                            _quick = c.id;
+                            _visible = _pageSize; // смена фильтра — с начала
+                          }),
                         ),
                       ),
                   ],
                 ),
               ),
             ),
-            if (personal.isNotEmpty) ...[
-              SliverToBoxAdapter(
-                child: _SectionTitle(
-                  title: 'Для вас',
-                  action: profile.completed ? 'настроить' : null,
-                  padding: pad,
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: SizedBox(
-                  height: 210,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    padding: EdgeInsets.symmetric(horizontal: pad),
-                    itemCount: personal.length,
-                    separatorBuilder: (_, _) => const SizedBox(width: 12),
-                    itemBuilder: (_, i) => SizedBox(
-                      width: 280,
-                      child: _CompactCard(
-                        post: personal[i],
-                        isFavorite: favorites.contains(personal[i].id),
-                        onTap: () => _open(personal[i]),
-                        onFav: () => _toggleFavorite(personal[i].id),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ] else if (!profile.completed)
-              SliverToBoxAdapter(
-                child: _PromptFillProfile(onTap: () => _openProfile()),
-              ),
             SliverToBoxAdapter(
               child: _SectionTitle(title: 'Новое', padding: pad),
             ),
             SliverPadding(
-              padding: EdgeInsets.fromLTRB(
-                pad,
-                0,
-                pad,
-                AppInsets.scrollBottom(context),
-              ),
+              padding: EdgeInsets.fromLTRB(pad, 0, pad, 0),
               sliver: SliverList.separated(
-                itemCount: rest.length,
+                itemCount: shown.length,
                 separatorBuilder: (_, _) => const SizedBox(height: 10),
                 itemBuilder: (_, i) => PostCard(
-                  post: rest[i],
-                  isFavorite: favorites.contains(rest[i].id),
-                  onTap: () => _open(rest[i]),
-                  onToggleFavorite: () => _toggleFavorite(rest[i].id),
+                  post: shown[i],
+                  isFavorite: favorites.contains(shown[i].id),
+                  onTap: () => _open(shown[i]),
+                  onToggleFavorite: () => _toggleFavorite(shown[i].id),
                 ),
               ),
             ),
-            if (rest.isEmpty && !feed.loading)
-              const SliverToBoxAdapter(child: _EmptyState()),
+            // Конец списка: либо кнопка «показать ещё», либо подпись о том,
+            // что лента закончилась. Без этого страница уходила в пустоту.
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  pad,
+                  16,
+                  pad,
+                  AppInsets.scrollBottom(context),
+                ),
+                child: _ListTail(
+                  hasMore: hasMore,
+                  isEmpty: all.isEmpty && !feed.loading,
+                  loaded: shown.length,
+                  total: all.length,
+                  onMore: () => setState(() => _visible += _pageSize),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -177,19 +174,57 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final added = await ref.read(favoritesProvider.notifier).toggle(id);
     await ref.read(metricsProvider).registerFavorite(id, added ? 1 : -1);
   }
+}
 
-  void _openProfile() {
-    final profile = ref.read(profileProvider);
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => OnboardingScreen(
-          initial: profile,
-          onDone: (p) {
-            ref.read(profileProvider.notifier).save(p);
-            Navigator.of(context).pop();
-          },
+/// Хвост ленты: «показать ещё» или «лента закончилась».
+class _ListTail extends StatelessWidget {
+  const _ListTail({
+    required this.hasMore,
+    required this.isEmpty,
+    required this.loaded,
+    required this.total,
+    required this.onMore,
+  });
+
+  final bool hasMore;
+  final bool isEmpty;
+  final int loaded;
+  final int total;
+  final VoidCallback onMore;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isEmpty) {
+      return const _EmptyState();
+    }
+    if (hasMore) {
+      return Column(
+        children: [
+          OutlinedButton(
+            onPressed: onMore,
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppRadius.pill),
+              ),
+            ),
+            child: Text('Показать ещё ($loaded из $total)'),
+          ),
+          const SizedBox(height: 8),
+        ],
+      );
+    }
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.check_circle_outline_rounded,
+            size: 16, color: AppColors.secondaryLight),
+        const SizedBox(width: 6),
+        Text(
+          'Это всё — новых записей больше нет',
+          style: AppText.footnote.copyWith(color: AppColors.secondaryLight),
         ),
-      ),
+      ],
     );
   }
 }
@@ -216,9 +251,14 @@ class _HeroCarouselState extends State<_HeroCarousel> {
 
   @override
   Widget build(BuildContext context) {
-    final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
+    final width = MediaQuery.sizeOf(context).width;
+    final pad = AppInsets.horizontal(width);
+    // Высота карусели соразмерна ширине экрана: на узких телефонах карточка
+    // иначе выглядела приплюснутой, а на широких — вытянутой.
+    final height = (width * 0.52).clamp(180.0, 260.0);
+
     return SizedBox(
-      height: 216,
+      height: height,
       child: PageView.builder(
         controller: _pc,
         itemCount: widget.posts.length,
@@ -258,7 +298,7 @@ class _HeroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = AppColors.forPostType(post.type, Theme.of(context).brightness);
+    final brightness = Theme.of(context).brightness;
     final hasImage = post.imageUrl != null && post.imageUrl!.isNotEmpty;
 
     return GestureDetector(
@@ -266,58 +306,49 @@ class _HeroCard extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(AppRadius.card),
-          boxShadow: AppShadows.card(Theme.of(context).brightness),
+          boxShadow: AppShadows.card(brightness),
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(AppRadius.card),
           child: Stack(
             fit: StackFit.expand,
             children: [
+              // Без картинки — нейтральная поверхность с иконкой типа,
+              // а не цветной градиент: он давал те самые «цветные кусочки».
               if (hasImage)
                 Image.network(
                   post.imageUrl!,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => Container(color: color.withValues(alpha: 0.3)),
+                  errorBuilder: (_, _, _) => _HeroFallback(post: post),
                 )
               else
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [color.withValues(alpha: 0.5), color.withValues(alpha: 0.2)],
-                    ),
-                  ),
-                ),
+                _HeroFallback(post: post),
               const DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [Colors.transparent, Color(0xCC000000)],
-                    stops: [0.4, 1],
+                    stops: [0.35, 1],
                   ),
                 ),
               ),
               Positioned(
                 left: 16,
                 right: 16,
-                bottom: 16,
+                bottom: 14,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.22),
-                        borderRadius: BorderRadius.circular(AppRadius.pill),
+                    Text(
+                      post.organizationName ?? '',
+                      style: AppText.caption.copyWith(
+                        color: Colors.white.withValues(alpha: 0.85),
                       ),
-                      child: Text(
-                        post.organizationName ?? '',
-                        style: AppText.caption.copyWith(color: Colors.white),
-                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                     Text(
                       post.title,
                       style: AppText.title.copyWith(color: Colors.white),
@@ -328,17 +359,14 @@ class _HeroCard extends StatelessWidget {
                 ),
               ),
               Positioned(
-                top: 8,
-                right: 8,
-                child: IconButton(
-                  onPressed: onFav,
-                  icon: Icon(
-                    isFavorite ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
-                    color: Colors.white,
-                  ),
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.black.withValues(alpha: 0.25),
-                  ),
+                top: 10,
+                right: 10,
+                child: _RoundIconButton(
+                  icon: isFavorite
+                      ? Icons.bookmark_rounded
+                      : Icons.bookmark_border_rounded,
+                  onTap: onFav,
+                  tooltip: isFavorite ? 'Убрать из избранного' : 'В избранное',
                 ),
               ),
             ],
@@ -349,109 +377,65 @@ class _HeroCard extends StatelessWidget {
   }
 }
 
-class _CompactCard extends StatelessWidget {
-  const _CompactCard({
-    required this.post,
-    required this.isFavorite,
-    required this.onTap,
-    required this.onFav,
-  });
-
+class _HeroFallback extends StatelessWidget {
+  const _HeroFallback({required this.post});
   final Post post;
-  final bool isFavorite;
-  final VoidCallback onTap;
-  final VoidCallback onFav;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final color = AppColors.forPostType(post.type, Theme.of(context).brightness);
+    final brightness = Theme.of(context).brightness;
+    final color = AppColors.forPostType(post.type, brightness);
+    return Container(
+      color: AppColors.placeholder(brightness),
+      alignment: Alignment.center,
+      child: Icon(_iconForType(post.type), size: 44, color: color.withValues(alpha: 0.6)),
+    );
+  }
+}
 
+/// Круглая кнопка поверх картинки — единый вид для «в избранное».
+class _RoundIconButton extends StatelessWidget {
+  const _RoundIconButton({required this.icon, required this.onTap, this.tooltip});
+  final IconData icon;
+  final VoidCallback onTap;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
     return Material(
-      color: scheme.surface,
-      borderRadius: BorderRadius.circular(AppRadius.card),
+      color: Colors.black.withValues(alpha: 0.3),
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(AppRadius.card),
         child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(AppRadius.pill),
-                    ),
-                    child: Text(
-                      post.organizationName ?? '',
-                      style: AppText.caption.copyWith(color: color),
-                    ),
-                  ),
-                  const Spacer(),
-                  InkWell(
-                    onTap: onFav,
-                    child: Icon(
-                      isFavorite ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
-                      size: 20,
-                      color: isFavorite ? scheme.primary : AppColors.secondaryLight,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Expanded(
-                child: Text(
-                  post.title,
-                  style: AppText.headline,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _subtitle(post),
-                style: AppText.footnote.copyWith(color: AppColors.secondaryLight),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
+          padding: const EdgeInsets.all(8),
+          child: Icon(icon, size: 20, color: Colors.white),
         ),
       ),
     );
   }
-
-  static String _subtitle(Post p) {
-    final parts = <String>[
-      if (p.eventDate != null) 'до ${p.eventDate!.day}.${p.eventDate!.month.toString().padLeft(2, '0')}',
-      if (p.campuses.isNotEmpty) 'кампус',
-    ];
-    return parts.isEmpty ? (p.organizationName ?? '') : parts.join(' · ');
-  }
 }
 
+IconData _iconForType(String type) => switch (type) {
+      'vacancy' => Icons.work_rounded,
+      'internship' => Icons.school_rounded,
+      'event' => Icons.event_rounded,
+      'scholarship' => Icons.card_giftcard_rounded,
+      'project' => Icons.rocket_launch_rounded,
+      _ => Icons.article_rounded,
+    };
+
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({required this.title, this.action, required this.padding});
+  const _SectionTitle({required this.title, required this.padding});
   final String title;
-  final String? action;
   final double padding;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.fromLTRB(padding, 20, padding, 4),
-      child: Row(
-        children: [
-          Text(title, style: AppText.title),
-          const Spacer(),
-          if (action != null)
-            Text(action!, style: AppText.footnote.copyWith(color: Theme.of(context).colorScheme.primary)),
-        ],
-      ),
+      padding: EdgeInsets.fromLTRB(padding, 18, padding, 6),
+      child: Text(title, style: AppText.title),
     );
   }
 }
@@ -463,7 +447,7 @@ class _SearchHint extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
-      height: 40,
+      height: 42,
       margin: const EdgeInsets.only(bottom: 4),
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
@@ -490,7 +474,7 @@ class _OfflineBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: AppColors.warning.withValues(alpha: 0.15),
+      color: AppColors.warning.withValues(alpha: 0.12),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
@@ -503,54 +487,26 @@ class _OfflineBanner extends StatelessWidget {
   }
 }
 
-class _PromptFillProfile extends StatelessWidget {
-  const _PromptFillProfile({required this.onTap});
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
-    return Padding(
-      padding: EdgeInsets.fromLTRB(pad, 16, pad, 0),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: scheme.primary.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(AppRadius.card),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.auto_awesome_rounded, color: scheme.primary),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'Расскажите о себе — подберём подходящее',
-                style: AppText.body,
-              ),
-            ),
-            TextButton(onPressed: onTap, child: const Text('Заполнить')),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.all(40),
+      padding: const EdgeInsets.symmetric(vertical: 48),
       child: Column(
         children: [
-          Icon(Icons.search_off_rounded, size: 48, color: AppColors.secondaryLight.withValues(alpha: 0.6)),
+          Icon(Icons.inbox_rounded, size: 44, color: AppColors.secondaryLight.withValues(alpha: 0.6)),
           const SizedBox(height: 12),
           Text(
             'Пока ничего нет',
             style: AppText.headline.copyWith(color: AppColors.secondaryLight),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Новые записи появятся здесь сразу после публикации',
+            textAlign: TextAlign.center,
+            style: AppText.footnote.copyWith(color: AppColors.secondaryLight),
           ),
         ],
       ),

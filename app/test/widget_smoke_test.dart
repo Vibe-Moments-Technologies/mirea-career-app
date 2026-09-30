@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mirea_career/core/theme/app_theme.dart';
 import 'package:mirea_career/core/widgets/glass_dock.dart';
+import 'package:mirea_career/data/catalogs.dart';
 import 'package:mirea_career/data/crash_reporting.dart';
 import 'package:mirea_career/data/local_store.dart';
 import 'package:mirea_career/data/metrics.dart';
 import 'package:mirea_career/data/posts_repo.dart';
+import 'package:mirea_career/screens/more/more_screen.dart';
 import 'package:mirea_career/screens/onboarding/onboarding_screen.dart';
 import 'package:mirea_career/screens/root_shell.dart';
 import 'package:mirea_career/state/providers.dart';
@@ -162,7 +164,6 @@ void main() {
       await tester.pump();
 
       const questions = [
-        'Где вы учитесь?',
         'Ваш институт',
         'Уровень обучения',
         'Что вам интересно?',
@@ -178,6 +179,47 @@ void main() {
         }
       }
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
+
+    testWidgets('шага про кампус больше нет', (tester) async {
+      final c = await container();
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(
+        wrap(c, OnboardingScreen(initial: const StudentProfile(), onDone: (_) {})),
+      );
+      await tester.pump();
+
+      // адрес обучения убран из анкеты: для подбора он не нужен
+      expect(find.text('Где вы учитесь?'), findsNothing);
+      expect(find.text('Вернадского, 78'), findsNothing);
+    });
+
+    testWidgets('в уровнях есть абитуриент, специалитет, выпускник, преподаватель',
+        (tester) async {
+      final c = await container();
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(
+        wrap(c, OnboardingScreen(initial: const StudentProfile(), onDone: (_) {})),
+      );
+      await tester.pump();
+
+      // шаг уровня — второй
+      await tester.tap(find.text('Далее'));
+      await tester.pumpAndSettle();
+
+      for (final level in [
+        'Абитуриент',
+        'Бакалавриат',
+        'Специалитет',
+        'Магистратура',
+        'Аспирантура',
+        'Выпускник',
+        'Преподаватель',
+      ]) {
+        expect(find.text(level), findsOneWidget, reason: 'нет уровня «$level»');
+      }
     });
 
     testWidgets('«Пропустить» сообщает о пройденном онбординге', (tester) async {
@@ -201,6 +243,67 @@ void main() {
 
       // иначе онбординг будет показываться при каждом запуске
       expect(result?.completed, isTrue);
+    });
+
+    test('при пропуске профиль не считается заполненным', () {
+      // Реальная жалоба: подпись в «Ещё» писала «Заполнен», хотя ответов
+      // не было — проверялся флаг completed, а его выставляет и пропуск.
+      const skipped = StudentProfile(completed: true);
+      expect(skipped.completed, isTrue);
+      expect(skipped.hasAnswers, isFalse,
+          reason: 'completed ≠ заполнен: ответов нет');
+      expect(profileSummary(skipped), contains('Не заполнен'));
+    });
+
+    test('после ответов профиль считается заполненным', () {
+      const filled = StudentProfile(
+        completed: true,
+        institute: 'iit',
+        level: 'bachelor',
+        tags: ['it', 'career'],
+      );
+      expect(filled.hasAnswers, isTrue);
+      expect(profileSummary(filled), contains('ИИТ'));
+      expect(profileSummary(filled), isNot(contains('Не заполнен')));
+    });
+  });
+
+  group('Справочники', () {
+    test('институты — реальные подразделения РТУ МИРЭА', () {
+      final shorts = Catalogs.institutes.map((i) => i.short).toList();
+      for (final expected in [
+        'ИКБ', 'ИИИ', 'ИИТ', 'ИТУ', 'ИПТИП', 'ИТХТ', 'ИРИ', 'КПК', 'ПИШ', 'Фрязино',
+      ]) {
+        expect(shorts, contains(expected), reason: 'нет института «$expected»');
+      }
+      // этих подразделений в МИРЭА нет — они остались от чернового списка
+      expect(shorts, isNot(contains('ИПМ')));
+      expect(shorts, isNot(contains('ИЭП')));
+    });
+
+    test('у каждого института есть полное название', () {
+      for (final i in Catalogs.institutes) {
+        expect(i.title.trim(), isNotEmpty, reason: '${i.short}: пустое название');
+        expect(i.title.length, greaterThan(i.short.length),
+            reason: '${i.short}: название короче аббревиатуры');
+      }
+    });
+
+    test('уровни обучения включают новые категории', () {
+      final ids = Catalogs.levels.map((l) => l.id).toList();
+      for (final expected in [
+        'applicant', 'bachelor', 'specialist', 'master',
+        'postgrad', 'graduate', 'teacher',
+      ]) {
+        expect(ids, contains(expected), reason: 'нет уровня «$expected»');
+      }
+    });
+
+    test('подписи уровней не подставляют чужие значения', () {
+      expect(Catalogs.levelTitle('applicant'), 'Абитуриент');
+      expect(Catalogs.levelTitle('teacher'), 'Преподаватель');
+      // неизвестный id не должен молча стать «Не важно»
+      expect(Catalogs.levelTitle('нет-такого'), contains('не указан'));
     });
   });
 
@@ -293,6 +396,47 @@ void main() {
         CrashReporting.report(StateError('тест'), StackTrace.current),
         completes,
       );
+    });
+  });
+
+  group('Лента', () {
+    testWidgets('главная показывает не больше блока карточек и конец списка',
+        (tester) async {
+      // 15 постов, но на экране должно быть не больше блока (10):
+      // раньше лента отдавалась целиком и страница листалась в пустоту.
+      final cache = [
+        for (var i = 0; i < 15; i++)
+          samplePost(id: 'p$i', title: 'Карточка номер $i'),
+      ];
+
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: cache,
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+
+      // первая карточка видна, одиннадцатая — ещё нет
+      expect(find.text('Карточка номер 0'), findsOneWidget);
+      expect(find.text('Карточка номер 10'), findsNothing);
+    });
+
+    testWidgets('на главной больше нет секции «Для вас»', (tester) async {
+      // Персональный подбор переехал в каталог: на главной дублировать
+      // его не нужно, там хронологическая лента.
+      final c = await container(
+        profile: const StudentProfile(completed: true, tags: ['it']),
+        cache: [samplePost()],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+
+      expect(find.text('Новое'), findsOneWidget);
+      expect(find.text('Для вас'), findsNothing);
     });
   });
 }

@@ -15,8 +15,16 @@ class DockItem {
 /// Плавающий стеклянный док (docs/UI.md §2).
 ///
 /// Парит над контентом у нижнего края: контент под ним размывается,
-/// отступ снизу учитывает home-indicator. Активный пункт раскрывается
-/// в капсулу с подписью.
+/// отступ снизу учитывает home-indicator.
+///
+/// Ширина — по содержимому, а не на весь экран: док выглядит как островок
+/// по центру и не растягивается на планшетах.
+///
+/// ВАЖНО: этот виджет нельзя ставить в `Scaffold.bottomNavigationBar`.
+/// Flutter даёт тому слоту свободные ограничения, а `Align` внутри
+/// растягивается на всю доступную высоту — док раздувался и отъезжал
+/// от нижнего края экрана. Поэтому он живёт в Stack поверх контента
+/// (см. RootShell).
 class GlassDock extends StatelessWidget {
   const GlassDock({
     super.key,
@@ -29,59 +37,71 @@ class GlassDock extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onSelected;
 
+  /// Высота капсулы дока.
+  static const height = 60.0;
+
+  /// Отступ от нижнего края поверх home-indicator.
+  static const gap = 8.0;
+
+  /// Полная высота, которую док занимает у нижнего края экрана:
+  /// нужна экранам, чтобы посчитать нижний отступ скролла.
+  static double totalHeight(BuildContext context) =>
+      MediaQuery.paddingOf(context).bottom + gap + height;
+
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bottomPad = media.padding.bottom;
-    final narrow = media.size.width < 380;
+    // подписи скрываем только на очень узких экранах
+    final showLabel = media.size.width >= 340;
 
-    return Align(
-      alignment: Alignment.bottomCenter,
+    return SafeArea(
+      top: false,
       child: Padding(
-        padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          bottom: bottomPad > 0 ? bottomPad + 6 : 16,
-        ),
-        child: ConstrainedBox(
-          // на планшетах док остаётся компактным островком по центру
-          constraints: BoxConstraints(maxWidth: media.size.width > 600 ? 480 : 420),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(AppRadius.dock),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-              child: Container(
-                height: 64,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? const Color(0xFF1E1E1E).withValues(alpha: 0.72)
-                      : Colors.white.withValues(alpha: 0.78),
-                  borderRadius: BorderRadius.circular(AppRadius.dock),
-                  border: Border.all(
+        padding: EdgeInsets.only(bottom: gap),
+        child: Center(
+          // Center + IntrinsicWidth: док занимает ровно столько, сколько нужно
+          // содержимому, но не шире разумного максимума
+          heightFactor: 1,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: media.size.width - 32,
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadius.dock),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                child: Container(
+                  height: height,
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  decoration: BoxDecoration(
                     color: isDark
-                        ? Colors.white.withValues(alpha: 0.12)
-                        : Colors.white.withValues(alpha: 0.6),
-                    width: 1.2,
+                        ? const Color(0xFF1C1C1E).withValues(alpha: 0.82)
+                        : Colors.white.withValues(alpha: 0.86),
+                    borderRadius: BorderRadius.circular(AppRadius.dock),
+                    border: Border.all(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.10)
+                          : Colors.white.withValues(alpha: 0.7),
+                      width: 1,
+                    ),
+                    boxShadow: AppShadows.dock(Theme.of(context).brightness),
                   ),
-                  boxShadow: AppShadows.dock(Theme.of(context).brightness),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    for (var i = 0; i < items.length; i++)
-                      _DockButton(
-                        item: items[i],
-                        selected: selectedIndex == i,
-                        // на узких экранах подпись активного пункта скрывается
-                        showLabel: !narrow,
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          onSelected(i);
-                        },
-                      ),
-                  ],
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (var i = 0; i < items.length; i++)
+                        _DockButton(
+                          item: items[i],
+                          selected: selectedIndex == i,
+                          showLabel: showLabel,
+                          onTap: () {
+                            HapticFeedback.lightImpact();
+                            onSelected(i);
+                          },
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -90,6 +110,10 @@ class GlassDock extends StatelessWidget {
       ),
     );
   }
+
+  /// Нижний отступ для скролла внутри экрана с доком.
+  static double scrollBottom(BuildContext context) =>
+      totalHeight(context) + 16;
 }
 
 class _DockButton extends StatelessWidget {
@@ -107,7 +131,7 @@ class _DockButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
+    final scheme = Theme.of(context).colorScheme;
     final inactive = Theme.of(context).brightness == Brightness.dark
         ? AppColors.secondaryDark
         : AppColors.secondaryLight;
@@ -120,25 +144,30 @@ class _DockButton extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
+          duration: const Duration(milliseconds: 220),
           curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          padding: EdgeInsets.symmetric(
+            horizontal: selected && showLabel ? 16 : 18,
+            vertical: 9,
+          ),
           decoration: BoxDecoration(
-            color: selected ? accent.withValues(alpha: 0.15) : Colors.transparent,
-            borderRadius: BorderRadius.circular(20),
+            color: selected
+                ? scheme.primary.withValues(alpha: 0.13)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(AppRadius.pill),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(item.icon, size: 22, color: selected ? accent : inactive),
+              Icon(item.icon, size: 23, color: selected ? scheme.primary : inactive),
               if (selected && showLabel) ...[
                 const SizedBox(width: 8),
                 Text(
                   item.label,
                   style: TextStyle(
-                    color: accent,
+                    color: scheme.primary,
                     fontWeight: FontWeight.w600,
-                    fontSize: 13,
+                    fontSize: 14,
                     letterSpacing: -0.2,
                   ),
                 ),

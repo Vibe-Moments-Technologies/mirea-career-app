@@ -199,7 +199,6 @@ class _MetaChips extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final color = AppColors.forPostType(post.type, Theme.of(context).brightness);
     final items = <String>[
       Catalogs.postTypes[post.type] ?? post.type,
       Catalogs.formats[post.format] ?? post.format,
@@ -215,15 +214,17 @@ class _MetaChips extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
+              // Один смысловой акцент (тип) и нейтральная подложка для
+              // остальных: раньше чипы шли разноцветными и рябили.
               color: i == 0
-                  ? color.withValues(alpha: 0.15)
-                  : scheme.primary.withValues(alpha: 0.08),
+                  ? scheme.primary.withValues(alpha: 0.12)
+                  : AppColors.placeholder(Theme.of(context).brightness),
               borderRadius: BorderRadius.circular(AppRadius.pill),
             ),
             child: Text(
               items[i],
               style: AppText.caption.copyWith(
-                color: i == 0 ? color : AppColors.secondaryLight,
+                color: i == 0 ? scheme.primary : AppColors.secondaryLight,
                 fontWeight: FontWeight.w600,
               ),
             ),

@@ -4,9 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/post_card.dart';
 import '../../data/catalogs.dart';
+import '../../data/local_store.dart';
 import '../../data/models.dart';
 import '../../state/feed_filters.dart';
 import '../../state/providers.dart';
+import '../onboarding/onboarding_screen.dart';
 import '../post/post_detail_screen.dart';
 
 /// Каталог: переключатель «Вуз / Партнёры» + панель фильтров (docs/UI.md §5).
@@ -18,9 +20,14 @@ class CatalogScreen extends ConsumerStatefulWidget {
 }
 
 class _CatalogScreenState extends ConsumerState<CatalogScreen> {
-  String _source = 'university_dept'; // 'university_dept' | 'partner'
+  /// 'university_dept' | 'partner' | 'for_you'
+  String _source = 'university_dept';
   FeedFilters _filters = const FeedFilters();
   bool _sortPopular = false;
+
+  /// Блочная подгрузка: не вываливаем весь каталог сразу.
+  static const _pageSize = 10;
+  int _visible = _pageSize;
 
   void _openSheet() {
     showModalBottomSheet<void>(
@@ -32,7 +39,10 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
         source: _source,
         // список организаций собираем из уже загруженной ленты
         organizations: _organizationsOf(ref.read(feedProvider).posts, _source),
-        onApply: (f) => setState(() => _filters = f),
+        onApply: (f) => setState(() {
+          _filters = f;
+          _visible = _pageSize;
+        }),
       ),
     );
   }
@@ -40,29 +50,48 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
   @override
   Widget build(BuildContext context) {
     final feed = ref.watch(feedProvider);
+    final profile = ref.watch(profileProvider);
     final favorites = ref.watch(favoritesProvider);
     final width = MediaQuery.sizeOf(context).width;
     final pad = AppInsets.horizontal(width);
     final twoColumns = width >= 600;
 
-    final effective = _filters.copyWith(source: _source, sortByPopularity: _sortPopular);
-    final posts = applyFilters(feed.posts, effective);
+    final forYouMode = _source == 'for_you';
+
+    final List<Post> posts;
+    if (forYouMode) {
+      // Персональный подбор переехал сюда с главной: здесь его можно
+      // осмысленно отфильтровать, а не просто пролистать.
+      posts = applyFilters(forYou(feed.posts, profile, limit: 200), _filters);
+    } else {
+      final effective =
+          _filters.copyWith(source: _source, sortByPopularity: _sortPopular);
+      posts = applyFilters(feed.posts, effective);
+    }
+
+    final shown = posts.take(_visible).toList();
+    final hasMore = posts.length > shown.length;
 
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          SliverAppBar(
-            floating: true,
-            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-            titleSpacing: pad,
-            title: Text('Каталог', style: AppText.title),
+          // Крупный заголовок с учётом верхнего safe area: SliverAppBar
+          // прижимал его к самой кромке экрана.
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(pad, AppInsets.top(context), pad, 12),
+            sliver: SliverToBoxAdapter(
+              child: ScreenTitle('Каталог'),
+            ),
           ),
           SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.symmetric(horizontal: pad),
               child: _SourceSwitcher(
                 value: _source,
-                onChanged: (v) => setState(() => _source = v),
+                onChanged: (v) => setState(() {
+                  _source = v;
+                  _visible = _pageSize;
+                }),
               ),
             ),
           ),
@@ -71,19 +100,24 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
               padding: EdgeInsets.fromLTRB(pad, 12, pad, 4),
               child: Row(
                 children: [
-                  _FilterButton(
-                    activeCount: _filters.activeCount,
-                    onTap: _openSheet,
-                  ),
-                  const SizedBox(width: 8),
-                  ActionChip(
-                    onPressed: () => setState(() => _sortPopular = !_sortPopular),
-                    avatar: Icon(
-                      _sortPopular ? Icons.trending_up_rounded : Icons.schedule_rounded,
-                      size: 18,
+                  if (!forYouMode) ...[
+                    _FilterButton(
+                      activeCount: _filters.activeCount,
+                      onTap: _openSheet,
                     ),
-                    label: Text(_sortPopular ? 'По популярности' : 'По дате'),
-                  ),
+                    const SizedBox(width: 8),
+                    ActionChip(
+                      onPressed: () => setState(() {
+                        _sortPopular = !_sortPopular;
+                        _visible = _pageSize;
+                      }),
+                      avatar: Icon(
+                        _sortPopular ? Icons.trending_up_rounded : Icons.schedule_rounded,
+                        size: 18,
+                      ),
+                      label: Text(_sortPopular ? 'По популярности' : 'По дате'),
+                    ),
+                  ],
                   const Spacer(),
                   Text(
                     '${posts.length}',
@@ -93,37 +127,94 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
               ),
             ),
           ),
+          if (forYouMode && !profile.completed)
+            SliverToBoxAdapter(
+              child: _PromptFillProfile(
+                onTap: () => _openProfile(profile),
+              ),
+            ),
           if (posts.isEmpty && !feed.loading)
             SliverFillRemaining(
               hasScrollBody: false,
-              child: _EmptyCatalog(onReset: () => setState(() => _filters = const FeedFilters())),
-            )
-          else
-            SliverPadding(
-              padding: EdgeInsets.fromLTRB(
-                pad,
-                8,
-                pad,
-                AppInsets.scrollBottom(context),
+              child: _EmptyCatalog(
+                forYouMode: forYouMode,
+                onReset: () => setState(() {
+                  _filters = const FeedFilters();
+                  _visible = _pageSize;
+                }),
+                onFillProfile: () => _openProfile(profile),
               ),
+            )
+          else ...[
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(pad, 8, pad, 0),
               sliver: twoColumns
                   ? SliverGrid.builder(
                       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                         maxCrossAxisExtent: 380,
                         mainAxisSpacing: 10,
                         crossAxisSpacing: 10,
-                        mainAxisExtent: 132,
+                        mainAxisExtent: 148,
                       ),
-                      itemCount: posts.length,
-                      itemBuilder: (_, i) => _card(posts[i], favorites),
+                      itemCount: shown.length,
+                      itemBuilder: (_, i) => _card(shown[i], favorites),
                     )
                   : SliverList.separated(
-                      itemCount: posts.length,
+                      itemCount: shown.length,
                       separatorBuilder: (_, _) => const SizedBox(height: 10),
-                      itemBuilder: (_, i) => _card(posts[i], favorites),
+                      itemBuilder: (_, i) => _card(shown[i], favorites),
                     ),
             ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  pad,
+                  16,
+                  pad,
+                  AppInsets.scrollBottom(context),
+                ),
+                child: hasMore
+                    ? OutlinedButton(
+                        onPressed: () => setState(() => _visible += _pageSize),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(48),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(AppRadius.pill),
+                          ),
+                        ),
+                        child: Text('Показать ещё (${shown.length} из ${posts.length})'),
+                      )
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.check_circle_outline_rounded,
+                              size: 16, color: AppColors.secondaryLight),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Это всё — новых записей больше нет',
+                            style: AppText.footnote
+                                .copyWith(color: AppColors.secondaryLight),
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+          ],
         ],
+      ),
+    );
+  }
+
+  void _openProfile(StudentProfile profile) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => OnboardingScreen(
+          initial: profile,
+          onDone: (p) {
+            ref.read(profileProvider.notifier).save(p);
+            Navigator.of(context).pop();
+          },
+        ),
       ),
     );
   }
@@ -157,6 +248,9 @@ class _SourceSwitcher extends StatelessWidget {
       ),
       child: Row(
         children: [
+          // «Для вас» первым: это персональный вход по цели студента,
+          // а не ещё одна рубрика каталога.
+          _segment('for_you', 'Для вас', scheme),
           _segment('university_dept', 'От вуза', scheme),
           _segment('partner', 'От партнёров', scheme),
         ],
@@ -169,18 +263,21 @@ class _SourceSwitcher extends StatelessWidget {
     return Expanded(
       child: GestureDetector(
         onTap: () => onChanged(id),
+        behavior: HitTestBehavior.opaque,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
-            color: selected ? scheme.primary.withValues(alpha: 0.15) : Colors.transparent,
+            color: selected ? scheme.primary.withValues(alpha: 0.14) : Colors.transparent,
             borderRadius: BorderRadius.circular(AppRadius.pill),
           ),
           child: Text(
             label,
             textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: AppText.headline.copyWith(
-              fontSize: 15,
+              fontSize: 14,
               color: selected ? scheme.primary : AppColors.secondaryLight,
             ),
           ),
@@ -212,8 +309,15 @@ class _FilterButton extends StatelessWidget {
 }
 
 class _EmptyCatalog extends StatelessWidget {
-  const _EmptyCatalog({required this.onReset});
+  const _EmptyCatalog({
+    required this.onReset,
+    this.forYouMode = false,
+    this.onFillProfile,
+  });
+
   final VoidCallback onReset;
+  final bool forYouMode;
+  final VoidCallback? onFillProfile;
 
   @override
   Widget build(BuildContext context) {
@@ -224,20 +328,68 @@ class _EmptyCatalog extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              Icons.filter_alt_off_rounded,
+              forYouMode ? Icons.auto_awesome_rounded : Icons.filter_alt_off_rounded,
               size: 48,
               color: AppColors.secondaryLight.withValues(alpha: 0.6),
             ),
             const SizedBox(height: 12),
-            Text('Ничего не нашлось', style: AppText.headline),
+            Text(
+              forYouMode ? 'Подбор пока пуст' : 'Ничего не нашлось',
+              style: AppText.headline,
+            ),
             const SizedBox(height: 4),
             Text(
-              'Попробуйте изменить фильтры',
+              forYouMode
+                  ? 'Заполните профиль — подберём подходящее'
+                  : 'Попробуйте изменить фильтры',
+              textAlign: TextAlign.center,
               style: AppText.footnote.copyWith(color: AppColors.secondaryLight),
             ),
             const SizedBox(height: 16),
-            OutlinedButton(onPressed: onReset, child: const Text('Сбросить фильтры')),
+            if (forYouMode && onFillProfile != null)
+              FilledButton(onPressed: onFillProfile, child: const Text('Заполнить профиль'))
+            else
+              OutlinedButton(onPressed: onReset, child: const Text('Сбросить фильтры')),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Приглашение заполнить профиль — то, ради чего существует «Для вас».
+class _PromptFillProfile extends StatelessWidget {
+  const _PromptFillProfile({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(pad, 16, pad, 0),
+      child: Material(
+        color: scheme.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppRadius.card),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Icon(Icons.auto_awesome_rounded, color: scheme.primary),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Расскажите о себе — подберём подходящее',
+                    style: AppText.body,
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, color: scheme.primary),
+              ],
+            ),
+          ),
         ),
       ),
     );

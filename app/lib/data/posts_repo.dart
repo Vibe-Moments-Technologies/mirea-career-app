@@ -18,7 +18,12 @@ class PostsRepo {
   final SupabaseClient _client;
   final bool _realtime;
 
-  static const _select = '*, organizations(name, type, logo_url)';
+  /// Вложенные поля организации нужны вместе с `id`: Organization.tryParse
+  /// требует его, иначе возвращает null — и тогда organizationType пустой,
+  /// из-за чего фильтр «От вуза / От партнёров» отсекает ВСЕ карточки.
+  /// Именно поэтому каталог был пуст, а главная (там фильтра по источнику
+  /// нет) показывала посты.
+  static const _select = '*, organizations(id, name, type, logo_url)';
 
   /// Опубликованные посты: приоритетные выше, затем по дате события.
   Future<List<Post>> fetchPublished() async {

@@ -74,7 +74,7 @@ values
 
  -- неопубликованные (для демонстрации модерации)
  ('22222222-2222-2222-2222-222222222209','11111111-1111-1111-1111-111111111104',null,
-  'День карьеры Яндекса в МИРЭА',
+  'День карьеры Яндекса в РТУ МИРЭА',
   'Экскурсия по технологиям, стенды команд, розыгрыш мерча. Ждём студентов всех курсов.','event','offline',
   'https://yandex.ru/career-day','https://placehold.co/800x450/png?text=Yandex+Day',
   (current_date + 25),'{vernadsky78}','{iit,iii}','{any}','{карьера,it,событие}',false,0,'pending_review', null),
@@ -89,7 +89,80 @@ values
   'Черновик: весенний фестиваль',
   'Заготовка анонса весеннего фестиваля студенческих клубов.','event','offline',
   null,'https://placehold.co/800x450/png?text=Draft',
-  (current_date + 90),'{stromynka}','{}','{any}','{событие}',false,0,'draft', null)
+  (current_date + 90),'{stromynka}','{}','{any}','{событие}',false,0,'draft', null),
+
+ -- ---------- дополнительные опубликованные: чтобы проверить подгрузку ----------
+ ('22222222-2222-2222-2222-22222222220c','11111111-1111-1111-1111-111111111101',null,
+  'День карьеры ИКБ и ИИИ',
+  'Стенды компаний в области кибербезопасности и машинного обучения, разбор вакансий и стажировок.','event','offline',
+  'https://mirea.ru/career-day-ikb','https://placehold.co/800x450/png?text=IKB+Day',
+  (current_date + 9),'{vernadsky78}','{ikb,iii}','{bachelor,specialist,master}','{карьера,безопасность,it}',false,20,'published', now() - interval '9 hour'),
+
+ ('22222222-2222-2222-2222-22222222220d','11111111-1111-1111-1111-111111111104',null,
+  'Стажировка: инженер данных',
+  'Работа с потоковыми данными, Python и SQL. Гибрид, ментор, возможен оффер для выпускников.','internship','hybrid',
+  'https://yandex.ru/jobs/data','https://placehold.co/800x450/png?text=Data+Intern',
+  (current_date + 21),'{}','{iit,iptip}','{bachelor,master,graduate}','{it,данные,стажировка}',false,10,'published', now() - interval '8 hour'),
+
+ ('22222222-2222-2222-2222-22222222220e','11111111-1111-1111-1111-111111111102',null,
+  'Лекторий ИТУ: управление проектами',
+  'Открытая лекция для студентов ИТУ и всех желающих. Разбираем реальные кейсы управления командами.','event','offline',
+  'https://mirea.ru/pm-lecture','https://placehold.co/800x450/png?text=PM+Lecture',
+  (current_date + 5),'{vernadsky86}','{itu}','{bachelor,specialist,master}','{карьера,менеджмент,лекция}',false,0,'published', now() - interval '7 hour'),
+
+ ('22222222-2222-2222-2222-22222222220f','11111111-1111-1111-1111-111111111105',null,
+  'Абитуриентам: день открытых дверей ИПТИП',
+  'Знакомство с направлениями института, лабораториями и правилами приёма. Ответы на вопросы.','event','offline',
+  'https://mirea.ru/open-day','https://placehold.co/800x450/png?text=Open+Day',
+  (current_date + 14),'{vernadsky78}','{iptip}','{applicant}','{абитуриент,поступление,событие}',false,15,'published', now() - interval '6 hour'),
+
+ ('22222222-2222-2222-2222-222222222210','11111111-1111-1111-1111-111111111106',null,
+  'Вакансия: инженер-электроник',
+  'Разработка и отладка радиоэлектронных модулей. Для выпускников ИРИ и ИТХТ.','vacancy','offline',
+  'https://vk.com/jobs/electronics','https://placehold.co/800x450/png?text=Electronics',
+  null,'{}','{iri,itht}','{specialist,master,graduate}','{работа,электроника,инженерия}',false,0,'published', now() - interval '5 hour'),
+
+ ('22222222-2222-2222-2222-222222222211','11111111-1111-1111-1111-111111111103',null,
+  'Научный кружок ИТХТ: химия полимеров',
+  'Набор студентов в научную группу. Работа в лаборатории, публикации, поддержка на конкурсах.','project','offline',
+  'https://mirea.ru/polymer','https://placehold.co/800x450/png?text=Polymer',
+  (current_date + 18),'{vernadsky86}','{itht}','{bachelor,specialist}','{наука,химия,проект}',false,0,'published', now() - interval '4 hour'),
+
+ ('22222222-2222-2222-2222-222222222212','11111111-1111-1111-1111-111111111101',null,
+  'Стажировка в карьерном центре',
+  'Помощь в организации ярмарок вакансий, работа с компаниями-партнёрами. Для всех институтов.','internship','offline',
+  'https://mirea.ru/career-intern','https://placehold.co/800x450/png?text=Career+Intern',
+  (current_date + 10),'{vernadsky78,vernadsky86}','{}','{bachelor,specialist,master}','{стажировка,карьера,организация}',false,0,'published', now() - interval '3 hour'),
+
+ ('22222222-2222-2222-2222-222222222213','11111111-1111-1111-1111-111111111102',null,
+  'Курс для преподавателей: цифровые инструменты',
+  'Повышение квалификации для преподавателей всех институтов. Практика работы с современными платформами.','event','online',
+  'https://mirea.ru/teacher-course','https://placehold.co/800x450/png?text=Teachers',
+  (current_date + 30),'{}','{}','{teacher}','{образование,курс,цифровые}',false,0,'published', now() - interval '2 hour'),
+
+ ('22222222-2222-2222-2222-222222222214','11111111-1111-1111-1111-111111111104',null,
+  'Стипендия для выпускников ИКБ',
+  'Программа поддержки выпускников по направлению кибербезопасности при поступлении в магистратуру.','scholarship','online',
+  'https://mirea.ru/scholarship-ikb','https://placehold.co/800x450/png?text=Scholarship+IKB',
+  (current_date + 50),'{}','{ikb}','{graduate,master}','{стипендия,безопасность,магистратура}',false,0,'published', now() - interval '1 hour'),
+
+ ('22222222-2222-2222-2222-222222222215','11111111-1111-1111-1111-111111111106',null,
+  'Кейс-чемпионат КПК: защита данных',
+  'Командный чемпионат для студентов колледжа. Практические задачи по защите информации, призы от партнёров.','event','hybrid',
+  'https://vk.com/case-cup','https://placehold.co/800x450/png?text=Case+Cup',
+  (current_date + 11),'{stromynka}','{kpk}','{specialist}','{кейс,безопасность,чемпионат}',false,0,'published', now() - interval '30 minute'),
+
+ ('22222222-2222-2222-2222-222222222216','11111111-1111-1111-1111-111111111101',null,
+  'Передовая инженерная школа: набор в проекты',
+  'ПИШ приглашает студентов в инженерные проекты с индустриальными партнёрами. Есть оплата и наставники.','project','offline',
+  'https://mirea.ru/pish','https://placehold.co/800x450/png?text=PISH',
+  (current_date + 25),'{vernadsky78}','{pish,iptip}','{bachelor,specialist,master}','{инженерия,проект,наука}',false,0,'published', now() - interval '20 minute'),
+
+ ('22222222-2222-2222-2222-222222222217','11111111-1111-1111-1111-111111111103',null,
+  'Мероприятия филиала во Фрязино',
+  'Встреча студентов филиала с работодателями наукограда. Экскурсии на предприятия и стажировки.','event','offline',
+  'https://mirea.ru/fryazino','https://placehold.co/800x450/png?text=Fryazino',
+  (current_date + 16),'{fryazino}','{fryazino}','{bachelor,specialist,master}','{карьера,стажировка,событие}',false,0,'published', now() - interval '10 minute')
 on conflict (id) do update set
   title = excluded.title, description = excluded.description, type = excluded.type,
   format = excluded.format, external_link = excluded.external_link, image_url = excluded.image_url,

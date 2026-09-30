@@ -10,6 +10,10 @@ import 'more/more_screen.dart';
 import 'onboarding/onboarding_screen.dart';
 
 /// Корневой экран: контент во весь экран + парящий док поверх (docs/UI.md §2).
+///
+/// Док лежит в Stack, а НЕ в Scaffold.bottomNavigationBar. Причина: Flutter
+/// даёт тому слоту свободные ограничения по высоте, и док раздувался на весь
+/// экран, отъезжая от нижнего края на iPhone.
 class RootShell extends ConsumerStatefulWidget {
   const RootShell({super.key});
 
@@ -24,7 +28,7 @@ class _RootShellState extends ConsumerState<RootShell> {
     DockItem(Icons.home_rounded, 'Главная'),
     DockItem(Icons.grid_view_rounded, 'Каталог'),
     DockItem(Icons.bookmark_rounded, 'Избранное'),
-    DockItem(Icons.person_rounded, 'Другое'),
+    DockItem(Icons.person_rounded, 'Ещё'),
   ];
 
   @override
@@ -41,20 +45,31 @@ class _RootShellState extends ConsumerState<RootShell> {
     }
 
     return Scaffold(
-      extendBody: true, // док парит поверх контента
-      body: IndexedStack(
-        index: _index,
-        children: const [
-          HomeScreen(),
-          CatalogScreen(),
-          FavoritesScreen(),
-          MoreScreen(),
+      // контент занимает весь экран и уходит под док — так он размывается
+      extendBody: true,
+      body: Stack(
+        children: [
+          IndexedStack(
+            index: _index,
+            children: const [
+              HomeScreen(),
+              CatalogScreen(),
+              FavoritesScreen(),
+              MoreScreen(),
+            ],
+          ),
+          // Positioned снизу: док прижат к нижнему краю и растёт вверх
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: GlassDock(
+              items: _items,
+              selectedIndex: _index,
+              onSelected: (i) => setState(() => _index = i),
+            ),
+          ),
         ],
-      ),
-      bottomNavigationBar: GlassDock(
-        items: _items,
-        selectedIndex: _index,
-        onSelected: (i) => setState(() => _index = i),
       ),
     );
   }

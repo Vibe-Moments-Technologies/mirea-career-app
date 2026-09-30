@@ -19,6 +19,14 @@ class StudentProfile {
   final List<String> tags;
   final bool completed;
 
+  /// Есть ли хотя бы один настоящий ответ.
+  ///
+  /// Отдельно от [completed]: тот выставляется и при пропуске опроса,
+  /// чтобы экран не показывался снова. Проверять «заполненность» по нему
+  /// нельзя — интерфейс подписывал пустой профиль как заполненный.
+  bool get hasAnswers =>
+      institute != null || level != null || tags.isNotEmpty;
+
   /// `copyWith` умеет и сбрасывать поле: передайте `null` явно через
   /// `clearCampus: true` (иначе, как обычно в Dart, null = «не менять»).
   StudentProfile copyWith({

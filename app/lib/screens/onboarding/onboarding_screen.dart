@@ -22,7 +22,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final _controller = PageController();
   int _step = 0;
 
-  static const _steps = 4;
+  /// Шага три: институт, уровень, интересы.
+  /// Кампус из опроса убран — адрес не нужен для подбора, а вопрос
+  /// «где вы учитесь» на старте только удлинял анкету.
+  static const _steps = 3;
+
+  /// В режиме редактирования (открыт из настроек) шаги не пролистываем
+  /// заново — экран сразу показывает уже заполненные ответы.
+  bool get _isEditing => widget.initial.completed;
 
   void _next() {
     if (_step < _steps - 1) {
@@ -36,7 +43,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     if (_step == 0) {
       // «Пропустить»: онбординг пройден формально, чтобы экран не возвращался
       // при каждом запуске. Ответы при этом не выдумываем — профиль остаётся
-      // пустым, и «Для вас» покажет приглашение заполнить его.
+      // пустым, и подбор покажет приглашение заполнить его.
       widget.onDone(_p.copyWith(completed: true));
     } else {
       _controller.previousPage(duration: const Duration(milliseconds: 260), curve: Curves.easeOutCubic);
@@ -50,9 +57,27 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       body: SafeArea(
         child: Column(
           children: [
+            // В режиме редактирования (открыт из настроек) показываем
+            // заголовок и кнопку закрытия — иначе экран выглядит как
+            // онбординг и непонятно, как выйти без потери ответов.
+            if (_isEditing)
+              Padding(
+                padding: EdgeInsets.fromLTRB(pad, 8, pad - 8, 0),
+                child: Row(
+                  children: [
+                    Text('Профиль', style: AppText.title),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () => widget.onDone(_p),
+                      icon: const Icon(Icons.close_rounded),
+                      tooltip: 'Закрыть',
+                    ),
+                  ],
+                ),
+              ),
             // точки прогресса
             Padding(
-              padding: EdgeInsets.fromLTRB(pad, 12, pad, 0),
+              padding: EdgeInsets.fromLTRB(pad, _isEditing ? 4 : 12, pad, 0),
               child: Row(
                 children: [
                   for (var i = 0; i < _steps; i++)
@@ -77,17 +102,21 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 controller: _controller,
                 onPageChanged: (i) => setState(() => _step = i),
                 children: [
-                  _StepCampus(
-                    selected: _p.campus,
-                    onPick: (v) => setState(() => _p = _p.copyWith(campus: v)),
-                  ),
                   _StepInstitute(
                     selected: _p.institute,
-                    onPick: (v) => setState(() => _p = _p.copyWith(institute: v)),
+                    onPick: (v) => setState(
+                      () => _p = v == _p.institute
+                          ? _p.copyWith(clearInstitute: true)
+                          : _p.copyWith(institute: v),
+                    ),
                   ),
                   _StepLevel(
                     selected: _p.level,
-                    onPick: (v) => setState(() => _p = _p.copyWith(level: v)),
+                    onPick: (v) => setState(
+                      () => _p = v == _p.level
+                          ? _p.copyWith(clearLevel: true)
+                          : _p.copyWith(level: v),
+                    ),
                   ),
                   _StepInterests(
                     selected: _p.tags,
@@ -106,7 +135,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 children: [
                   TextButton(
                     onPressed: _back,
-                    child: Text(_step == 0 ? 'Пропустить' : 'Назад'),
+                    // при редактировании профиль уже пройден — «Пропустить»
+                    // здесь не имеет смысла, остаётся только «Назад»
+                    child: Text(_step == 0 && !_isEditing ? 'Пропустить' : 'Назад'),
                   ),
                   const Spacer(),
                   FilledButton(
@@ -148,31 +179,6 @@ class _StepScaffold extends StatelessWidget {
           Text(subtitle, style: AppText.body.copyWith(color: AppColors.secondaryLight)),
           const SizedBox(height: 24),
           child,
-        ],
-      ),
-    );
-  }
-}
-
-class _StepCampus extends StatelessWidget {
-  const _StepCampus({required this.selected, required this.onPick});
-  final String? selected;
-  final ValueChanged<String> onPick;
-
-  @override
-  Widget build(BuildContext context) {
-    return _StepScaffold(
-      title: 'Где вы учитесь?',
-      subtitle: 'Подберём мероприятия вашего кампуса',
-      child: Column(
-        children: [
-          for (final c in Catalogs.campuses)
-            _Tile(
-              title: c.title,
-              subtitle: c.address,
-              selected: selected == c.id,
-              onTap: () => onPick(c.id),
-            ),
         ],
       ),
     );

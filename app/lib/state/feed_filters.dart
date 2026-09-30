@@ -149,10 +149,13 @@ List<Post> forYou(List<Post> posts, StudentProfile profile, {int limit = 10}) {
   return relevant.take(limit).toList();
 }
 
-/// Посты «Новое»: хронология, исключая уже показанные в «Для вас».
-List<Post> latest(List<Post> posts, {Set<String> exclude = const {}, int limit = 50}) {
+/// Посты «Новое»: хронология, исключая уже показанные выше.
+///
+/// Без лимита: подгрузка теперь блочная (экран показывает по 10 карточек),
+/// а обрезать здесь список значило бы врать счётчику «показано из N».
+List<Post> latest(List<Post> posts, {Set<String> exclude = const {}}) {
   final rest = posts.where((p) => !exclude.contains(p.id)).toList();
   rest.sort((a, b) =>
       (b.publishedAt ?? DateTime(0)).compareTo(a.publishedAt ?? DateTime(0)));
-  return rest.take(limit).toList();
+  return rest;
 }

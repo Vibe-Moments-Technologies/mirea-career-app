@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/glass_dock.dart';
+
 /// Дизайн-токены из docs/UI.md §1. Единственный источник правды по стилю.
 class AppColors {
   const AppColors._();
@@ -23,22 +25,34 @@ class AppColors {
   static const secondaryDark = Color(0xFF8E8E93);
 
   /// Цвет бейджа по типу поста.
+  ///
+  /// Палитра намеренно сдержанная: пять ярких цветов на каждой карточке
+  /// превращали ленту в пёстрое месиво, а разницу между «вакансией» и
+  /// «стажировкой» всё равно несёт подпись, а не цвет.
+  /// Оставляем один акцент плюс два смысловых тона.
   static Color forPostType(String type, Brightness b) {
+    final accent = b == Brightness.dark ? accentDark : AppColors.accent;
     switch (type) {
       case 'vacancy':
-        return b == Brightness.dark ? accentDark : accent;
       case 'internship':
-        return success;
+        return accent;
       case 'event':
-        return warning;
-      case 'scholarship':
-        return const Color(0xFFBF5AF2);
       case 'project':
-        return const Color(0xFFFF375F);
+        return success;
+      case 'scholarship':
+        return warning;
       default:
         return secondaryLight;
     }
   }
+
+  /// Нейтральная подложка карточки без картинки.
+  ///
+  /// Раньше здесь был цветной градиент по типу поста — те самые
+  /// «непонятные цветные кусочки» в ленте. Теперь это спокойная
+  /// поверхность с иконкой: информации столько же, шума нет.
+  static Color placeholder(Brightness b) =>
+      b == Brightness.dark ? const Color(0xFF2C2C2E) : const Color(0xFFE9E9EE);
 }
 
 /// Радиусы (UI.md §1).
@@ -55,15 +69,25 @@ class AppRadius {
 class AppInsets {
   const AppInsets._();
   static double horizontal(double width) {
-    if (width < 380) return 14;
+    if (width < 360) return 12;
+    if (width < 400) return 16;
     if (width < 600) return 20;
     return 24;
   }
 
-  /// Нижний отступ скролла: док парит поверх контента.
-  /// 64 (док) + 16 (зазор) + safe area.
+  /// Верхний отступ для заголовка экрана.
+  ///
+  /// Складывается из safe area и воздуха. Без этого крупный заголовок
+  /// упирался в верхнюю кромку экрана (вырез/статус-бар) — на iPhone
+  /// это выглядело как обрезанный текст.
+  static double top(BuildContext context, {double extra = 8}) =>
+      MediaQuery.paddingOf(context).top + extra;
+
+  /// Нижний отступ скролла: контент не должен прятаться под доком.
+  /// Док сам сообщает свою высоту — берём её отсюда же, чтобы зазор
+  /// не разъезжался при правке размеров.
   static double scrollBottom(BuildContext context) =>
-      MediaQuery.paddingOf(context).bottom + 96;
+      GlassDock.scrollBottom(context);
 }
 
 /// Тени: мягкие, диффузные, никогда не чёрные (UI.md §1).
@@ -95,6 +119,29 @@ class AppText {
   static const body = TextStyle(fontSize: 16, fontWeight: FontWeight.w400);
   static const footnote = TextStyle(fontSize: 13, fontWeight: FontWeight.w400);
   static const caption = TextStyle(fontSize: 11, fontWeight: FontWeight.w500);
+}
+
+/// Крупный заголовок экрана.
+///
+/// Отдельный виджет, потому что название вуза длинное («Карьера РТУ МИРЭА»)
+/// и на 32 pt не влезает на узкий экран: FittedBox уменьшает кегль ровно
+/// настолько, чтобы строка не обрезалась и не переносилась.
+class ScreenTitle extends StatelessWidget {
+  const ScreenTitle(this.text, {super.key});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Text(text, style: AppText.largeTitle),
+      ),
+    );
+  }
 }
 
 ThemeData buildAppTheme(Brightness brightness) {

@@ -31,12 +31,14 @@ class PostCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(AppRadius.card),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          // Вертикальные отступы больше горизонтальных: карточка дышит
+          // и не выглядит сжатой по высоте относительно превью.
+          padding: const EdgeInsets.fromLTRB(12, 14, 4, 14),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _Thumb(post: post),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -49,12 +51,8 @@ class PostCard extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        _OrgLine(post: post),
-                      ],
-                    ),
+                    const SizedBox(height: 8),
+                    _OrgLine(post: post),
                     if (post.eventDate != null) ...[
                       const SizedBox(height: 4),
                       Text(
@@ -63,24 +61,14 @@ class PostCard extends StatelessWidget {
                       ),
                     ],
                     if (post.tags.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: [
-                          for (final t in post.tags.take(2))
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: scheme.primary.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(AppRadius.pill),
-                              ),
-                              child: Text(
-                                '#$t',
-                                style: AppText.caption.copyWith(color: scheme.primary),
-                              ),
-                            ),
-                        ],
+                      const SizedBox(height: 6),
+                      Text(
+                        // Теги одной строкой текста, а не набором цветных
+                        // плашек: те же данные, но без визуального шума.
+                        post.tags.take(3).map((t) => '#$t').join('  '),
+                        style: AppText.caption.copyWith(color: AppColors.secondaryLight),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ],
@@ -108,30 +96,39 @@ class _Thumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = AppColors.forPostType(post.type, Theme.of(context).brightness);
+    final brightness = Theme.of(context).brightness;
     final hasImage = post.imageUrl != null && post.imageUrl!.isNotEmpty;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(AppRadius.thumb),
       child: SizedBox(
-        width: 96,
-        height: 96,
+        width: 84,
+        height: 84,
         child: hasImage
             ? Image.network(
                 post.imageUrl!,
                 fit: BoxFit.cover,
-                // офлайн/битая ссылка — тип-заглушка вместо пустоты
-                errorBuilder: (_, _, _) => _fallback(color),
+                // офлайн/битая ссылка — нейтральная заглушка вместо пустоты
+                errorBuilder: (_, _, _) => _fallback(brightness),
               )
-            : _fallback(color),
+            : _fallback(brightness),
       ),
     );
   }
 
-  Widget _fallback(Color color) => Container(
-        color: color.withValues(alpha: 0.18),
+  /// Нейтральная подложка с иконкой типа.
+  ///
+  /// Раньше каждая карточка несла цветной блок по типу поста — в ленте это
+  /// выглядело как набор разноцветных заплаток. Тип уже подписан бейджем,
+  /// так что цвет здесь ничего не добавлял.
+  Widget _fallback(Brightness brightness) => Container(
+        color: AppColors.placeholder(brightness),
         alignment: Alignment.center,
-        child: Icon(_iconForType(post.type), color: color, size: 32),
+        child: Icon(
+          _iconForType(post.type),
+          color: AppColors.secondaryLight,
+          size: 30,
+        ),
       );
 }
 
@@ -142,16 +139,15 @@ class _TypeBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = AppColors.forPostType(type, brightness);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(AppRadius.pill),
-      ),
-      child: Text(
-        Catalogs.postTypes[type] ?? type,
-        style: AppText.caption.copyWith(color: color, fontWeight: FontWeight.w600),
+    // Бейдж нейтральный, а не цветной по типу: пять разных цветов на карточках
+    // превращали ленту в пёстрое поле. Цвет оставлен только там, где несёт
+    // смысл — в заглушке картинки его тоже нет.
+    return Text(
+      (Catalogs.postTypes[type] ?? type).toUpperCase(),
+      style: AppText.caption.copyWith(
+        color: AppColors.secondaryLight,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.4,
       ),
     );
   }
@@ -164,31 +160,29 @@ class _OrgLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasLogo = post.organizationLogoUrl != null && post.organizationLogoUrl!.isNotEmpty;
-    return Expanded(
-      child: Row(
-        children: [
-          if (hasLogo)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: Image.network(
-                post.organizationLogoUrl!,
-                width: 18,
-                height: 18,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => const SizedBox(width: 18, height: 18),
-              ),
-            ),
-          if (hasLogo) const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              post.organizationName ?? '',
-              style: AppText.footnote.copyWith(color: AppColors.secondaryLight),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+    return Row(
+      children: [
+        if (hasLogo)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: Image.network(
+              post.organizationLogoUrl!,
+              width: 16,
+              height: 16,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => const SizedBox(width: 16, height: 16),
             ),
           ),
-        ],
-      ),
+        if (hasLogo) const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            post.organizationName ?? '',
+            style: AppText.footnote.copyWith(color: AppColors.secondaryLight),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
 }

@@ -39,18 +39,26 @@ class Catalogs {
   ];
 
   static const institutes = <Institute>[
-    Institute('iit', 'Институт информационных технологий', 'ИИТ'),
+    Institute('ikb', 'Институт кибербезопасности и цифровых технологий', 'ИКБ'),
     Institute('iii', 'Институт искусственного интеллекта', 'ИИИ'),
-    Institute('itht', 'Институт тонких химических технологий', 'ИТХТ'),
-    Institute('irm', 'Институт радиоэлектроники и информатики', 'ИРИ'),
-    Institute('ionm', 'Институт перспективных материалов', 'ИПМ'),
-    Institute('iek', 'Институт экономики и права', 'ИЭП'),
+    Institute('iit', 'Институт информационных технологий', 'ИИТ'),
+    Institute('itu', 'Институт технологий управления', 'ИТУ'),
+    Institute('iptip', 'Институт перспективных технологий и индустриального программирования', 'ИПТИП'),
+    Institute('itht', 'Институт тонких химических технологий имени М. В. Ломоносова', 'ИТХТ'),
+    Institute('iri', 'Институт радиоэлектроники и информатики', 'ИРИ'),
+    Institute('kpk', 'Колледж программирования и кибербезопасности', 'КПК'),
+    Institute('pish', 'Передовые инженерные школы', 'ПИШ'),
+    Institute('fryazino', 'Филиал РТУ МИРЭА в г. Фрязино', 'Фрязино'),
   ];
 
   static const levels = <Level>[
+    Level('applicant', 'Абитуриент'),
     Level('bachelor', 'Бакалавриат'),
+    Level('specialist', 'Специалитет'),
     Level('master', 'Магистратура'),
     Level('postgrad', 'Аспирантура'),
+    Level('graduate', 'Выпускник'),
+    Level('teacher', 'Преподаватель'),
     Level('any', 'Не важно'),
   ];
 
@@ -85,5 +93,8 @@ class Catalogs {
       campuses.where((c) => c.id == id).map((c) => c.title).firstOrNull ?? 'Все кампусы';
 
   static String instituteTitle(String? id) =>
-      institutes.where((i) => i.id == id).map((i) => i.short).firstOrNull ?? 'Все институты';
+      institutes.where((i) => i.id == id).map((i) => i.short).firstOrNull ?? 'Институт не указан';
+
+  static String levelTitle(String? id) =>
+      levels.where((l) => l.id == id).map((l) => l.title).firstOrNull ?? 'Уровень не указан';
 }

@@ -22,12 +22,14 @@ class FavoritesScreen extends ConsumerWidget {
 
     return Scaffold(
       body: CustomScrollView(
+        // Отступ учитывает верхний safe area — заголовок больше не упирается
+        // в вырез экрана.
         slivers: [
-          SliverAppBar(
-            floating: true,
-            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-            titleSpacing: pad,
-            title: Text('Избранное', style: AppText.title),
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(pad, AppInsets.top(context), pad, 8),
+            sliver: SliverToBoxAdapter(
+              child: ScreenTitle('Избранное'),
+            ),
           ),
           if (posts.isEmpty)
             SliverFillRemaining(

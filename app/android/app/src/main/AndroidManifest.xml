@@ -2,7 +2,7 @@
     <!-- лента и счётчики ходят в Supabase -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="Карьера МИРЭА"
+        android:label="Карьера РТУ МИРЭА"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="false">
