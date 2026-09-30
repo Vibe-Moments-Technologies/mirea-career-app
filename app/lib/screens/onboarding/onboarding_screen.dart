@@ -309,7 +309,8 @@ class _Tile extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 10),
       child: Material(
         color: scheme.surface,
-        borderRadius: BorderRadius.circular(AppRadius.card),
+        // Material не принимает shape и borderRadius вместе — скругление
+        // задаёт только shape (assertion валит билд, если передать оба).
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadius.card),
           // Рамка выбора анимируется: при выборе плитка подсвечивается
