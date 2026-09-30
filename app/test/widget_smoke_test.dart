@@ -88,9 +88,17 @@ Map<String, dynamic> samplePost({
       'published_at': (publishedAt ?? DateTime.now()).toIso8601String(),
     };
 
-Widget wrap(ProviderContainer c, Widget child) => UncontrolledProviderScope(
+Widget wrap(
+  ProviderContainer c,
+  Widget child, {
+  TargetPlatform platform = TargetPlatform.android,
+}) =>
+    UncontrolledProviderScope(
       container: c,
-      child: MaterialApp(theme: buildAppTheme(Brightness.light), home: child),
+      child: MaterialApp(
+        theme: buildAppTheme(Brightness.light).copyWith(platform: platform),
+        home: child,
+      ),
     );
 
 void main() {
@@ -542,29 +550,12 @@ void main() {
   });
 
   group('Док', () {
-    // iOS: home-indicator — тонкая полоска ПОВЕРХ контента, её не надо
-    // резервировать целиком, иначе док «висит» в воздухе.
-    // Android: панель настоящая, её перекрываем полностью.
-    void dockScreen(
-      WidgetTester tester,
-      Size size,
-      Brightness platform, {
-      double inset = 0,
-    }) {
-      tester.view.physicalSize = size;
-      tester.view.devicePixelRatio = 1.0;
-      tester.view.viewPadding = FakeViewPadding(bottom: inset);
-      addTearDown(tester.view.reset);
-    }
-
     testWidgets('на iOS док стоит у нижнего края, а не в воздухе',
         (tester) async {
-      dockScreen(
-        tester,
-        const Size(390, 844),
-        Brightness.light,
-        inset: 34,
-      );
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.viewPadding = const FakeViewPadding(bottom: 34);
+      addTearDown(tester.view.reset);
 
       final c = await container(
         profile: const StudentProfile(completed: true),
@@ -573,16 +564,7 @@ void main() {
       addTearDown(c.dispose);
 
       await tester.pumpWidget(
-        MaterialApp(
-          theme: buildAppTheme(Brightness.light),
-          home: MediaQuery(
-            data: const MediaQueryData(size: Size(390, 844)),
-            child: Theme(
-              data: ThemeData(platform: TargetPlatform.iOS),
-              child: const RootShell(),
-            ),
-          ),
-        ),
+        wrap(c, const RootShell(), platform: TargetPlatform.iOS),
       );
       await tester.pump();
 
