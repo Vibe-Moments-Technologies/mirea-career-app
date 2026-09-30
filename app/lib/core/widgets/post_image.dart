@@ -46,6 +46,12 @@ class PostCover extends StatelessWidget {
   Widget build(BuildContext context) {
     final br = borderRadius ?? BorderRadius.circular(radius ?? AppRadius.thumb);
     final url = post.imageUrl;
+    // Размер декодируемого изображения. Исходники в базе — PNG по 4 МБ;
+    // без cacheWidth Flutter грузит их целиком, и в ленте картинка не
+    // успевает появиться (пользователь видел вечную заглушку). Декодируем
+    // ровно под экран — на превью это ~250 px вместо 4000.
+    final target = size ?? MediaQuery.sizeOf(context).width;
+    final dpr = MediaQuery.devicePixelRatioOf(context);
 
     return ClipRRect(
       borderRadius: br,
@@ -57,6 +63,7 @@ class PostCover extends StatelessWidget {
             : Image.network(
                 url,
                 fit: BoxFit.cover,
+                cacheWidth: (target * dpr).round().clamp(64, 2000),
                 // Пока грузится и при ошибке — та же ровная заглушка,
                 // без иконки: она «мигала» поверх недогруженного фото.
                 loadingBuilder: (_, child, progress) =>

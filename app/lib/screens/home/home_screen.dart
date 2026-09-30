@@ -123,7 +123,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       itemCount: 4,
                       separatorBuilder: (_, _) => const SizedBox(height: 10),
                       itemBuilder: (_, i) =>
-                          PostCardSkeleton(withAction: i == 0),
+                          PostCardSkeleton(),
                     )
                   : SliverList.separated(
                       itemCount: shown.length,

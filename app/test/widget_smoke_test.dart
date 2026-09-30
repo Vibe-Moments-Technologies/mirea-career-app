@@ -619,8 +619,8 @@ void main() {
     });
 
     testWidgets('пункты дока не переполняются при выборе', (tester) async {
-      // Подпись выбранного пункта расширяла кнопку и сдвигала соседей.
-      // Теперь в доке только иконки, а название живёт в Semantics.
+      // Подпись выбранного пункта («Избранное» — самое длинное) не должна
+      // вылезать за границы дока.
       final c = await container(
         profile: const StudentProfile(completed: true),
         cache: [samplePost()],
@@ -630,12 +630,18 @@ void main() {
       await tester.pumpWidget(wrap(c, const RootShell()));
       await tester.pump();
 
-      await tester.tap(find.byIcon(Icons.grid_view_rounded));
-      await tester.pumpAndSettle();
-
-      final overflows =
-          frameworkErrors.where((e) => e.contains('overflowed')).toList();
-      expect(overflows, isEmpty, reason: 'переполнение дока: $overflows');
+      for (final icon in [
+        Icons.grid_view_rounded,
+        Icons.bookmark_rounded,
+        Icons.person_rounded,
+        Icons.home_rounded,
+      ]) {
+        await tester.tap(find.byIcon(icon).last);
+        await tester.pumpAndSettle();
+        final overflows =
+            frameworkErrors.where((e) => e.contains('overflowed')).toList();
+        expect(overflows, isEmpty, reason: 'переполнение дока на $icon: $overflows');
+      }
     });
   });
 
@@ -671,7 +677,7 @@ void main() {
   });
 
   group('Кнопка регистрации', () {
-    testWidgets('встроена в карточку, а не висит блоком поверх', (tester) async {
+    testWidgets('в ленте её нет, на деталях — в конце контента', (tester) async {
       final c = await container(
         profile: const StudentProfile(completed: true),
         cache: [
@@ -692,10 +698,11 @@ void main() {
       await tester.pumpWidget(wrap(c, const RootShell()));
       await tester.pump();
 
-      // кнопка видна прямо в карточке ленты
-      expect(find.text('Регистрация'), findsOneWidget);
+      // В ленте кнопка занимала место и ровно там не нужна — карточка должна
+      // оставаться компактной и вести на детали.
+      expect(find.text('Регистрация'), findsNothing);
+      expect(find.text('Стажировка с регистрацией'), findsOneWidget);
 
-      // и на экране деталей — в конце контента, а не в закреплённой панели
       await tester.tap(find.text('Стажировка с регистрацией'));
       await tester.pumpAndSettle();
 
@@ -733,6 +740,28 @@ void main() {
       expect(c.read(profileProvider).institute, 'iit');
       expect(find.text('ИИТ'), findsOneWidget);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
+  });
+
+  group('Избранное', () {
+    testWidgets('в избранном приоритетные не выделяются', (tester) async {
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [samplePost(id: 'a', title: 'Приоритетная', featured: true)],
+      );
+      addTearDown(c.dispose);
+
+      await c.read(favoritesProvider.notifier).toggle('a');
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.bookmark_rounded).last);
+      await tester.pumpAndSettle();
+
+      // карточка видна, но модераторской метки в избранном нет
+      expect(find.text('Приоритетная'), findsOneWidget);
+      expect(find.text('Приоритет'), findsNothing);
     });
   });
 

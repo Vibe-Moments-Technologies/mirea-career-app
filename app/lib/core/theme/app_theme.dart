@@ -190,7 +190,9 @@ ThemeData buildAppTheme(Brightness brightness) {
     brightness: brightness,
     colorScheme: scheme,
     scaffoldBackgroundColor: dark ? AppColors.bgDark : AppColors.bgLight,
-    splashFactory: InkSparkle.splashFactory,
+    // InkRipple, а не InkSparkle: у спаркла своя палитра чернил, и на
+    // тёмной теме тап по карточке вспыхивал белым пятном.
+    splashFactory: InkRipple.splashFactory,
     appBarTheme: AppBarTheme(
       backgroundColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,

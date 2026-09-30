@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/post_card.dart';
-import '../../state/feed_filters.dart';
 import '../../state/providers.dart';
 import '../post/post_detail_screen.dart';
 
@@ -19,9 +18,10 @@ class FavoritesScreen extends ConsumerWidget {
     final feed = ref.watch(feedProvider);
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
 
-    // сохраняем порядок «сначала недавно добавленные», но приоритетные — выше
+    // Порядок «сначала недавно добавленные» и без выделения приоритетных:
+    // список и так собран студентом, а модераторская метка в нём — шум.
     final byId = {for (final p in feed.posts) p.id: p};
-    final posts = priorityFirst([for (final id in ids) if (byId[id] != null) byId[id]!]);
+    final posts = [for (final id in ids) if (byId[id] != null) byId[id]!];
 
     return Scaffold(
       body: CustomScrollView(
@@ -91,6 +91,7 @@ class FavoritesScreen extends ConsumerWidget {
                     child: PostCard(
                       post: post,
                       isFavorite: true,
+                      showPriority: false,
                       onTap: () => Navigator.of(context).push(
                         CupertinoPageRoute(builder: (_) => PostDetailScreen(post: post)),
                       ),

@@ -102,7 +102,12 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
     if (forYouMode) {
       // Персональный подбор переехал сюда с главной: здесь его можно
       // осмысленно отфильтровать, а не просто пролистать.
-      posts = applyFilters(forYou(feed.posts, profile, limit: 200), _filters);
+      // priorityFirst обязателен и здесь: applyFilters сортирует по дате и
+      // возвращал приоритетные в середину, хотя в остальных разделах они
+      // всегда первые.
+      posts = priorityFirst(
+        applyFilters(forYou(feed.posts, profile, limit: 200), _filters),
+      );
     } else {
       final effective =
           _filters.copyWith(source: _source, sortByPopularity: _sortPopular);
@@ -194,7 +199,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
               sliver: SliverList.separated(
                 itemCount: 4,
                 separatorBuilder: (_, _) => const SizedBox(height: 10),
-                itemBuilder: (_, i) => PostCardSkeleton(withAction: i == 0),
+                itemBuilder: (_, i) => PostCardSkeleton(),
               ),
             )
           else if (posts.isEmpty && !feed.loading)

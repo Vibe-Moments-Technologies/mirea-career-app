@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../data/catalogs.dart';
 import '../../data/models.dart';
@@ -8,7 +7,9 @@ import 'post_image.dart';
 
 /// Карточка поста в ленте.
 ///
-/// Приоритетная (isFeatured) — с акцентной обводкой и кнопкой регистрации внутри.
+/// Приоритетная (isFeatured) — с акцентной обводкой и меткой «Приоритет».
+/// В избранном выделение выключается: там список уже собран студентом, и
+/// модераторская метка в нём только шумит.
 class PostCard extends StatelessWidget {
   const PostCard({
     super.key,
@@ -16,6 +17,7 @@ class PostCard extends StatelessWidget {
     required this.isFavorite,
     required this.onTap,
     required this.onToggleFavorite,
+    this.showPriority = true,
   });
 
   final Post post;
@@ -23,22 +25,22 @@ class PostCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onToggleFavorite;
 
+  /// Рисовать ли приоритетную обводку и метку.
+  final bool showPriority;
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final isPriority = post.isFeatured;
-    final hasLink = post.externalLink != null && post.externalLink!.isNotEmpty;
-
-    final borderColor = isPriority
-        ? scheme.primary
-        : AppColors.separator(context);
-    final borderWidth = isPriority ? 2.0 : 1.0;
+    final isPriority = showPriority && post.isFeatured;
 
     return Material(
       color: scheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppRadius.card),
-        side: BorderSide(color: borderColor, width: borderWidth),
+        side: BorderSide(
+          color: isPriority ? scheme.primary : AppColors.separator(context),
+          width: isPriority ? 2 : 1,
+        ),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -47,81 +49,57 @@ class PostCard extends StatelessWidget {
         splashColor: scheme.primary.withValues(alpha: 0.08),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 14, 6, 14),
-          child: Column(
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _Thumb(post: post),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _TypeBadge(type: post.type, isPriority: isPriority),
-                        const SizedBox(height: 6),
-                        Text(
-                          post.title,
-                          style: AppText.headline,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 8),
-                        _OrgLine(post: post),
-                        if (post.eventDate != null) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            _formatDate(post.eventDate!),
-                            style: AppText.footnote.copyWith(color: AppColors.secondaryLight),
-                          ),
-                        ],
-                        if (post.tags.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          _TagsRow(tags: post.tags),
-                        ],
-                      ],
+              _Thumb(post: post),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _TypeBadge(type: post.type, isPriority: isPriority),
+                    const SizedBox(height: 6),
+                    Text(
+                      post.title,
+                      style: AppText.headline,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                  IconButton(
-                    onPressed: onToggleFavorite,
-                    icon: Icon(
-                      isFavorite ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
-                      color: isFavorite ? scheme.primary : AppColors.secondaryLight,
-                    ),
-                    tooltip: isFavorite ? 'Убрать из избранного' : 'В избранное',
-                  ),
-                ],
-              ),
-              if (hasLink) ...[
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: () => _launchLink(post.externalLink!),
-                    icon: const Icon(Icons.open_in_new_rounded, size: 18),
-                    label: const Text('Регистрация'),
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(44),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppRadius.pill),
+                    const SizedBox(height: 8),
+                    _OrgLine(post: post),
+                    if (post.eventDate != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        _formatDate(post.eventDate!),
+                        style: AppText.footnote
+                            .copyWith(color: AppColors.secondaryLight),
                       ),
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                    ),
-                  ),
+                    ],
+                    if (post.tags.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      _TagsRow(tags: post.tags),
+                    ],
+                  ],
                 ),
-              ],
+              ),
+              IconButton(
+                onPressed: onToggleFavorite,
+                icon: Icon(
+                  isFavorite
+                      ? Icons.bookmark_rounded
+                      : Icons.bookmark_border_rounded,
+                  color:
+                      isFavorite ? scheme.primary : AppColors.secondaryLight,
+                ),
+                tooltip:
+                    isFavorite ? 'Убрать из избранного' : 'В избранное',
+              ),
             ],
           ),
         ),
       ),
     );
-  }
-
-  static Future<void> _launchLink(String url) async {
-    final uri = Uri.tryParse(url);
-    if (uri == null) return;
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 }
 
@@ -130,10 +108,7 @@ class PostCard extends StatelessWidget {
 /// Без неё экран показывал «Пока ничего нет», пока посты ещё ехали из сети —
 /// выглядело как пустой каталог, а потом контент появлялся скачком.
 class PostCardSkeleton extends StatelessWidget {
-  const PostCardSkeleton({super.key, this.withAction = false});
-
-  /// Место под кнопку «Регистрация» — у карточек со ссылкой.
-  final bool withAction;
+  const PostCardSkeleton({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -145,32 +120,23 @@ class PostCardSkeleton extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: AppColors.separator(context)),
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _block(color, 84, 84, AppRadius.thumb),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _block(color, 70, 10, AppRadius.pill),
-                    const SizedBox(height: 10),
-                    _block(color, double.infinity, 16, 6),
-                    const SizedBox(height: 8),
-                    _block(color, 140, 12, 6),
-                  ],
-                ),
-              ),
-            ],
+          _block(color, 84, 84, AppRadius.thumb),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _block(color, 70, 10, AppRadius.pill),
+                const SizedBox(height: 10),
+                _block(color, double.infinity, 16, 6),
+                const SizedBox(height: 8),
+                _block(color, 140, 12, 6),
+              ],
+            ),
           ),
-          if (withAction) ...[
-            const SizedBox(height: 12),
-            _block(color, double.infinity, 40, AppRadius.pill),
-          ],
         ],
       ),
     );
@@ -271,7 +237,8 @@ class _TagsRow extends StatelessWidget {
           const SizedBox(width: 6),
           Text(
             '+$extra',
-            style: AppText.caption.copyWith(color: AppColors.secondaryLight),
+            style:
+                AppText.caption.copyWith(color: AppColors.secondaryLight),
           ),
         ],
       ],
@@ -279,7 +246,8 @@ class _TagsRow extends StatelessWidget {
   }
 }
 
-class _OrgLine extends StatelessWidget {  const _OrgLine({required this.post});
+class _OrgLine extends StatelessWidget {
+  const _OrgLine({required this.post});
   final Post post;
 
   @override
@@ -287,17 +255,11 @@ class _OrgLine extends StatelessWidget {  const _OrgLine({required this.post});
     // Логотип-картинка убран: в демо у организаций placehold.co, который
     // отдаёт 403, и на его месте мигал серый квадрат. Имя организации
     // и так рядом — квадрат не добавлял ничего, кроме мерцания.
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            post.organizationName ?? '',
-            style: AppText.footnote.copyWith(color: AppColors.secondaryLight),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
+    return Text(
+      post.organizationName ?? '',
+      style: AppText.footnote.copyWith(color: AppColors.secondaryLight),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
     );
   }
 }

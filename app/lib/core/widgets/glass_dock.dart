@@ -65,44 +65,57 @@ class GlassDock extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final scheme = Theme.of(context).colorScheme;
     final inactive = isDark ? AppColors.secondaryDark : AppColors.secondaryLight;
+    final radius = BorderRadius.circular(AppRadius.dock);
 
     return Center(
       child: Container(
         width: width(context),
         height: height,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
+        // Тень на внешнем контейнере, размытие — строго по капсуле.
+        // Раньше BackdropFilter лежал ВНУТРИ отступов: размытая область была
+        // меньше капсулы и со своими скруглениями — на экране читалось как
+        // «док поверх дока».
         decoration: BoxDecoration(
-          color: isDark
-              ? const Color(0xFF1C1C1E).withValues(alpha: 0.86)
-              : Colors.white.withValues(alpha: 0.9),
-          borderRadius: BorderRadius.circular(AppRadius.dock),
-          border: Border.all(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.12)
-                : Colors.black.withValues(alpha: 0.07),
-          ),
+          borderRadius: radius,
           boxShadow: AppShadows.dock(isDark ? Brightness.dark : Brightness.light),
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(AppRadius.dock),
+          borderRadius: radius,
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-            child: Row(
-              children: [
-                for (var i = 0; i < items.length; i++)
-                  Expanded(
-                    child: _DockButton(
-                      item: items[i],
-                      selected: selectedIndex == i,
-                      color: scheme.primary,
-                      inactive: inactive,
-                      onTap: () {
-                        HapticFeedback.lightImpact();
-                        onSelected(i);
-                      },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? const Color(0xFF1C1C1E).withValues(alpha: 0.86)
+                    : Colors.white.withValues(alpha: 0.9),
+                borderRadius: radius,
+                border: Border.all(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.12)
+                      : Colors.black.withValues(alpha: 0.07),
+                ),
+              ),
+              child: Row(
+                children: [
+                  for (var i = 0; i < items.length; i++)
+                    Expanded(
+                      // Выбранный пункт получает вдвое больше места: в него
+                      // помещается подпись. Остальные остаются квадратами.
+                      flex: selectedIndex == i ? 3 : 2,
+                      child: _DockButton(
+                        item: items[i],
+                        selected: selectedIndex == i,
+                        color: scheme.primary,
+                        inactive: inactive,
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          onSelected(i);
+                        },
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -139,13 +152,39 @@ class _DockButton extends StatelessWidget {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOutCubic,
-            width: 46,
             height: 46,
+            padding: EdgeInsets.symmetric(horizontal: selected ? 12 : 0),
             decoration: BoxDecoration(
               color: selected ? color.withValues(alpha: 0.14) : Colors.transparent,
               borderRadius: BorderRadius.circular(AppRadius.pill),
             ),
-            child: Icon(item.icon, size: 23, color: selected ? color : inactive),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(item.icon, size: 23, color: selected ? color : inactive),
+                if (selected) ...[
+                  const SizedBox(width: 8),
+                  // scaleDown как страховка: длинная подпись («Избранное»)
+                  // ужимается вместо переполнения строки.
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        item.label,
+                        maxLines: 1,
+                        style: TextStyle(
+                          color: color,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
       ),
