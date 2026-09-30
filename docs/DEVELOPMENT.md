@@ -170,6 +170,23 @@ git tag v26.10 && git push origin v26.10
 
 Настроены: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SENTRY_DSN`.
 
+> ⚠️ **Записывай секреты только через `--body`.** Однажды они уехали
+> с BOM (U+FEFF) в начале значения — PowerShell добавлял его при передаче
+> через пайп. Итог: приложение показывало однотонный экран, а Sentry молчал,
+> и причину искали разбором собранного APK.
+>
+> ```powershell
+> gh secret set SENTRY_DSN --repo <repo> --body "<значение>"   # правильно
+> $value | gh secret set SENTRY_DSN --repo <repo>              # может добавить BOM
+> ```
+>
+> Проверить, что доехало без BOM:
+> ```powershell
+> $b = [IO.File]::ReadAllBytes("libapp.so")
+> [Text.Encoding]::ASCII.GetString($b).Contains("https://<project>.supabase.co")
+> ```
+> В сборке URL лежит как ASCII-строка без префикса `<65279>`.
+
 Осталось добавить:
 
 | Секрет | Нужен для | Обязателен |
