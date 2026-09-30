@@ -220,9 +220,15 @@ class _ListTail extends StatelessWidget {
         Icon(Icons.check_circle_outline_rounded,
             size: 16, color: AppColors.secondaryLight),
         const SizedBox(width: 6),
-        Text(
-          'Это всё — новых записей больше нет',
-          style: AppText.footnote.copyWith(color: AppColors.secondaryLight),
+        // Flexible: длинная подпись на узком экране должна сжиматься,
+        // иначе строка вылезает за границы (RenderFlex overflow).
+        Flexible(
+          child: Text(
+            'Это всё — новых записей больше нет',
+            style: AppText.footnote.copyWith(color: AppColors.secondaryLight),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
       ],
     );
@@ -458,9 +464,15 @@ class _SearchHint extends StatelessWidget {
         children: [
           const Icon(Icons.search_rounded, size: 20, color: AppColors.secondaryLight),
           const SizedBox(width: 8),
-          Text(
-            'Поиск по событиям и вакансиям',
-            style: AppText.body.copyWith(color: AppColors.secondaryLight),
+          // Expanded обязателен: без него длинная подсказка не сжимается
+          // и вылезает за границы на узких экранах (RenderFlex overflow).
+          Expanded(
+            child: Text(
+              'Поиск по событиям и вакансиям',
+              style: AppText.body.copyWith(color: AppColors.secondaryLight),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),
@@ -480,7 +492,14 @@ class _OfflineBanner extends StatelessWidget {
         children: [
           const Icon(Icons.cloud_off_rounded, size: 16, color: AppColors.warning),
           const SizedBox(width: 8),
-          Text('Нет сети — показаны сохранённые данные', style: AppText.footnote),
+          Expanded(
+            child: Text(
+              'Нет сети — показаны сохранённые данные',
+              style: AppText.footnote,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
     );

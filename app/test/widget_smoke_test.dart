@@ -425,17 +425,20 @@ void main() {
       );
       addTearDown(c.dispose);
 
-      // Высокий виртуальный экран: SliverList ленив и не строит то, что ниже
-      // видимой области, поэтому кнопку подгрузки иначе не найти.
-      tester.view.physicalSize = const Size(400, 2400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-
       await tester.pumpWidget(wrap(c, const RootShell()));
       await tester.pump();
 
       // самая свежая карточка видна
       expect(find.text('Карточка 0'), findsOneWidget);
+
+      // Кнопка подгрузки ниже видимой области, а SliverList ленив —
+      // прокручиваем до неё, как это сделал бы пользователь.
+      await tester.scrollUntilVisible(
+        find.textContaining('Показать ещё'),
+        400,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pump();
 
       // Кнопка прямо называет размер блока: «10 из 25» доказывает, что
       // за раз отдаётся ровно блок, а не весь список целиком.
@@ -465,11 +468,14 @@ void main() {
       );
       addTearDown(c.dispose);
 
-      tester.view.physicalSize = const Size(400, 2400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-
       await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+
+      await tester.scrollUntilVisible(
+        find.text('Это всё — новых записей больше нет'),
+        400,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pump();
 
       expect(find.text('Это всё — новых записей больше нет'), findsOneWidget);
@@ -490,6 +496,30 @@ void main() {
 
       expect(find.text('Новое'), findsOneWidget);
       expect(find.text('Для вас'), findsNothing);
+    });
+
+    testWidgets('на узком экране ничего не вылезает за границы', (tester) async {
+      // Реальная ошибка раскладки: подсказка поиска и подписи в баннерах
+      // были Text без Expanded/Flexible и переполняли строку на узком
+      // экране — текст пропадал за краем. RenderFlex overflow теперь
+      // должен валить тест, а не проходить незамеченным.
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [samplePost(title: 'Очень длинное название карточки для проверки')],
+      );
+      addTearDown(c.dispose);
+
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+
+      // ищем именно переполнение — прочие ошибки фреймворка не мешают
+      final overflows =
+          frameworkErrors.where((e) => e.contains('overflowed')).toList();
+      expect(overflows, isEmpty, reason: 'переполнение раскладки: $overflows');
     });
   });
 }

@@ -346,7 +346,16 @@ class _StatItem extends StatelessWidget {
           style: AppText.headline.copyWith(fontSize: 15),
         ),
         const SizedBox(width: 4),
-        Text(label, style: AppText.footnote.copyWith(color: AppColors.secondaryLight)),
+        // Flexible на случай длинного числа («12 345 просмотров»):
+        // без него строка переполняется и текст пропадает за краем.
+        Flexible(
+          child: Text(
+            label,
+            style: AppText.footnote.copyWith(color: AppColors.secondaryLight),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
       ],
     );
   }
