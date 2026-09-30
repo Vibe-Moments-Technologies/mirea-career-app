@@ -824,36 +824,29 @@ void main() {
   group('Маршруты', () {
     testWidgets('на iOS маршрут интерактивный, на Android — системный',
         (tester) async {
-      // iOS: только CupertinoPageRoute умеет свайп-назад от левого края.
+      // iOS: свайп-назад от левого края умеет только CupertinoPageRoute.
       // Android: жест системный, принудительно его не включаем.
-      late BuildContext ctx;
-      await tester.pumpWidget(MaterialApp(
-        theme: buildAppTheme(Brightness.light),
-        home: Builder(builder: (c) {
-          ctx = c;
-          return const SizedBox();
-        }),
-      ));
-
-      expect(appRoute<void>(ctx, const SizedBox()),
-          isA<CupertinoPageRoute<void>>());
-
-      await tester.pumpWidget(MaterialApp(
-        theme: buildAppTheme(Brightness.light),
-        home: Builder(
-          builder: (c) => Theme(
-            data: Theme.of(c).copyWith(platform: TargetPlatform.android),
+      // Платформу задаём явно: по умолчанию в тестах android, и iOS-ветка
+      // никогда бы не проверялась.
+      Future<Route<void>> routeFor(TargetPlatform platform) async {
+        late Route<void> route;
+        await tester.pumpWidget(MaterialApp(
+          home: Theme(
+            data: ThemeData(platform: platform),
             child: Builder(
-              builder: (c2) {
-                ctx = c2;
+              builder: (c) {
+                route = appRoute<void>(c, const SizedBox());
                 return const SizedBox();
               },
             ),
           ),
-        ),
-      ));
+        ));
+        return route;
+      }
 
-      expect(appRoute<void>(ctx, const SizedBox()),
+      expect(await routeFor(TargetPlatform.iOS),
+          isA<CupertinoPageRoute<void>>());
+      expect(await routeFor(TargetPlatform.android),
           isA<MaterialPageRoute<void>>());
     });
   });
