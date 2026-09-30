@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -593,8 +594,11 @@ void main() {
 
     testWidgets('док не растянут на всю ширину экрана', (tester) async {
       // Реальная правка: ConstrainedBox(maxWidth:) внутри Positioned с
-      // left+right даёт ЖЁСТКУЮ ширину, и док занимал весь экран. Теперь
-      // размер задан явно и не зависит от ширины экрана.
+      // left+right даёт ЖЁСТКУЮ ширину, и док занимал весь экран.
+      //
+      // Меряем BackdropFilter, а не GlassDock: виджет отдаёт Center, который
+      // по родительским ограничениям всегда во весь экран, независимо от
+      // ширины капсулы внутри.
       tester.view.physicalSize = const Size(430, 932);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
@@ -605,10 +609,13 @@ void main() {
       await tester.pumpWidget(wrap(c, const RootShell()));
       await tester.pump();
 
-      final dock = tester.getRect(find.byType(GlassDock));
-      expect(dock.width, lessThan(430), reason: 'док растянут на весь экран: $dock');
+      final capsule = find.byType(BackdropFilter);
+      expect(capsule, findsOneWidget);
+
+      final rect = tester.getRect(capsule);
+      expect(rect.width, lessThan(430), reason: 'док растянут на весь экран: $rect');
       // и центрирован, а не прижат к краю
-      expect(dock.center.dx, moreOrLessEquals(430 / 2, epsilon: 1));
+      expect(rect.center.dx, moreOrLessEquals(430 / 2, epsilon: 1));
     });
 
     testWidgets('пункты дока не переполняются при выборе', (tester) async {
