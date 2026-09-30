@@ -160,6 +160,9 @@ class _AboutScreenState extends ConsumerState<AboutScreen> {
           ),
           const SizedBox(height: 24),
           SettingsGroup(
+            footer: 'Данные профиля не покидают устройство. '
+                'Просмотры и добавления в избранное передаются обезличенно — '
+                'без идентификаторов пользователя.',
             children: [
               // 8 нажатий подряд открывают отладочное меню
               ListTile(
@@ -172,9 +175,6 @@ class _AboutScreenState extends ConsumerState<AboutScreen> {
               ),
               const SettingsValueTile(title: 'Платформа', value: 'Flutter'),
             ],
-            footer: 'Данные профиля не покидают устройство. '
-                'Просмотры и добавления в избранное передаются обезличенно — '
-                'без идентификаторов пользователя.',
           ),
           const SizedBox(height: 24),
           Center(
