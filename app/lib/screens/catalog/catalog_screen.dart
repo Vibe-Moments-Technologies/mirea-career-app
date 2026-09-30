@@ -94,12 +94,14 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
               ),
             ),
           ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(pad, 12, pad, 4),
-              child: Row(
-                children: [
-                  if (!forYouMode) ...[
+          // В режиме «Для вас» строка с фильтрами не нужна: фильтры скрыты,
+          // а одинокая цифра справа выглядит странно.
+          if (!forYouMode)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(pad, 12, pad, 4),
+                child: Row(
+                  children: [
                     _FilterButton(
                       activeCount: _filters.activeCount,
                       onTap: _openSheet,
@@ -116,16 +118,15 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                       ),
                       label: Text(_sortPopular ? 'По популярности' : 'По дате'),
                     ),
+                    const Spacer(),
+                    Text(
+                      '${posts.length}',
+                      style: AppText.footnote.copyWith(color: AppColors.secondaryLight),
+                    ),
                   ],
-                  const Spacer(),
-                  Text(
-                    '${posts.length}',
-                    style: AppText.footnote.copyWith(color: AppColors.secondaryLight),
-                  ),
-                ],
+                ),
               ),
             ),
-          ),
           if (forYouMode && !profile.completed)
             SliverToBoxAdapter(
               child: _PromptFillProfile(

@@ -67,8 +67,9 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                 AppInsets.horizontal(MediaQuery.sizeOf(context).width),
                 20,
                 AppInsets.horizontal(MediaQuery.sizeOf(context).width),
-                // запас под закреплённую кнопку и док
-                AppInsets.scrollBottom(context) + (hasLink ? 64 : 0),
+                // Кнопка заявки лежит в bottomNavigationBar и сама
+                // резервирует место — контенту достаточно небольшого воздуха.
+                24,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -107,11 +108,15 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
       ),
       bottomNavigationBar: hasLink
           ? Padding(
+              // На этом экране дока нет, поэтому отступ — только safe area
+              // и небольшой воздух. Раньше здесь стоял scrollBottom (высота
+              // дока + safe area), из-за чего кнопка висела высоко над
+              // контентом.
               padding: EdgeInsets.fromLTRB(
                 20,
                 0,
                 20,
-                AppInsets.scrollBottom(context) + 4,
+                MediaQuery.paddingOf(context).bottom + 12,
               ),
               child: FilledButton.icon(
                 onPressed: _openLink,

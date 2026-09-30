@@ -41,12 +41,19 @@ class GlassDock extends StatelessWidget {
   static const height = 60.0;
 
   /// Отступ от нижнего края поверх home-indicator.
-  static const gap = 8.0;
+  ///
+  /// Минимальный: док должен висеть сразу над home-indicator, а не в
+  /// середине нижней трети экрана.
+  static const gap = 4.0;
 
-  /// Полная высота, которую док занимает у нижнего края экрана:
+  /// Полная высота, которую док занимает у нижнего края ЭКРАНА (body):
   /// нужна экранам, чтобы посчитать нижний отступ скролла.
-  static double totalHeight(BuildContext context) =>
-      MediaQuery.paddingOf(context).bottom + gap + height;
+  ///
+  /// ВАЖНО: и док, и контент живут в координатах body, а Scaffold уже
+  /// обрезал нижнюю safe-area (home-indicator) у body. Поэтому сюда НЕ
+  /// входит padding.bottom — иначе отступ удваивался и док висел в ~70 pt
+  /// от края. Так уже было с SafeArea + gap.
+  static double totalHeight(BuildContext context) => gap + height;
 
   @override
   Widget build(BuildContext context) {
@@ -55,18 +62,18 @@ class GlassDock extends StatelessWidget {
     // подписи скрываем только на очень узких экранах
     final showLabel = media.size.width >= 340;
 
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: EdgeInsets.only(bottom: gap),
-        child: Center(
-          // Center + IntrinsicWidth: док занимает ровно столько, сколько нужно
-          // содержимому, но не шире разумного максимума
-          heightFactor: 1,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: media.size.width - 32,
-            ),
+    // body уже заканчивается над home-indicator (Scaffold обрезал safe-area),
+    // поэтому добавляем только маленький визуальный зазор — без padding.bottom.
+    return Padding(
+      padding: const EdgeInsets.only(bottom: gap),
+      child: Center(
+        // Center + IntrinsicWidth: док занимает ровно столько, сколько нужно
+        // содержимому, но не шире разумного максимума
+        heightFactor: 1,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: media.size.width - 32,
+          ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(AppRadius.dock),
               child: BackdropFilter(
@@ -107,7 +114,6 @@ class GlassDock extends StatelessWidget {
             ),
           ),
         ),
-      ),
     );
   }
 
