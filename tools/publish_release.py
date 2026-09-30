@@ -20,6 +20,7 @@ import argparse
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 try:
@@ -38,6 +39,30 @@ def run(cmd: list[str], check: bool = True, capture: bool = True) -> str:
 
 def gh(*args: str, check: bool = True) -> str:
     return run(["gh", *args], check=check)
+
+
+def upload_asset(tag: str, asset: str, repo: str, attempts: int = 3) -> None:
+    """Загрузить ассет с повтором.
+
+    Хранилище ассетов GitHub — Azure Blob, и при замене крупного файла
+    (`--clobber`: сначала удаление, потом заливка) оно регулярно отвечает
+    `BlobNotFound`. Сборка при этом успешна, падал только релиз, и
+    артефактов не было ни на каком устройстве. Транзиент — повторяем.
+    """
+    last = ""
+    for attempt in range(1, attempts + 1):
+        result = subprocess.run(
+            ["gh", "release", "upload", tag, asset, "--clobber", "--repo", repo],
+            text=True,
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            return
+        last = (result.stderr or result.stdout or "").strip()
+        print(f"  upload {Path(asset).name}: попытка {attempt}/{attempts} — {last}")
+        if attempt < attempts:
+            time.sleep(5 * attempt)
+    sys.exit(f"не удалось загрузить {asset} после {attempts} попыток:\n{last}")
 
 
 def release_notes(version: str, prev_tag: str | None) -> str:
@@ -109,7 +134,7 @@ def main() -> None:
         for asset in assets:
             # --clobber: rolling-preview перезаписывает старые файлы,
             # иначе gh откажется загружать одноимённый ассет
-            gh("release", "upload", tag, asset, "--clobber", "--repo", args.repo)
+            upload_asset(tag, asset, args.repo)
         gh(
             "release", "edit", tag,
             "--title", title, "--notes", notes, "--repo", args.repo,
