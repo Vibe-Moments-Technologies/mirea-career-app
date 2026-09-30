@@ -4,9 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/post_image.dart';
 import '../../data/catalogs.dart';
 import '../../data/models.dart';
 import '../../state/providers.dart';
+import '../org/org_screen.dart';
 
 /// Экран деталей поста (docs/UI.md §7).
 /// Открытие = один просмотр (дедупликация на устройстве), кнопка заявки —
@@ -108,15 +110,19 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
       ),
       bottomNavigationBar: hasLink
           ? Padding(
-              // На этом экране дока нет, поэтому отступ — только safe area
-              // и небольшой воздух. Раньше здесь стоял scrollBottom (высота
-              // дока + safe area), из-за чего кнопка висела высоко над
-              // контентом.
+              // На этом экране дока нет, поэтому отступ — только системная
+              // панель и небольшой воздух. Раньше здесь стоял scrollBottom
+              // (высота дока + safe area), из-за чего кнопка висела высоко
+              // над контентом.
+              //
+              // viewPadding, а не padding: клавиатура и прочие viewInsets
+              // не должны схлопывать отступ — кнопка прижата к системной
+              // панели всегда.
               padding: EdgeInsets.fromLTRB(
                 20,
                 0,
                 20,
-                MediaQuery.paddingOf(context).bottom + 12,
+                MediaQuery.viewPaddingOf(context).bottom + 12,
               ),
               child: FilledButton.icon(
                 onPressed: _openLink,
@@ -161,27 +167,18 @@ class _Cover extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = AppColors.forPostType(post.type, Theme.of(context).brightness);
-    final hasImage = post.imageUrl != null && post.imageUrl!.isNotEmpty;
     return Stack(
       fit: StackFit.expand,
       children: [
-        if (hasImage)
-          Image.network(
-            post.imageUrl!,
-            fit: BoxFit.cover,
-            errorBuilder: (_, _, _) => Container(color: color.withValues(alpha: 0.25)),
-          )
-        else
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [color.withValues(alpha: 0.35), color.withValues(alpha: 0.12)],
-              ),
-            ),
-          ),
+        // Та же обложка, что в ленте и витрине: фото → буквенная заглушка.
+        // Цветной градиент по типу поста убран — на деталях он выглядел
+        // как случайная заливка, а не как смысл.
+        PostCover(
+          post: post,
+          size: null,
+          borderRadius: BorderRadius.zero,
+          letter: true,
+        ),
         // затемнение под заголовок/кнопку «назад»
         const DecoratedBox(
           decoration: BoxDecoration(
@@ -246,55 +243,60 @@ class _Organizer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final hasLogo = post.organizationLogoUrl != null && post.organizationLogoUrl!.isNotEmpty;
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-      ),
-      child: Row(
-        children: [
-          if (hasLogo)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Image.network(
-                post.organizationLogoUrl!,
-                width: 40,
-                height: 40,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => _orgFallback(scheme),
-              ),
-            )
-          else
-            _orgFallback(scheme),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(post.organizationName ?? 'Организатор', style: AppText.headline),
-                Text(
-                  post.isPartner ? 'Компания-партнёр' : 'Подразделение вуза',
-                  style: AppText.footnote.copyWith(color: AppColors.secondaryLight),
+    return Material(
+      color: scheme.surface,
+      borderRadius: BorderRadius.circular(AppRadius.card),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        // Ведёт на профиль организатора: там контакты и все его предложения.
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => OrgScreen(organizationId: post.organizationId)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              _orgAvatar(context, size: 40),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(post.organizationName ?? 'Организатор', style: AppText.headline),
+                    Text(
+                      post.isPartner ? 'Компания-партнёр' : 'Подразделение вуза',
+                      style: AppText.footnote.copyWith(color: AppColors.secondaryLight),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: AppColors.secondaryLight),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _orgFallback(ColorScheme scheme) => Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: scheme.primary.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Icon(Icons.apartment_rounded, color: scheme.primary, size: 22),
-      );
+  /// Аватар-заглушка с буквой: логотипы в демо — placehold.co, он отдаёт 403,
+  /// и вместо буквы показывался серый квадрат. См. core/widgets/post_image.dart.
+  Widget _orgAvatar(BuildContext context, {required double size}) {
+    final brightness = Theme.of(context).brightness;
+    final name = (post.organizationName ?? '').trim();
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: AppColors.placeholder(brightness),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        name.isEmpty ? '—' : name.substring(0, 1).toUpperCase(),
+        style: AppText.title.copyWith(color: AppColors.secondaryLight, fontSize: 18),
+      ),
+    );
+  }
 }
 
 class _Stats extends ConsumerWidget {

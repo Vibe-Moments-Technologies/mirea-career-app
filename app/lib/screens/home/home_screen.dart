@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/post_card.dart';
+import '../../core/widgets/post_image.dart';
 import '../../data/models.dart';
 import '../../state/feed_filters.dart';
 import '../../state/providers.dart';
@@ -294,33 +295,48 @@ class _HeroCarouselState extends State<_HeroCarousel> {
     // Высота соразмерна ширине экрана: на узких телефонах карточка иначе
     // выглядит приплюснутой, на широких — вытянутой.
     final height = (width * 0.5).clamp(170.0, 240.0);
+    final single = widget.posts.length == 1;
 
     return Column(
       children: [
         SizedBox(
           height: height,
-          child: PageView.builder(
-            controller: _pc,
-            itemCount: widget.posts.length,
-            onPageChanged: (i) => setState(() => _page = i),
-            itemBuilder: (_, i) {
-              final post = widget.posts[i];
-              return Padding(
-                padding: EdgeInsets.only(
-                  left: i == 0 ? pad : 5,
-                  right: i == widget.posts.length - 1 ? pad : 5,
-                  top: 4,
-                  bottom: 4,
+          // Одна карточка — не PageView: он с viewportFraction 0.9
+          // показывает половину соседа и оставляет пустые поля по бокам,
+          // из-за чего витрина «то есть, то нет». При одном посте кладём
+          // его обычным блоком на всю ширину минус отступы.
+          child: single
+              ? Padding(
+                  padding: EdgeInsets.fromLTRB(pad, 4, pad, 4),
+                  child: _HeroCard(
+                    post: widget.posts.first,
+                    isFavorite: widget.favorites.contains(widget.posts.first.id),
+                    onTap: () => widget.onOpen(widget.posts.first),
+                    onFav: () => widget.onFav(widget.posts.first.id),
+                  ),
+                )
+              : PageView.builder(
+                  controller: _pc,
+                  itemCount: widget.posts.length,
+                  onPageChanged: (i) => setState(() => _page = i),
+                  itemBuilder: (_, i) {
+                    final post = widget.posts[i];
+                    return Padding(
+                      padding: EdgeInsets.only(
+                        left: i == 0 ? pad : 5,
+                        right: i == widget.posts.length - 1 ? pad : 5,
+                        top: 4,
+                        bottom: 4,
+                      ),
+                      child: _HeroCard(
+                        post: post,
+                        isFavorite: widget.favorites.contains(post.id),
+                        onTap: () => widget.onOpen(post),
+                        onFav: () => widget.onFav(post.id),
+                      ),
+                    );
+                  },
                 ),
-                child: _HeroCard(
-                  post: post,
-                  isFavorite: widget.favorites.contains(post.id),
-                  onTap: () => widget.onOpen(post),
-                  onFav: () => widget.onFav(post.id),
-                ),
-              );
-            },
-          ),
         ),
         // Точки-индикаторы: видно, сколько карточек в витрине и где ты сейчас.
         // Раньше их не было, и переход от карусели к чипсам читался
@@ -368,13 +384,20 @@ class _HeroCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
-    final hasImage = post.imageUrl != null && post.imageUrl!.isNotEmpty;
 
     return GestureDetector(
       onTap: onTap,
       child: Container(
+        // Окантовка ОБЯЗАТЕЛЬНА и на тёмной теме тоже: hero лежит
+        // на чёрном фоне, и без границы тёмная карточка растворялась —
+        // «то есть визуал, то нет». Граница + тень держат контур всегда.
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(AppRadius.card),
+          border: Border.all(
+            color: brightness == Brightness.dark
+                ? Colors.white.withValues(alpha: 0.14)
+                : Colors.black.withValues(alpha: 0.06),
+          ),
           boxShadow: AppShadows.card(brightness),
         ),
         child: ClipRRect(
@@ -382,16 +405,15 @@ class _HeroCard extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // Без картинки — нейтральная поверхность с иконкой типа,
-              // а не цветной градиент: он давал «цветные кусочки».
-              if (hasImage)
-                Image.network(
-                  post.imageUrl!,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => _HeroFallback(post: post),
-                )
-              else
-                _HeroFallback(post: post),
+              // Та же обложка, что и в списке: фото → буквенная заглушка.
+              // Раньше здесь был отдельный _HeroFallback с иконкой, из-за
+              // чего витрина и лента выглядели по-разному.
+              PostCover(
+                post: post,
+                size: null,
+                borderRadius: BorderRadius.zero,
+                letter: true,
+              ),
               const DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -469,23 +491,6 @@ class _HeroCard extends StatelessWidget {
   }
 }
 
-class _HeroFallback extends StatelessWidget {
-  const _HeroFallback({required this.post});
-  final Post post;
-
-  @override
-  Widget build(BuildContext context) {
-    final brightness = Theme.of(context).brightness;
-    final color = AppColors.forPostType(post.type, brightness);
-    return Container(
-      color: AppColors.placeholder(brightness),
-      alignment: Alignment.center,
-      child: Icon(_iconForType(post.type), size: 44, color: color.withValues(alpha: 0.6)),
-    );
-  }
-}
-
-/// Круглая кнопка поверх картинки — единый вид для «в избранное».
 class _RoundIconButton extends StatelessWidget {
   const _RoundIconButton({required this.icon, required this.onTap});
   final IconData icon;
@@ -507,15 +512,6 @@ class _RoundIconButton extends StatelessWidget {
     );
   }
 }
-
-IconData _iconForType(String type) => switch (type) {
-      'vacancy' => Icons.work_rounded,
-      'internship' => Icons.school_rounded,
-      'event' => Icons.event_rounded,
-      'scholarship' => Icons.card_giftcard_rounded,
-      'project' => Icons.rocket_launch_rounded,
-      _ => Icons.article_rounded,
-    };
 
 class _OfflineBanner extends StatelessWidget {
   const _OfflineBanner();

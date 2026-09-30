@@ -2,12 +2,27 @@
 library;
 
 class Organization {
-  const Organization({required this.id, required this.name, required this.type, this.logoUrl});
+  const Organization({
+    required this.id,
+    required this.name,
+    required this.type,
+    this.description,
+    this.logoUrl,
+    this.website,
+    this.contactEmail,
+    this.contactPhone,
+    this.contactName,
+  });
 
   final String id;
   final String name;
   final String type; // 'university_dept' | 'partner'
+  final String? description;
   final String? logoUrl;
+  final String? website;
+  final String? contactEmail;
+  final String? contactPhone;
+  final String? contactName;
 
   bool get isPartner => type == 'partner';
 
@@ -20,7 +35,12 @@ class Organization {
       id: id,
       name: name,
       type: json['type'] as String? ?? 'partner',
+      description: json['description'] as String?,
       logoUrl: json['logo_url'] as String?,
+      website: json['website'] as String?,
+      contactEmail: json['contact_email'] as String?,
+      contactPhone: json['contact_phone'] as String?,
+      contactName: json['contact_name'] as String?,
     );
   }
 }
@@ -37,6 +57,11 @@ class Post {
     this.organizationName,
     this.organizationType,
     this.organizationLogoUrl,
+    this.organizationDescription,
+    this.organizationWebsite,
+    this.organizationContactEmail,
+    this.organizationContactPhone,
+    this.organizationContactName,
     this.externalLink,
     this.imageUrl,
     this.eventDate,
@@ -61,6 +86,11 @@ class Post {
   final String? organizationName;
   final String? organizationType;
   final String? organizationLogoUrl;
+  final String? organizationDescription;
+  final String? organizationWebsite;
+  final String? organizationContactEmail;
+  final String? organizationContactPhone;
+  final String? organizationContactName;
   final String? externalLink;
   final String? imageUrl;
   final DateTime? eventDate;
@@ -75,6 +105,24 @@ class Post {
   final int favoritesCount;
 
   bool get isPartner => organizationType == 'partner';
+
+  /// Организация, собранная из вложенных полей поста.
+  ///
+  /// Нужна профилю организатора: он открывается из карточки, где есть
+  /// только эти поля, и отдельный запрос к БД при этом не нужен.
+  Organization? get organization => organizationName == null
+      ? null
+      : Organization(
+          id: organizationId,
+          name: organizationName!,
+          type: organizationType ?? 'partner',
+          description: organizationDescription,
+          logoUrl: organizationLogoUrl,
+          website: organizationWebsite,
+          contactEmail: organizationContactEmail,
+          contactPhone: organizationContactPhone,
+          contactName: organizationContactName,
+        );
 
   /// Пустой список = аудитория «для всех».
   bool matchesCampus(String? campus) =>
@@ -105,6 +153,11 @@ class Post {
       organizationName: org?.name,
       organizationType: org?.type,
       organizationLogoUrl: org?.logoUrl,
+      organizationDescription: org?.description,
+      organizationWebsite: org?.website,
+      organizationContactEmail: org?.contactEmail,
+      organizationContactPhone: org?.contactPhone,
+      organizationContactName: org?.contactName,
       externalLink: json['external_link'] as String?,
       imageUrl: json['image_url'] as String?,
       eventDate: _date(json['event_date']),
@@ -133,7 +186,12 @@ class Post {
           'id': organizationId,
           'name': organizationName,
           'type': organizationType,
+          'description': organizationDescription,
           'logo_url': organizationLogoUrl,
+          'website': organizationWebsite,
+          'contact_email': organizationContactEmail,
+          'contact_phone': organizationContactPhone,
+          'contact_name': organizationContactName,
         },
         'external_link': externalLink,
         'image_url': imageUrl,
@@ -160,6 +218,11 @@ class Post {
         organizationName: organizationName,
         organizationType: organizationType,
         organizationLogoUrl: organizationLogoUrl,
+        organizationDescription: organizationDescription,
+        organizationWebsite: organizationWebsite,
+        organizationContactEmail: organizationContactEmail,
+        organizationContactPhone: organizationContactPhone,
+        organizationContactName: organizationContactName,
         externalLink: externalLink,
         imageUrl: imageUrl,
         eventDate: eventDate,

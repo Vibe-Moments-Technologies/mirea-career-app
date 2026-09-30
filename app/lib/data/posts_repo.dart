@@ -23,7 +23,12 @@ class PostsRepo {
   /// из-за чего фильтр «От вуза / От партнёров» отсекает ВСЕ карточки.
   /// Именно поэтому каталог был пуст, а главная (там фильтра по источнику
   /// нет) показывала посты.
-  static const _select = '*, organizations(id, name, type, logo_url)';
+  ///
+  /// Контакты нужны профилю организатора (org_screen): экран открывается
+  /// с одним лишь id, а данных о компании в посте нет.
+  static const _select = '*, organizations('
+      'id, name, type, description, logo_url, website, '
+      'contact_email, contact_phone, contact_name)';
 
   /// Опубликованные посты: приоритетные выше, затем по дате события.
   Future<List<Post>> fetchPublished() async {

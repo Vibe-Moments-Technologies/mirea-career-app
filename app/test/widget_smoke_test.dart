@@ -57,6 +57,7 @@ Map<String, dynamic> samplePost({
   bool featured = false,
   List<String> tags = const ['карьера'],
   DateTime? publishedAt,
+  Map<String, dynamic>? organization,
 }) =>
     {
       'id': id,
@@ -66,7 +67,8 @@ Map<String, dynamic> samplePost({
       'type': 'event',
       'format': 'offline',
       'status': 'published',
-      'organizations': {'id': 'org1', 'name': 'Карьерный центр', 'type': 'university_dept'},
+      'organizations': organization ??
+          {'id': 'org1', 'name': 'Карьерный центр', 'type': 'university_dept'},
       'tags': tags,
       'campuses': <String>[],
       'institutes': <String>[],
@@ -531,6 +533,104 @@ void main() {
       final overflows =
           frameworkErrors.where((e) => e.contains('overflowed')).toList();
       expect(overflows, isEmpty, reason: 'переполнение раскладки: $overflows');
+    });
+  });
+
+  group('Док', () {
+    testWidgets('док не залезает на системную полосу внизу', (tester) async {
+      // Реальная правка по iOS: док уходил ЗА home-indicator, и системная
+      // полоса ложилась поверх него. Теперь отступ считается от низа экрана.
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.viewPadding = const FakeViewPadding(bottom: 34);
+      addTearDown(tester.view.reset);
+
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [samplePost()],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+
+      final dockBottom = tester.getRect(find.byType(GlassDock)).bottom;
+      // 844 — низ экрана; системная полоса занимает нижние 34 pt
+      expect(
+        dockBottom,
+        lessThanOrEqualTo(844 - 34),
+        reason: 'док ($dockBottom) перекрывает системную полосу (810)',
+      );
+    });
+
+    testWidgets('на Android док поднимается над панелью навигации', (tester) async {
+      // Кнопочная навигация Android — 48 pt, жестовая — 24 pt. Высота берётся
+      // из системного inset (viewPadding), поэтому док не уезжает под кнопки
+      // ни на одном из вариантов, а не только на «айфоновских» 34 pt.
+      tester.view.physicalSize = const Size(412, 915);
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.viewPadding = const FakeViewPadding(bottom: 48);
+      addTearDown(tester.view.reset);
+
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [samplePost()],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+
+      final dockBottom = tester.getRect(find.byType(GlassDock)).bottom;
+      expect(
+        dockBottom,
+        lessThanOrEqualTo(915 - 48),
+        reason: 'док ($dockBottom) уходит под кнопки навигации (867)',
+      );
+    });
+  });
+
+  group('Профиль организации', () {
+    testWidgets('открывается из деталей и показывает контакты и предложения',
+        (tester) async {
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [
+          samplePost(
+            id: 'a',
+            title: 'Стажировка в Яндексе',
+            organization: {
+              'id': 'org1',
+              'name': 'Яндекс',
+              'type': 'partner',
+              'description': 'Технологическая компания',
+              'website': 'https://yandex.ru/yaintern',
+              'contact_email': 'interns@yandex-team.ru',
+              'contact_name': 'Рекрутинг-команда',
+            },
+          ),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+
+      // открываем детали
+      await tester.tap(find.text('Стажировка в Яндексе'));
+      await tester.pumpAndSettle();
+
+      // организатор кликабелен и ведёт в профиль
+      await tester.tap(find.text('Яндекс'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Организация'), findsOneWidget);
+      expect(find.text('Предложения'), findsOneWidget);
+      expect(find.text('Рекрутинг-команда'), findsOneWidget);
+      expect(find.text('interns@yandex-team.ru'), findsOneWidget);
+      // предложение организации видно в её профиле
+      expect(find.text('Стажировка в Яндексе'), findsOneWidget);
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
   });
 }

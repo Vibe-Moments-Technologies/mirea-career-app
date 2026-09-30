@@ -88,8 +88,11 @@ class AppInsets {
   /// Складывается из safe area и воздуха. Без этого крупный заголовок
   /// упирался в верхнюю кромку экрана (вырез/статус-бар) — на iPhone
   /// это выглядело как обрезанный текст.
+  ///
+  /// `viewPadding`, а не `padding`: у экранов с клавиатурой `padding`
+  /// сжимается до нуля, и заголовок запрыгивал под статус-бар.
   static double top(BuildContext context, {double extra = 8}) =>
-      MediaQuery.paddingOf(context).top + extra;
+      MediaQuery.viewPaddingOf(context).top + extra;
 
   /// Нижний отступ скролла: контент не должен прятаться под доком.
   /// Док сам сообщает свою высоту — берём её отсюда же, чтобы зазор

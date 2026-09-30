@@ -40,20 +40,30 @@ class GlassDock extends StatelessWidget {
   /// Высота капсулы дока.
   static const height = 60.0;
 
-  /// Отступ от нижнего края поверх home-indicator.
+  /// Отступ от нижнего края ЭКРАНА до низа капсулы.
   ///
-  /// Минимальный: док должен висеть сразу над home-indicator, а не в
-  /// середине нижней трети экрана.
-  static const gap = 4.0;
+  /// Платформенные различия здесь не вкусовщина:
+  ///  * iOS — home-indicator ~34 pt. В прошлой сборке док уходил ЗА него,
+  ///    и системная полоса ложилась поверх дока. Поэтому отступ считается
+  ///    от низа экрана, а не от низа body.
+  ///  * Android — жестовая навигация ~24 pt, кнопочная ~48 pt. Значение
+  ///    берём из системного inset, а не хардкодим: у Android-устройств
+  ///    высота панели разная, и фиксированные 34 pt на кнопочной навигации
+  ///    оставляли бы док наполовину под кнопками.
+  ///
+  /// `viewPadding` (а не `padding`): клавиатура не должна поднимать док —
+  /// на экранах с доком полей ввода нет, но если появятся, док останется
+  /// на месте, а не запрыгнет над клавиатурой.
+  static double _bottomInset(BuildContext context) =>
+      MediaQuery.viewPaddingOf(context).bottom + 8;
 
-  /// Полная высота, которую док занимает у нижнего края ЭКРАНА (body):
-  /// нужна экранам, чтобы посчитать нижний отступ скролла.
+  /// Полная высота, которую док занимает у нижнего края ЭКРАНА.
   ///
-  /// ВАЖНО: и док, и контент живут в координатах body, а Scaffold уже
-  /// обрезал нижнюю safe-area (home-indicator) у body. Поэтому сюда НЕ
-  /// входит padding.bottom — иначе отступ удваивался и док висел в ~70 pt
-  /// от края. Так уже было с SafeArea + gap.
-  static double totalHeight(BuildContext context) => gap + height;
+  /// Считается от низа экрана: `extendBody: true` отдаёт body во всю высоту,
+  /// поэтому координаты Stack — экранные. Экраны берут отсюда нижний отступ
+  /// скролла, чтобы последняя карточка не пряталась под доком.
+  static double totalHeight(BuildContext context) =>
+      height + _bottomInset(context);
 
   @override
   Widget build(BuildContext context) {
@@ -61,39 +71,41 @@ class GlassDock extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     // подписи скрываем только на очень узких экранах
     final showLabel = media.size.width >= 340;
+    // Отступ считаем от низа ЭКРАНА: Scaffold.extendBody отдаёт body
+    // во всю высоту, поэтому координаты Stack — экранные, а не «экран минус
+    // safe area». Иначе док наезжал на home-indicator.
+    final bottom = _bottomInset(context);
 
-    // body уже заканчивается над home-indicator (Scaffold обрезал safe-area),
-    // поэтому добавляем только маленький визуальный зазор — без padding.bottom.
     return Padding(
-      padding: const EdgeInsets.only(bottom: gap),
-      child: Center(
-        // Center + IntrinsicWidth: док занимает ровно столько, сколько нужно
-        // содержимому, но не шире разумного максимума
-        heightFactor: 1,
+      padding: EdgeInsets.only(bottom: bottom),
+      child: Align(
+        alignment: Alignment.bottomCenter,
         child: ConstrainedBox(
           constraints: BoxConstraints(
             maxWidth: media.size.width - 32,
           ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(AppRadius.dock),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-                child: Container(
-                  height: height,
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  decoration: BoxDecoration(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(AppRadius.dock),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+              child: Container(
+                height: height,
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? const Color(0xFF1C1C1E).withValues(alpha: 0.82)
+                      : Colors.white.withValues(alpha: 0.86),
+                  borderRadius: BorderRadius.circular(AppRadius.dock),
+                  border: Border.all(
                     color: isDark
-                        ? const Color(0xFF1C1C1E).withValues(alpha: 0.82)
-                        : Colors.white.withValues(alpha: 0.86),
-                    borderRadius: BorderRadius.circular(AppRadius.dock),
-                    border: Border.all(
-                      color: isDark
-                          ? Colors.white.withValues(alpha: 0.10)
-                          : Colors.white.withValues(alpha: 0.7),
-                      width: 1,
-                    ),
-                    boxShadow: AppShadows.dock(Theme.of(context).brightness),
+                        ? Colors.white.withValues(alpha: 0.10)
+                        : Colors.white.withValues(alpha: 0.7),
+                    width: 1,
                   ),
+                  boxShadow: AppShadows.dock(Theme.of(context).brightness),
+                ),
+                child: Align(
+                  alignment: Alignment.center,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -114,6 +126,7 @@ class GlassDock extends StatelessWidget {
             ),
           ),
         ),
+      ),
     );
   }
 

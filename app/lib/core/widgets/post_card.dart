@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/catalogs.dart';
 import '../../data/models.dart';
 import '../theme/app_theme.dart';
+import 'post_image.dart';
 
 /// Карточка поста в ленте (docs/UI.md §6).
 class PostCard extends StatelessWidget {
@@ -105,41 +106,8 @@ class _Thumb extends StatelessWidget {
   final Post post;
 
   @override
-  Widget build(BuildContext context) {
-    final brightness = Theme.of(context).brightness;
-    final hasImage = post.imageUrl != null && post.imageUrl!.isNotEmpty;
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(AppRadius.thumb),
-      child: SizedBox(
-        width: 84,
-        height: 84,
-        child: hasImage
-            ? Image.network(
-                post.imageUrl!,
-                fit: BoxFit.cover,
-                // офлайн/битая ссылка — нейтральная заглушка вместо пустоты
-                errorBuilder: (_, _, _) => _fallback(brightness),
-              )
-            : _fallback(brightness),
-      ),
-    );
-  }
-
-  /// Нейтральная подложка с иконкой типа.
-  ///
-  /// Раньше каждая карточка несла цветной блок по типу поста — в ленте это
-  /// выглядело как набор разноцветных заплаток. Тип уже подписан бейджем,
-  /// так что цвет здесь ничего не добавлял.
-  Widget _fallback(Brightness brightness) => Container(
-        color: AppColors.placeholder(brightness),
-        alignment: Alignment.center,
-        child: Icon(
-          _iconForType(post.type),
-          color: AppColors.secondaryLight,
-          size: 30,
-        ),
-      );
+  Widget build(BuildContext context) =>
+      PostCover(post: post, size: 84, radius: AppRadius.thumb, letter: true);
 }
 
 class _TypeBadge extends StatelessWidget {
@@ -169,21 +137,11 @@ class _OrgLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasLogo = post.organizationLogoUrl != null && post.organizationLogoUrl!.isNotEmpty;
+    // Логотип-картинка убран: в демо у организаций placehold.co, который
+    // отдаёт 403, и на его месте мигал серый квадрат. Имя организации
+    // и так рядом — квадрат не добавлял ничего, кроме мерцания.
     return Row(
       children: [
-        if (hasLogo)
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: Image.network(
-              post.organizationLogoUrl!,
-              width: 16,
-              height: 16,
-              fit: BoxFit.cover,
-              errorBuilder: (_, _, _) => const SizedBox(width: 16, height: 16),
-            ),
-          ),
-        if (hasLogo) const SizedBox(width: 6),
         Expanded(
           child: Text(
             post.organizationName ?? '',
@@ -196,15 +154,6 @@ class _OrgLine extends StatelessWidget {
     );
   }
 }
-
-IconData _iconForType(String type) => switch (type) {
-      'vacancy' => Icons.work_rounded,
-      'internship' => Icons.school_rounded,
-      'event' => Icons.event_rounded,
-      'scholarship' => Icons.card_giftcard_rounded,
-      'project' => Icons.rocket_launch_rounded,
-      _ => Icons.article_rounded,
-    };
 
 String _formatDate(DateTime d) {
   const months = [
