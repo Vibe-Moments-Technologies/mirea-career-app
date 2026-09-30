@@ -56,6 +56,7 @@ Map<String, dynamic> samplePost({
   String title = 'Осенняя ярмарка вакансий',
   bool featured = false,
   List<String> tags = const ['карьера'],
+  DateTime? publishedAt,
 }) =>
     {
       'id': id,
@@ -74,7 +75,10 @@ Map<String, dynamic> samplePost({
       'priority_weight': 0,
       'views_count': 0,
       'favorites_count': 0,
-      'published_at': DateTime.now().toIso8601String(),
+      // Явная дата важна: лента сортируется по published_at, и при
+      // одинаковых значениях (DateTime.now() в одном тике) порядок
+      // недетерминирован — тест начинает падать случайным образом.
+      'published_at': (publishedAt ?? DateTime.now()).toIso8601String(),
     };
 
 Widget wrap(ProviderContainer c, Widget child) => UncontrolledProviderScope(
@@ -401,13 +405,18 @@ void main() {
   });
 
   group('Лента', () {
-    testWidgets('главная показывает не больше блока карточек и конец списка',
-        (tester) async {
-      // 15 постов, но на экране должно быть не больше блока (10):
-      // раньше лента отдавалась целиком и страница листалась в пустоту.
+    testWidgets('главная показывает не больше блока карточек', (tester) async {
+      // 25 постов, но за раз показывается блок (10). Даты задаём явно и по
+      // убыванию: иначе порядок недетерминирован и понять, какая карточка
+      // попала в первый блок, невозможно.
+      final base = DateTime(2026, 1, 1);
       final cache = [
-        for (var i = 0; i < 15; i++)
-          samplePost(id: 'p$i', title: 'Карточка номер $i'),
+        for (var i = 0; i < 25; i++)
+          samplePost(
+            id: 'p$i',
+            title: 'Карточка $i',
+            publishedAt: base.subtract(Duration(minutes: i)),
+          ),
       ];
 
       final c = await container(
@@ -416,12 +425,55 @@ void main() {
       );
       addTearDown(c.dispose);
 
+      // Высокий виртуальный экран: SliverList ленив и не строит то, что ниже
+      // видимой области, поэтому кнопку подгрузки иначе не найти.
+      tester.view.physicalSize = const Size(400, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
       await tester.pumpWidget(wrap(c, const RootShell()));
       await tester.pump();
 
-      // первая карточка видна, одиннадцатая — ещё нет
-      expect(find.text('Карточка номер 0'), findsOneWidget);
-      expect(find.text('Карточка номер 10'), findsNothing);
+      // самая свежая карточка видна
+      expect(find.text('Карточка 0'), findsOneWidget);
+
+      // Кнопка прямо называет размер блока: «10 из 25» доказывает, что
+      // за раз отдаётся ровно блок, а не весь список целиком.
+      expect(find.text('Показать ещё (10 из 25)'), findsOneWidget);
+
+      // нажатие докладывает следующий блок
+      await tester.tap(find.text('Показать ещё (10 из 25)'));
+      await tester.pump();
+      expect(find.text('Показать ещё (20 из 25)'), findsOneWidget);
+    });
+
+    testWidgets('когда всё показано — видно подпись о конце ленты', (tester) async {
+      // 3 поста при блоке 10: подгрузка не нужна, должен быть явный финал
+      final base = DateTime(2026, 1, 1);
+      final cache = [
+        for (var i = 0; i < 3; i++)
+          samplePost(
+            id: 'p$i',
+            title: 'Карточка $i',
+            publishedAt: base.subtract(Duration(minutes: i)),
+          ),
+      ];
+
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: cache,
+      );
+      addTearDown(c.dispose);
+
+      tester.view.physicalSize = const Size(400, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+
+      expect(find.text('Это всё — новых записей больше нет'), findsOneWidget);
+      expect(find.textContaining('Показать ещё'), findsNothing);
     });
 
     testWidgets('на главной больше нет секции «Для вас»', (tester) async {
