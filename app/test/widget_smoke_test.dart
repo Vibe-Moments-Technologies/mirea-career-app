@@ -106,7 +106,8 @@ void main() {
       await tester.pump();
 
       expect(find.byType(OnboardingScreen), findsOneWidget);
-      expect(find.text('Где вы учитесь?'), findsOneWidget);
+      // первый шаг теперь «Ваш институт»: шаг с адресом убран из анкеты
+      expect(find.text('Ваш институт'), findsOneWidget);
       expect(frameworkErrors, isEmpty, reason: 'фреймворк сообщил об ошибке: $frameworkErrors');
     });
 
