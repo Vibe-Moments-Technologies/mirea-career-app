@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mirea_career/core/theme/app_theme.dart';
 import 'package:mirea_career/core/widgets/glass_dock.dart';
+import 'package:mirea_career/data/crash_reporting.dart';
 import 'package:mirea_career/data/local_store.dart';
 import 'package:mirea_career/data/metrics.dart';
 import 'package:mirea_career/data/posts_repo.dart';
@@ -232,6 +233,29 @@ void main() {
     test('без ключей приложение сообщает об этом, а не падает', () {
       expect(SupabaseConfig.isConfigured, isFalse,
           reason: 'в тестах ключи не передаются — так и должно быть');
+    });
+
+    test('Sentry выключен без DSN и не мешает запуску', () {
+      // В тестах DSN не передаётся: телеметрия должна молчать,
+      // иначе тесты начнут отправлять события в реальный Sentry.
+      expect(CrashReporting.isEnabled, isFalse);
+      expect(CrashReporting.showTestTools, isFalse,
+          reason: 'без DSN кнопка проверки не должна появляться в интерфейсе');
+    });
+
+    test('run() вызывает приложение даже без Sentry', () async {
+      var started = false;
+      await CrashReporting.run(() async => started = true);
+      expect(started, isTrue);
+    });
+
+    test('report() не бросает, когда телеметрия выключена', () async {
+      // вызывается из обработчика ошибок: собственная неудача
+      // не должна превращаться во второе падение
+      await expectLater(
+        CrashReporting.report(StateError('тест'), StackTrace.current),
+        completes,
+      );
     });
   });
 }

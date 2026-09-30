@@ -110,6 +110,11 @@ class FeedNotifier extends Notifier<FeedState> {
       if (posts.isNotEmpty) state = state.copyWith(posts: posts);
     }
     await refresh();
+
+    // Между await и этой строкой провайдер мог быть уничтожен (например,
+    // экран закрыли или тест завершился). Обращение к ref после dispose
+    // бросает исключение — поэтому проверяем, что мы ещё живы.
+    if (!ref.mounted) return;
     _subscribe();
   }
 
@@ -117,10 +122,12 @@ class FeedNotifier extends Notifier<FeedState> {
     state = state.copyWith(loading: true);
     try {
       final posts = await ref.read(postsRepoProvider).fetchPublished();
+      if (!ref.mounted) return; // провайдер уничтожен, пока шёл запрос
       state = state.copyWith(posts: _applyDeltas(posts), loading: false, offline: false);
       await ref.read(localStoreProvider).saveFeedCache(posts.map((p) => p.toJson()).toList());
     } catch (_) {
       // нет сети — остаёмся на кэше, показываем баннер
+      if (!ref.mounted) return;
       state = state.copyWith(loading: false, offline: true);
     }
   }

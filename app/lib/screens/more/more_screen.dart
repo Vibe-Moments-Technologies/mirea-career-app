@@ -194,11 +194,13 @@ class _Group extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-      ),
+    // Material, а не Container с цветом: ListTile рисует всплески нажатия
+    // на ближайшем Material, и цветной Container их перекрывает —
+    // Flutter ругается на это в debug-сборке.
+    return Material(
+      color: Theme.of(context).colorScheme.surface,
+      borderRadius: BorderRadius.circular(AppRadius.card),
+      clipBehavior: Clip.antiAlias,
       child: Column(children: children),
     );
   }
