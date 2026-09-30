@@ -54,7 +54,12 @@ class GlassDock extends StatelessWidget {
   /// `viewPadding` (а не `padding`): клавиатура не должна поднимать док —
   /// на экранах с доком полей ввода нет, но если появятся, док останется
   /// на месте, а не запрыгнет над клавиатурой.
-  static double _bottomInset(BuildContext context) =>
+  ///
+  /// Применять нужно в `Positioned(bottom: ...)` родителя (RootShell), а НЕ
+  /// как Padding внутри дока: Positioned с left+right+bottom даёт жёсткие
+  /// ограничения по высоте, и внутренний Padding растягивается, не оставляя
+  /// отступа. Тесты это ловят — см. group('Док').
+  static double bottomInset(BuildContext context) =>
       MediaQuery.viewPaddingOf(context).bottom + 8;
 
   /// Полная высота, которую док занимает у нижнего края ЭКРАНА.
@@ -63,7 +68,7 @@ class GlassDock extends StatelessWidget {
   /// поэтому координаты Stack — экранные. Экраны берут отсюда нижний отступ
   /// скролла, чтобы последняя карточка не пряталась под доком.
   static double totalHeight(BuildContext context) =>
-      height + _bottomInset(context);
+      height + bottomInset(context);
 
   @override
   Widget build(BuildContext context) {
@@ -71,56 +76,49 @@ class GlassDock extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     // подписи скрываем только на очень узких экранах
     final showLabel = media.size.width >= 340;
-    // Отступ считаем от низа ЭКРАНА: Scaffold.extendBody отдаёт body
-    // во всю высоту, поэтому координаты Stack — экранные, а не «экран минус
-    // safe area». Иначе док наезжал на home-indicator.
-    final bottom = _bottomInset(context);
 
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottom),
-      child: Align(
-        alignment: Alignment.bottomCenter,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: media.size.width - 32,
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(AppRadius.dock),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-              child: Container(
-                height: height,
-                padding: const EdgeInsets.symmetric(horizontal: 6),
-                decoration: BoxDecoration(
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: media.size.width - 32,
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(AppRadius.dock),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+            child: Container(
+              height: height,
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? const Color(0xFF1C1C1E).withValues(alpha: 0.82)
+                    : Colors.white.withValues(alpha: 0.86),
+                borderRadius: BorderRadius.circular(AppRadius.dock),
+                border: Border.all(
                   color: isDark
-                      ? const Color(0xFF1C1C1E).withValues(alpha: 0.82)
-                      : Colors.white.withValues(alpha: 0.86),
-                  borderRadius: BorderRadius.circular(AppRadius.dock),
-                  border: Border.all(
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.10)
-                        : Colors.white.withValues(alpha: 0.7),
-                    width: 1,
-                  ),
-                  boxShadow: AppShadows.dock(Theme.of(context).brightness),
+                      ? Colors.white.withValues(alpha: 0.10)
+                      : Colors.white.withValues(alpha: 0.7),
+                  width: 1,
                 ),
-                child: Align(
-                  alignment: Alignment.center,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (var i = 0; i < items.length; i++)
-                        _DockButton(
-                          item: items[i],
-                          selected: selectedIndex == i,
-                          showLabel: showLabel,
-                          onTap: () {
-                            HapticFeedback.lightImpact();
-                            onSelected(i);
-                          },
-                        ),
-                    ],
-                  ),
+                boxShadow: AppShadows.dock(Theme.of(context).brightness),
+              ),
+              child: Align(
+                alignment: Alignment.center,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var i = 0; i < items.length; i++)
+                      _DockButton(
+                        item: items[i],
+                        selected: selectedIndex == i,
+                        showLabel: showLabel,
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          onSelected(i);
+                        },
+                      ),
+                  ],
                 ),
               ),
             ),

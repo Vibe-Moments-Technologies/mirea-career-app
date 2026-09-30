@@ -315,10 +315,29 @@ class _Stats extends ConsumerWidget {
 
     return Row(
       children: [
-        _StatItem(icon: Icons.visibility_rounded, value: live.viewsCount, label: 'просмотров'),
+        // Flexible, а не голый _StatItem: внутри него есть свой Flexible,
+        // которому нужна ограниченная ширина. Без этого Flutter бросает
+        // «RenderFlex children have non-zero flex but incoming width
+        // constraints are unbounded» и весь экран деталей не строится.
+        Flexible(
+          child: _StatItem(
+            icon: Icons.visibility_rounded,
+            value: live.viewsCount,
+            label: 'просмотров',
+          ),
+        ),
         const SizedBox(width: 20),
-        _StatItem(icon: Icons.bookmark_rounded, value: live.favoritesCount, label: 'в избранном'),
-        const Spacer(),
+        Flexible(
+          child: _StatItem(
+            icon: Icons.bookmark_rounded,
+            value: live.favoritesCount,
+            label: 'в избранном',
+          ),
+        ),
+        // Spacer убран: он делил свободное место с двумя Flexible поровну,
+        // из-за чего подписи счётчиков растягивались на треть строки.
+        // Здесь нужен фиксированный зазор, а остаток забирает Flexible.
+        const SizedBox(width: 16),
         IconButton.filledTonal(
           onPressed: () async {
             HapticFeedback.mediumImpact();
@@ -344,7 +363,11 @@ class _StatItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Без Flexible внутри: ширину ограничивает родитель (см. _Stats),
+    // а вложенный flex требовал бы ограничения ещё на ступень выше и ронял
+    // раскладку assert'ом про unbounded width.
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, size: 18, color: AppColors.secondaryLight),
         const SizedBox(width: 6),
@@ -353,8 +376,6 @@ class _StatItem extends StatelessWidget {
           style: AppText.headline.copyWith(fontSize: 15),
         ),
         const SizedBox(width: 4),
-        // Flexible на случай длинного числа («12 345 просмотров»):
-        // без него строка переполняется и текст пропадает за краем.
         Flexible(
           child: Text(
             label,

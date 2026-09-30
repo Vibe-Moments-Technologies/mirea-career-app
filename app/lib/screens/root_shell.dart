@@ -58,11 +58,18 @@ class _RootShellState extends ConsumerState<RootShell> {
               MoreScreen(),
             ],
           ),
-          // Positioned снизу: док прижат к нижнему краю и растёт вверх
+          // Positioned снизу: док прижат к нижнему краю и растёт вверх.
+          //
+          // ВАЖНО: отступ от системной панели задаётся ЗДЕСЬ, а не внутри
+          // GlassDock. С `left`+`right`+`bottom` у Positioned жёсткие
+          // ограничения по высоте, и Padding внутри дока растягивался на всю
+          // высоту — отступ «съедался», док упирался в самый низ экрана и
+          // наезжал на home-indicator. Тесты это поймали: док стоял на 844
+          // из 844 при home-indicator 34 pt.
           Positioned(
             left: 0,
             right: 0,
-            bottom: 0,
+            bottom: GlassDock.bottomInset(context),
             child: GlassDock(
               items: _items,
               selectedIndex: _index,
