@@ -20,8 +20,10 @@ class CatalogScreen extends ConsumerStatefulWidget {
 }
 
 class _CatalogScreenState extends ConsumerState<CatalogScreen> {
-  /// 'university_dept' | 'partner' | 'for_you'
-  String _source = 'university_dept';
+  /// 'for_you' | 'university_dept' | 'partner'.
+  /// По умолчанию — «Для вас»: это персональный вход, ради которого
+  /// студент и открывает каталог.
+  String _source = 'for_you';
   FeedFilters _filters = const FeedFilters();
   bool _sortPopular = false;
 
@@ -75,17 +77,14 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          // Крупный заголовок с учётом верхнего safe area: SliverAppBar
-          // прижимал его к самой кромке экрана.
-          SliverPadding(
-            padding: EdgeInsets.fromLTRB(pad, AppInsets.top(context), pad, 12),
-            sliver: SliverToBoxAdapter(
-              child: ScreenTitle('Каталог'),
-            ),
+          // Заголовка страницы нет (по правкам): экран начинается сразу
+          // с переключателя разделов. Отступ — только safe area.
+          SliverToBoxAdapter(
+            child: SizedBox(height: AppInsets.top(context)),
           ),
           SliverToBoxAdapter(
             child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: pad),
+              padding: EdgeInsets.fromLTRB(pad, 4, pad, 12),
               child: _SourceSwitcher(
                 value: _source,
                 onChanged: (v) => setState(() {

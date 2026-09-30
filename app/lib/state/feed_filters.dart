@@ -149,13 +149,27 @@ List<Post> forYou(List<Post> posts, StudentProfile profile, {int limit = 10}) {
   return relevant.take(limit).toList();
 }
 
-/// Посты «Новое»: хронология, исключая уже показанные выше.
+/// Лента главной: приоритетное + подходящее по профилю + свежее — одним
+/// списком (docs/UI.md §4).
 ///
-/// Без лимита: подгрузка теперь блочная (экран показывает по 10 карточек),
-/// а обрезать здесь список значило бы врать счётчику «показано из N».
-List<Post> latest(List<Post> posts, {Set<String> exclude = const {}}) {
-  final rest = posts.where((p) => !exclude.contains(p.id)).toList();
-  rest.sort((a, b) =>
-      (b.publishedAt ?? DateTime(0)).compareTo(a.publishedAt ?? DateTime(0)));
-  return rest;
+/// Порядок слагаемых совпадает с приоритетом:
+///   1. is_featured — метка главного модератора, всегда сверху;
+///   2. релевантность профилю (scoreFor) — институт, теги, приоритетный вес;
+///   3. новизна — при равных остальных.
+///
+/// Featured НЕ исключаются из ленты (как раньше, где карусель их «съедала»):
+/// карусель сверху остаётся витриной, но пост должен оставаться доступным
+/// и в общем потоке — иначе пользователь, пропустивший карусель, его не найдёт.
+List<Post> homeFeed(List<Post> posts, StudentProfile profile) {
+  final scored = posts.map((p) => (p, scoreFor(p, profile))).toList();
+  scored.sort((a, b) {
+    // 1) приоритетное — всегда выше
+    if (a.$1.isFeatured != b.$1.isFeatured) return a.$1.isFeatured ? -1 : 1;
+    // 2) релевантность профилю
+    final c = b.$2.compareTo(a.$2);
+    if (c != 0) return c;
+    // 3) свежее — выше
+    return (b.$1.publishedAt ?? DateTime(0)).compareTo(a.$1.publishedAt ?? DateTime(0));
+  });
+  return scored.map((e) => e.$1).toList();
 }

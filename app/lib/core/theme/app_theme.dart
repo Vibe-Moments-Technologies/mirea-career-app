@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../widgets/glass_dock.dart';
@@ -23,6 +24,13 @@ class AppColors {
   static const surfaceDark = Color(0xFF1C1C1E);
   static const labelDark = Color(0xFFFFFFFF);
   static const secondaryDark = Color(0xFF8E8E93);
+
+  /// Тонкая разделительная линия / неактивные точки индикатора.
+  /// iOS systemGray5 для светлой темы и её тёмный аналог.
+  static Color separator(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF38383A)
+          : const Color(0xFFE5E5EA);
 
   /// Цвет бейджа по типу поста.
   ///
@@ -94,18 +102,30 @@ class AppInsets {
 class AppShadows {
   const AppShadows._();
   static List<BoxShadow> card(Brightness b) => [
+        // Двухслойная тень — как в iOS: плотный маленький слой держит контур,
+        // мягкий большой даёт объём. Одиночный слой выглядит «плоско-грязным».
         BoxShadow(
-          color: Colors.black.withValues(alpha: b == Brightness.dark ? 0.4 : 0.08),
-          blurRadius: 30,
-          offset: const Offset(0, 10),
+          color: Colors.black.withValues(alpha: b == Brightness.dark ? 0.3 : 0.05),
+          blurRadius: 6,
+          offset: const Offset(0, 2),
+        ),
+        BoxShadow(
+          color: Colors.black.withValues(alpha: b == Brightness.dark ? 0.35 : 0.07),
+          blurRadius: 28,
+          offset: const Offset(0, 12),
         ),
       ];
 
   static List<BoxShadow> dock(Brightness b) => [
         BoxShadow(
-          color: Colors.black.withValues(alpha: b == Brightness.dark ? 0.4 : 0.08),
-          blurRadius: 24,
-          offset: const Offset(0, 10),
+          color: Colors.black.withValues(alpha: b == Brightness.dark ? 0.3 : 0.06),
+          blurRadius: 8,
+          offset: const Offset(0, 2),
+        ),
+        BoxShadow(
+          color: Colors.black.withValues(alpha: b == Brightness.dark ? 0.35 : 0.09),
+          blurRadius: 30,
+          offset: const Offset(0, 12),
         ),
       ];
 }
@@ -176,6 +196,34 @@ ThemeData buildAppTheme(Brightness brightness) {
     ).apply(
       bodyColor: dark ? AppColors.labelDark : AppColors.labelLight,
       displayColor: dark ? AppColors.labelDark : AppColors.labelLight,
+    ),
+    // iOS-переходы на всех платформах: новый экран выезжает справа,
+    // предыдущий слегка уходит влево и гаснет. Дефолтный Material-«подъём»
+    // на Android выглядит дёргано рядом с нашим iOS-стилем.
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {
+        TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+      },
+    ),
+    // Чипсы и кнопки — единые скругления, без «разнобоя радиусов».
+    chipTheme: ChipThemeData(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
+      side: BorderSide.none,
+      labelStyle: AppText.footnote.copyWith(fontWeight: FontWeight.w500),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
+        textStyle: AppText.headline,
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
+        textStyle: AppText.headline,
+        side: BorderSide(color: scheme.outlineVariant),
+      ),
     ),
   );
 }

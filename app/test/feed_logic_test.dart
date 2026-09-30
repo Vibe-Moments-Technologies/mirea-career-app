@@ -16,6 +16,7 @@ Post post({
   int weight = 0,
   bool featured = false,
   String? orgName = 'Яндекс',
+  int publishedDaysAgo = 0,
 }) =>
     Post(
       id: id,
@@ -31,7 +32,7 @@ Post post({
       campuses: campuses,
       institutes: institutes,
       eventDate: DateTime.now().add(Duration(days: daysAhead)),
-      publishedAt: DateTime.now(),
+      publishedAt: DateTime.now().subtract(Duration(days: publishedDaysAgo)),
       viewsCount: views,
       priorityWeight: weight,
       isFeatured: featured,
@@ -142,6 +143,49 @@ void main() {
       final weighted = post(id: 'w', weight: 100);
       final normal = post(id: 'n');
       expect(forYou([normal, weighted], profile).first.id, 'w');
+    });
+  });
+
+  group('Лента главной (homeFeed)', () {
+    const profile = StudentProfile(
+      institute: 'iit',
+      tags: ['it'],
+      completed: true,
+    );
+
+    test('приоритетное (featured) всегда сверху, даже если оно старое', () {
+      final old = post(id: 'old', publishedDaysAgo: 30);
+      final featuredOld = post(id: 'featured', featured: true, publishedDaysAgo: 30);
+      final fresh = post(id: 'fresh');
+
+      // featured поднимается выше свежего, несмотря на возраст
+      expect(homeFeed([fresh, old, featuredOld], profile).first.id, 'featured');
+    });
+
+    test('релевантность профилю поднимает пост выше нерелевантного', () {
+      final relevant = post(id: 'rel', institutes: ['iit'], tags: ['it']);
+      final irrelevant = post(id: 'irr', orgType: 'partner');
+      // обе не featured, одинаково свежие — решает скоринг
+      expect(
+        homeFeed([irrelevant, relevant], profile).first.id,
+        'rel',
+        reason: 'релевантный профильному посту должен быть выше',
+      );
+    });
+
+    test('при равном featured и скоринге свежее выше', () {
+      final older = post(id: 'older', publishedDaysAgo: 5);
+      final newer = post(id: 'newer', publishedDaysAgo: 1);
+      expect(homeFeed([older, newer], profile).first.id, 'newer');
+    });
+
+    test('featured не исключаются из ленты — остаются и в общем потоке', () {
+      // карусель — витрина, но пост не должен исчезать из списка
+      final featured = post(id: 'f', featured: true);
+      final normal = post(id: 'n');
+      final ids = homeFeed([normal, featured], profile).map((p) => p.id).toList();
+      expect(ids, containsAll(['f', 'n']));
+      expect(ids.first, 'f');
     });
   });
 

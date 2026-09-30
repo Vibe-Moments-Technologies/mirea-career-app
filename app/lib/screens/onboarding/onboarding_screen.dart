@@ -50,6 +50,22 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
   }
 
+  /// Шаги с единственным выбором (институт, уровень) после выбора листаем
+  /// дальше сами — не заставляем пользователя жать «Далее» лишний раз.
+  /// Небольшая пауза: видно, что выбор отметился, и переход не «дёргается».
+  /// При редактировании профиля автоскролла нет: там выбор меняется
+  /// осознанно, и неожиданная прокрутка мешала бы.
+  void _maybeAdvance(bool changed) {
+    if (!changed || _isEditing || _step >= _steps - 1) return;
+    Future.delayed(const Duration(milliseconds: 220), () {
+      if (!mounted) return;
+      _controller.nextPage(
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
@@ -104,19 +120,29 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 children: [
                   _StepInstitute(
                     selected: _p.institute,
-                    onPick: (v) => setState(
-                      () => _p = v == _p.institute
-                          ? _p.copyWith(clearInstitute: true)
-                          : _p.copyWith(institute: v),
-                    ),
+                    onPick: (v) {
+                      // запоминаем до изменения: листаем вперёд только
+                      // при выборе НОВОГО значения, а не при отмене
+                      final changed = v != _p.institute;
+                      setState(
+                        () => _p = changed
+                            ? _p.copyWith(institute: v)
+                            : _p.copyWith(clearInstitute: true),
+                      );
+                      _maybeAdvance(changed);
+                    },
                   ),
                   _StepLevel(
                     selected: _p.level,
-                    onPick: (v) => setState(
-                      () => _p = v == _p.level
-                          ? _p.copyWith(clearLevel: true)
-                          : _p.copyWith(level: v),
-                    ),
+                    onPick: (v) {
+                      final changed = v != _p.level;
+                      setState(
+                        () => _p = changed
+                            ? _p.copyWith(level: v)
+                            : _p.copyWith(clearLevel: true),
+                      );
+                      _maybeAdvance(changed);
+                    },
                   ),
                   _StepInterests(
                     selected: _p.tags,
@@ -248,7 +274,7 @@ class _StepInterests extends StatelessWidget {
   Widget build(BuildContext context) {
     return _StepScaffold(
       title: 'Что вам интересно?',
-      subtitle: 'Выберите несколько — лента «Для вас» подстроится',
+      subtitle: 'Выберите несколько — подбор «Для вас» подстроится',
       child: Wrap(
         spacing: 10,
         runSpacing: 10,
@@ -284,21 +310,28 @@ class _Tile extends StatelessWidget {
       child: Material(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        child: InkWell(
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadius.card),
+          // Рамка выбора анимируется: при выборе плитка подсвечивается
+          // акцентом, при снятии — гаснет, а не переключается мгновенно.
+          side: BorderSide(
+            color: selected ? accent : AppColors.separator(context),
+            width: selected ? 2 : 1,
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
           onTap: () {
             HapticFeedback.selectionClick();
             onTap();
           },
-          child: Container(
+          highlightColor: accent.withValues(alpha: 0.06),
+          splashColor: accent.withValues(alpha: 0.08),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(AppRadius.card),
-              border: Border.all(
-                color: selected ? accent : Colors.transparent,
-                width: 2,
-              ),
-            ),
+            color: selected ? accent.withValues(alpha: 0.06) : Colors.transparent,
             child: Row(
               children: [
                 Expanded(
@@ -314,7 +347,13 @@ class _Tile extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (selected) Icon(Icons.check_circle_rounded, color: accent),
+                // Галочка появляется/исчезает плавно, а не скачком.
+                AnimatedScale(
+                  scale: selected ? 1 : 0,
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOutBack,
+                  child: Icon(Icons.check_circle_rounded, color: accent),
+                ),
               ],
             ),
           ),

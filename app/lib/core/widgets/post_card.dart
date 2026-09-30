@@ -26,14 +26,24 @@ class PostCard extends StatelessWidget {
 
     return Material(
       color: scheme.surface,
-      borderRadius: BorderRadius.circular(AppRadius.card),
+      // Тонкая граница вместо одной только тени: на светлом фоне карточки
+      // без границы «плывут», а тень выглядит грязным пятном.
+      // (borderRadius и shape вместе Material не принимает — только shape.)
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        side: BorderSide(color: AppColors.separator(context)),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(AppRadius.card),
+        // Подложка нажатия мягче splash-цветов Material: короткое
+        // затемнение поверхности, а не серая волна.
+        highlightColor: scheme.primary.withValues(alpha: 0.06),
+        splashColor: scheme.primary.withValues(alpha: 0.08),
         child: Padding(
           // Вертикальные отступы больше горизонтальных: карточка дышит
           // и не выглядит сжатой по высоте относительно превью.
-          padding: const EdgeInsets.fromLTRB(12, 14, 4, 14),
+          padding: const EdgeInsets.fromLTRB(14, 14, 6, 14),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

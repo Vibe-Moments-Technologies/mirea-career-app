@@ -40,10 +40,11 @@ class PostsRepo {
 
   /// Realtime-поток: публикация в админке появляется в ленте без обновления.
   ///
-  /// `.stream()` присылает ПОЛНЫЙ набор строк при каждом изменении — это и
-  /// есть нужный нам снимок, никакого `.expand` не требуется. Анонимный ключ
-  /// получает только `published` (RLS), фильтр по дате — на всякий случай:
-  /// отложенная публикация не должна просочиться раньше времени.
+  /// ВАЖНО: сам `.stream()` (postgres_changes) отдаёт только колонки таблицы
+  /// posts — вложенные `organizations` в нём НЕ приходят. Если отдавать эти
+  /// строки в интерфейс, organizationType станет null и фильтр «От вуза /
+  /// От партнёров» опустеет (так уже было). Поэтому событие realtime —
+  /// лишь сигнал перечитать полные данные через fetchPublished().
   Stream<List<Post>> watchPublished() {
     if (!_realtime) return const Stream.empty();
 
@@ -51,15 +52,7 @@ class PostsRepo {
         .from('posts')
         .stream(primaryKey: ['id'])
         .eq('status', 'published')
-        .order('published_at')
-        .map((rows) {
-          final now = DateTime.now();
-          return rows
-              .map(Post.tryParse)
-              .whereType<Post>()
-              .where((p) => p.publishedAt == null || !p.publishedAt!.isAfter(now))
-              .toList();
-        });
+        .asyncMap((_) => fetchPublished());
   }
 
   /// Счётчики — только через RPC (у анонима нет UPDATE на posts).

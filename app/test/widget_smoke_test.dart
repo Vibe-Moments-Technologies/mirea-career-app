@@ -491,9 +491,9 @@ void main() {
       expect(find.textContaining('Показать ещё'), findsNothing);
     });
 
-    testWidgets('на главной больше нет секции «Для вас»', (tester) async {
-      // Персональный подбор переехал в каталог: на главной дублировать
-      // его не нужно, там хронологическая лента.
+    testWidgets('на главной нет ни «Для вас», ни заголовка «Новое»', (tester) async {
+      // Персональный подбор — в каталоге; на главной единая лента без
+      // разделов. Заголовка страницы на главной тоже нет (по правкам).
       final c = await container(
         profile: const StudentProfile(completed: true, tags: ['it']),
         cache: [samplePost()],
@@ -503,8 +503,10 @@ void main() {
       await tester.pumpWidget(wrap(c, const RootShell()));
       await tester.pump();
 
-      expect(find.text('Новое'), findsOneWidget);
+      expect(find.text('Новое'), findsNothing);
       expect(find.text('Для вас'), findsNothing);
+      // лента на месте
+      expect(find.text('Осенняя ярмарка вакансий'), findsOneWidget);
     });
 
     testWidgets('на узком экране ничего не вылезает за границы', (tester) async {
