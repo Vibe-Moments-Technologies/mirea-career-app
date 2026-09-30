@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -28,7 +29,7 @@ class SettingsScreen extends ConsumerWidget {
           pad,
           8,
           pad,
-          AppInsets.scrollBottom(context),
+          AppInsets.screenBottom(context),
         ),
         children: [
           const _GroupTitle('Оформление'),
@@ -56,7 +57,7 @@ class SettingsScreen extends ConsumerWidget {
                 title: 'О приложении',
                 subtitle: 'Версия, назначение, контакты',
                 onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AboutScreen()),
+                  CupertinoPageRoute(builder: (_) => const AboutScreen()),
                 ),
               ),
             ],

@@ -9,11 +9,10 @@ import 'home/home_screen.dart';
 import 'more/more_screen.dart';
 import 'onboarding/onboarding_screen.dart';
 
-/// Корневой экран: контент во весь экран + парящий док поверх (docs/UI.md §2).
+/// Корневой экран: контент во весь экран + парящий док поверх.
 ///
-/// Док лежит в Stack, а НЕ в Scaffold.bottomNavigationBar. Причина: Flutter
-/// даёт тому слоту свободные ограничения по высоте, и док раздувался на весь
-/// экран, отъезжая от нижнего края на iPhone.
+/// GlassDock теперь сам позиционируется через Positioned внутри себя.
+/// RootShell просто кладёт его в Stack.
 class RootShell extends ConsumerStatefulWidget {
   const RootShell({super.key});
 
@@ -35,8 +34,6 @@ class _RootShellState extends ConsumerState<RootShell> {
   Widget build(BuildContext context) {
     final profile = ref.watch(profileProvider);
 
-    // Первый запуск — мини-опрос. «Пропустить» тоже считается пройденным
-    // состоянием: приложение остаётся пригодным без единого ответа.
     if (!profile.completed) {
       return OnboardingScreen(
         initial: profile,
@@ -45,7 +42,6 @@ class _RootShellState extends ConsumerState<RootShell> {
     }
 
     return Scaffold(
-      // контент занимает весь экран и уходит под док — так он размывается
       extendBody: true,
       body: Stack(
         children: [
@@ -58,14 +54,9 @@ class _RootShellState extends ConsumerState<RootShell> {
               MoreScreen(),
             ],
           ),
-          // Positioned снизу: док прижат к нижнему краю и растёт вверх.
-          //
-          // ВАЖНО: отступ от системной панели задаётся ЗДЕСЬ, а не внутри
-          // GlassDock. С `left`+`right`+`bottom` у Positioned жёсткие
-          // ограничения по высоте, и Padding внутри дока растягивался на всю
-          // высоту — отступ «съедался», док упирался в самый низ экрана и
-          // наезжал на home-indicator. Тесты это поймали: док стоял на 844
-          // из 844 при home-indicator 34 pt.
+          // Отступ от системной панели задаётся ЗДЕСЬ, а не внутри дока:
+          // с left+right+bottom у Positioned жёсткие ограничения, и внутренний
+          // отступ растягивался, а док уезжал на home-indicator.
           Positioned(
             left: 0,
             right: 0,

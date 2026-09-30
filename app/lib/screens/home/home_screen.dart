@@ -1,20 +1,19 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/post_card.dart';
-import '../../core/widgets/post_image.dart';
 import '../../data/models.dart';
 import '../../state/feed_filters.dart';
 import '../../state/providers.dart';
 import '../post/post_detail_screen.dart';
 
-/// Главная: карусель приоритетного → чипсы → единая лента (docs/UI.md §4).
+/// Главная: чипсы фильтров → единая лента.
 ///
-/// Лента одна и сортируется сразу по трём критериям (homeFeed):
-/// приоритетное (метка главного модератора) → релевантность профилю →
-/// свежесть. Отдельной секции «Новое» больше нет: заголовок «Новое» после
-/// фильтров выглядел странно, потому что содержимое было не только новым.
+/// Приоритетные карточки (is_featured) — всегда вверху, с акцентной обводкой.
+/// Отдельной витрины-карусели больше нет: она дублировала эти же посты и
+/// съедала экран, а выделение в самой карточке читается лучше.
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -54,26 +53,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final feed = ref.watch(feedProvider);
     final profile = ref.watch(profileProvider);
     final favorites = ref.watch(favoritesProvider);
-    final width = MediaQuery.sizeOf(context).width;
-    final pad = AppInsets.horizontal(width);
+    final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
 
     final filtered = applyFilters(feed.posts, _applyQuick(const FeedFilters()));
-    final featured = filtered.where((p) => p.isFeatured).take(5).toList();
-    // Единая лента: приоритетное остаётся и в карусели, и в списке —
-    // карусель это витрина, а пролистнувший её пользователь не должен
-    // терять пост из общего потока.
+    // homeFeed уже ставит приоритетные выше остальных (docs/ARCHITECTURE.md §3)
     final all = homeFeed(filtered, profile);
-
     final shown = all.take(_visible).toList();
-    final hasMore = all.length > shown.length;
 
     return Scaffold(
       body: RefreshIndicator(
         onRefresh: () => ref.read(feedProvider.notifier).refresh(),
         child: CustomScrollView(
           slivers: [
-            // Названия страницы нет (по правкам): экран начинается сразу
-            // с контента — карусели или чипсов. Отступ — только safe area.
             if (feed.offline)
               SliverToBoxAdapter(
                 child: Padding(
@@ -82,26 +73,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
               )
             else
-              SliverToBoxAdapter(
-                child: SizedBox(height: AppInsets.top(context)),
-              ),
-            if (featured.isNotEmpty)
-              SliverToBoxAdapter(
-                child: _HeroCarousel(
-                  posts: featured,
-                  favorites: favorites,
-                  onOpen: _open,
-                  onFav: _toggleFavorite,
-                ),
-              ),
-            // Плавный переход карусель → чипсы: воздух сверху и снизу,
-            // чипсы не прилипают к краям карточек.
+              SliverToBoxAdapter(child: SizedBox(height: AppInsets.top(context))),
             SliverToBoxAdapter(
               child: SizedBox(
                 height: 52,
                 child: ListView(
                   scrollDirection: Axis.horizontal,
-                  padding: EdgeInsets.fromLTRB(pad, featured.isNotEmpty ? 14 : 8, pad, 0),
+                  padding: EdgeInsets.fromLTRB(pad, 8, pad, 0),
                   children: [
                     for (final c in _quickChips)
                       Padding(
@@ -132,7 +110,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
               ),
             ),
-            // Хвост ленты: кнопка «показать ещё» или явный конец списка.
             SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.fromLTRB(
@@ -142,7 +119,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   AppInsets.scrollBottom(context),
                 ),
                 child: _ListTail(
-                  hasMore: hasMore,
+                  hasMore: all.length > shown.length,
                   isEmpty: all.isEmpty && !feed.loading,
                   loaded: shown.length,
                   total: all.length,
@@ -158,7 +135,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   void _open(Post post) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => PostDetailScreen(post: post)),
+      CupertinoPageRoute(builder: (_) => PostDetailScreen(post: post)),
     );
   }
 
@@ -225,9 +202,7 @@ class _ListTail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (isEmpty) {
-      return const _EmptyState();
-    }
+    if (isEmpty) return const _EmptyState();
     if (hasMore) {
       return OutlinedButton(
         onPressed: onMore,
@@ -243,7 +218,7 @@ class _ListTail extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(Icons.check_circle_outline_rounded,
+        const Icon(Icons.check_circle_outline_rounded,
             size: 16, color: AppColors.secondaryLight),
         const SizedBox(width: 6),
         // Flexible: длинная подпись на узком экране должна сжиматься,
@@ -257,258 +232,6 @@ class _ListTail extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _HeroCarousel extends StatefulWidget {
-  const _HeroCarousel({
-    required this.posts,
-    required this.favorites,
-    required this.onOpen,
-    required this.onFav,
-  });
-
-  final List<Post> posts;
-  final List<String> favorites;
-  final ValueChanged<Post> onOpen;
-  final ValueChanged<String> onFav;
-
-  @override
-  State<_HeroCarousel> createState() => _HeroCarouselState();
-}
-
-class _HeroCarouselState extends State<_HeroCarousel> {
-  late final PageController _pc = PageController(viewportFraction: 0.9);
-  int _page = 0;
-
-  @override
-  void dispose() {
-    _pc.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width;
-    final pad = AppInsets.horizontal(width);
-    // Высота соразмерна ширине экрана: на узких телефонах карточка иначе
-    // выглядит приплюснутой, на широких — вытянутой.
-    final height = (width * 0.5).clamp(170.0, 240.0);
-    final single = widget.posts.length == 1;
-
-    return Column(
-      children: [
-        SizedBox(
-          height: height,
-          // Одна карточка — не PageView: он с viewportFraction 0.9
-          // показывает половину соседа и оставляет пустые поля по бокам,
-          // из-за чего витрина «то есть, то нет». При одном посте кладём
-          // его обычным блоком на всю ширину минус отступы.
-          child: single
-              ? Padding(
-                  padding: EdgeInsets.fromLTRB(pad, 4, pad, 4),
-                  child: _HeroCard(
-                    post: widget.posts.first,
-                    isFavorite: widget.favorites.contains(widget.posts.first.id),
-                    onTap: () => widget.onOpen(widget.posts.first),
-                    onFav: () => widget.onFav(widget.posts.first.id),
-                  ),
-                )
-              : PageView.builder(
-                  controller: _pc,
-                  itemCount: widget.posts.length,
-                  onPageChanged: (i) => setState(() => _page = i),
-                  itemBuilder: (_, i) {
-                    final post = widget.posts[i];
-                    return Padding(
-                      padding: EdgeInsets.only(
-                        left: i == 0 ? pad : 5,
-                        right: i == widget.posts.length - 1 ? pad : 5,
-                        top: 4,
-                        bottom: 4,
-                      ),
-                      child: _HeroCard(
-                        post: post,
-                        isFavorite: widget.favorites.contains(post.id),
-                        onTap: () => widget.onOpen(post),
-                        onFav: () => widget.onFav(post.id),
-                      ),
-                    );
-                  },
-                ),
-        ),
-        // Точки-индикаторы: видно, сколько карточек в витрине и где ты сейчас.
-        // Раньше их не было, и переход от карусели к чипсам читался
-        // как обрыв контента.
-        if (widget.posts.length > 1)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                for (var i = 0; i < widget.posts.length; i++)
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    margin: const EdgeInsets.symmetric(horizontal: 3),
-                    width: i == _page ? 18 : 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: i == _page
-                          ? Theme.of(context).colorScheme.primary
-                          : AppColors.separator(context),
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _HeroCard extends StatelessWidget {
-  const _HeroCard({
-    required this.post,
-    required this.isFavorite,
-    required this.onTap,
-    required this.onFav,
-  });
-
-  final Post post;
-  final bool isFavorite;
-  final VoidCallback onTap;
-  final VoidCallback onFav;
-
-  @override
-  Widget build(BuildContext context) {
-    final brightness = Theme.of(context).brightness;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        // Окантовка ОБЯЗАТЕЛЬНА и на тёмной теме тоже: hero лежит
-        // на чёрном фоне, и без границы тёмная карточка растворялась —
-        // «то есть визуал, то нет». Граница + тень держат контур всегда.
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(AppRadius.card),
-          border: Border.all(
-            color: brightness == Brightness.dark
-                ? Colors.white.withValues(alpha: 0.14)
-                : Colors.black.withValues(alpha: 0.06),
-          ),
-          boxShadow: AppShadows.card(brightness),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(AppRadius.card),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // Та же обложка, что и в списке: фото → буквенная заглушка.
-              // Раньше здесь был отдельный _HeroFallback с иконкой, из-за
-              // чего витрина и лента выглядели по-разному.
-              PostCover(
-                post: post,
-                size: null,
-                borderRadius: BorderRadius.zero,
-                letter: true,
-              ),
-              const DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Colors.transparent, Color(0xCC000000)],
-                    stops: [0.35, 1],
-                  ),
-                ),
-              ),
-              // Метка «Приоритет»: её ставит главный модератор, и она
-              // должна быть видна на витрине.
-              Positioned(
-                left: 14,
-                top: 14,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.35),
-                    borderRadius: BorderRadius.circular(AppRadius.pill),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.star_rounded, size: 14, color: Colors.white),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Приоритет',
-                        style: AppText.caption.copyWith(color: Colors.white),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              Positioned(
-                left: 16,
-                right: 52,
-                bottom: 14,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      post.organizationName ?? '',
-                      style: AppText.caption.copyWith(
-                        color: Colors.white.withValues(alpha: 0.85),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      post.title,
-                      style: AppText.title.copyWith(color: Colors.white),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              Positioned(
-                right: 10,
-                bottom: 10,
-                child: _RoundIconButton(
-                  icon: isFavorite
-                      ? Icons.bookmark_rounded
-                      : Icons.bookmark_border_rounded,
-                  onTap: onFav,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _RoundIconButton extends StatelessWidget {
-  const _RoundIconButton({required this.icon, required this.onTap});
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.black.withValues(alpha: 0.3),
-      shape: const CircleBorder(),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Icon(icon, size: 20, color: Colors.white),
-        ),
-      ),
     );
   }
 }
@@ -548,7 +271,8 @@ class _EmptyState extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 48),
       child: Column(
         children: [
-          Icon(Icons.inbox_rounded, size: 44, color: AppColors.secondaryLight.withValues(alpha: 0.6)),
+          Icon(Icons.inbox_rounded,
+              size: 44, color: AppColors.secondaryLight.withValues(alpha: 0.6)),
           const SizedBox(height: 12),
           Text(
             'Пока ничего нет',

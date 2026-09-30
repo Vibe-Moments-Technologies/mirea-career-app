@@ -99,6 +99,14 @@ class AppInsets {
   /// не разъезжался при правке размеров.
   static double scrollBottom(BuildContext context) =>
       GlassDock.scrollBottom(context);
+
+  /// Нижний отступ для выталкиваемого экрана (детали, профиль, настройки).
+  ///
+  /// Там дока нет, поэтому [scrollBottom] резервировал бы лишнюю высоту
+  /// дока: контент уезжал от низа экрана, а кнопка «внизу» висела выше
+  /// системной панели.
+  static double screenBottom(BuildContext context) =>
+      MediaQuery.viewPaddingOf(context).bottom + 24;
 }
 
 /// Тени: мягкие, диффузные, никогда не чёрные (UI.md §1).

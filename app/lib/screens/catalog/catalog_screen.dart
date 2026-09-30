@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -68,7 +69,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
     } else {
       final effective =
           _filters.copyWith(source: _source, sortByPopularity: _sortPopular);
-      posts = applyFilters(feed.posts, effective);
+      posts = priorityFirst(applyFilters(feed.posts, effective));
     }
 
     final shown = posts.take(_visible).toList();
@@ -154,7 +155,9 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                         maxCrossAxisExtent: 380,
                         mainAxisSpacing: 10,
                         crossAxisSpacing: 10,
-                        mainAxisExtent: 148,
+                        // Карточка выросла: блок контента + кнопка «Регистрация»
+                        // внутри. 148 pt обрезали её на планшетах.
+                        mainAxisExtent: 210,
                       ),
                       itemCount: shown.length,
                       itemBuilder: (_, i) => _card(shown[i], favorites),
@@ -207,7 +210,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
 
   void _openProfile(StudentProfile profile) {
     Navigator.of(context).push(
-      MaterialPageRoute(
+      CupertinoPageRoute(
         builder: (_) => OnboardingScreen(
           initial: profile,
           onDone: (p) {
@@ -223,7 +226,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
         post: post,
         isFavorite: favorites.contains(post.id),
         onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => PostDetailScreen(post: post)),
+          CupertinoPageRoute(builder: (_) => PostDetailScreen(post: post)),
         ),
         onToggleFavorite: () async {
           final added = await ref.read(favoritesProvider.notifier).toggle(post.id);

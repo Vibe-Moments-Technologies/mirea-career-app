@@ -97,4 +97,7 @@ class Catalogs {
 
   static String levelTitle(String? id) =>
       levels.where((l) => l.id == id).map((l) => l.title).firstOrNull ?? 'Уровень не указан';
+
+  static String interestTitle(String id) =>
+      interests.where((i) => i.id == id).map((i) => i.title).firstOrNull ?? id;
 }

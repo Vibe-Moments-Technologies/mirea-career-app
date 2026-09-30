@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,9 +11,8 @@ import '../../data/models.dart';
 import '../../state/providers.dart';
 import '../org/org_screen.dart';
 
-/// Экран деталей поста (docs/UI.md §7).
-/// Открытие = один просмотр (дедупликация на устройстве), кнопка заявки —
-/// всегда на виду внизу.
+/// Экран деталей поста.
+/// Кнопка регистрации — внутри контента, внизу карточки.
 class PostDetailScreen extends ConsumerStatefulWidget {
   const PostDetailScreen({super.key, required this.post});
 
@@ -26,7 +26,6 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
   @override
   void initState() {
     super.initState();
-    // просмотр засчитываем после первого кадра, чтобы не тормозить переход
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(metricsProvider).registerView(widget.post.id).then((counted) {
         if (counted && mounted) ref.read(feedProvider.notifier).bumpViews(widget.post.id);
@@ -34,12 +33,9 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     });
   }
 
-  Future<void> _openLink() async {
-    final link = widget.post.externalLink;
-    if (link == null || link.isEmpty) return;
-    final uri = Uri.tryParse(link);
+  static Future<void> _launchLink(String url) async {
+    final uri = Uri.tryParse(url);
     if (uri == null) return;
-    // внешний браузер, не WebView (docs/UI.md §7)
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
@@ -69,9 +65,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                 AppInsets.horizontal(MediaQuery.sizeOf(context).width),
                 20,
                 AppInsets.horizontal(MediaQuery.sizeOf(context).width),
-                // Кнопка заявки лежит в bottomNavigationBar и сама
-                // резервирует место — контенту достаточно небольшого воздуха.
-                24,
+                AppInsets.screenBottom(context),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -102,41 +96,29 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                   ],
                   const SizedBox(height: 20),
                   _Stats(post: post, isFavorite: isFav),
+                  if (hasLink) ...[
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () => _launchLink(post.externalLink!),
+                        icon: const Icon(Icons.open_in_new_rounded, size: 20),
+                        label: const Text('Перейти к регистрации'),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size.fromHeight(54),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(AppRadius.pill),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
           ),
         ],
       ),
-      bottomNavigationBar: hasLink
-          ? Padding(
-              // На этом экране дока нет, поэтому отступ — только системная
-              // панель и небольшой воздух. Раньше здесь стоял scrollBottom
-              // (высота дока + safe area), из-за чего кнопка висела высоко
-              // над контентом.
-              //
-              // viewPadding, а не padding: клавиатура и прочие viewInsets
-              // не должны схлопывать отступ — кнопка прижата к системной
-              // панели всегда.
-              padding: EdgeInsets.fromLTRB(
-                20,
-                0,
-                20,
-                MediaQuery.viewPaddingOf(context).bottom + 12,
-              ),
-              child: FilledButton.icon(
-                onPressed: _openLink,
-                icon: const Icon(Icons.open_in_new_rounded, size: 20),
-                label: const Text('Перейти к регистрации'),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(54),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppRadius.pill),
-                  ),
-                ),
-              ),
-            )
-          : null,
     );
   }
 }
@@ -250,7 +232,7 @@ class _Organizer extends StatelessWidget {
       child: InkWell(
         // Ведёт на профиль организатора: там контакты и все его предложения.
         onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => OrgScreen(organizationId: post.organizationId)),
+          CupertinoPageRoute(builder: (_) => OrgScreen(organizationId: post.organizationId)),
         ),
         child: Padding(
           padding: const EdgeInsets.all(14),

@@ -1,12 +1,15 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/post_card.dart';
+import '../../state/feed_filters.dart';
 import '../../state/providers.dart';
 import '../post/post_detail_screen.dart';
 
-/// Избранное: локальный список, работает офлайн (docs/UI.md §8).
+/// Избранное: локальный список, работает офлайн.
+/// Приоритетные (isFeatured) — сверху.
 class FavoritesScreen extends ConsumerWidget {
   const FavoritesScreen({super.key});
 
@@ -16,9 +19,9 @@ class FavoritesScreen extends ConsumerWidget {
     final feed = ref.watch(feedProvider);
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
 
-    // сохраняем порядок «сначала недавно добавленные»
+    // сохраняем порядок «сначала недавно добавленные», но приоритетные — выше
     final byId = {for (final p in feed.posts) p.id: p};
-    final posts = [for (final id in ids) if (byId[id] != null) byId[id]!];
+    final posts = priorityFirst([for (final id in ids) if (byId[id] != null) byId[id]!]);
 
     return Scaffold(
       body: CustomScrollView(
@@ -89,7 +92,7 @@ class FavoritesScreen extends ConsumerWidget {
                       post: post,
                       isFavorite: true,
                       onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => PostDetailScreen(post: post)),
+                        CupertinoPageRoute(builder: (_) => PostDetailScreen(post: post)),
                       ),
                       onToggleFavorite: () {
                         ref.read(favoritesProvider.notifier).toggle(post.id);

@@ -146,6 +146,32 @@ void main() {
     });
   });
 
+  group('Приоритетные карточки (priorityFirst)', () {
+    test('приоритетные поднимаются наверх, остальные сохраняют порядок', () {
+      final input = [
+        post(id: 'n1'),
+        post(id: 'f1', featured: true),
+        post(id: 'n2'),
+        post(id: 'f2', featured: true),
+      ];
+      expect(priorityFirst(input).map((p) => p.id), ['f1', 'f2', 'n1', 'n2']);
+    });
+
+    test('порядок внутри групп не перемешивается', () {
+      // Именно ради этого разбиение, а не sort: сортировка в Dart нестабильна
+      // и переставила бы посты с одинаковым признаком произвольно.
+      final input = [for (var i = 0; i < 20; i++) post(id: 'n$i')];
+      expect(priorityFirst(input).map((p) => p.id),
+          [for (var i = 0; i < 20; i++) 'n$i']);
+    });
+
+    test('пустой список и список без приоритетных не ломаются', () {
+      expect(priorityFirst(const []), isEmpty);
+      expect(priorityFirst([post(id: 'a'), post(id: 'b')]).map((p) => p.id),
+          ['a', 'b']);
+    });
+  });
+
   group('Лента главной (homeFeed)', () {
     const profile = StudentProfile(
       institute: 'iit',

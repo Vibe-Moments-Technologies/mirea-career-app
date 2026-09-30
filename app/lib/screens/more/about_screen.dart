@@ -1,58 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/settings_list.dart';
-import '../../data/crash_reporting.dart';
 
 /// Версия приложения. Совпадает с pubspec.yaml; CI подставляет свою.
 const _appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.1.0');
 const _appBuild = String.fromEnvironment('APP_BUILD', defaultValue: '1');
 
-/// «О приложении»: назначение, версия, контакты.
+/// «О приложении»: назначение, версия, контакты, авторы.
 ///
-/// Экран полноценный, а не системный диалог: раньше здесь открывался
-/// `showAboutDialog`, где нельзя было ни разместить контакты, ни спрятать
-/// отладочный вход.
-class AboutScreen extends ConsumerStatefulWidget {
+/// Экран полноценный, а не системный диалог: в `showAboutDialog` нельзя ни
+/// разместить контакты, ни показать копирайт командной разработки.
+class AboutScreen extends StatelessWidget {
   const AboutScreen({super.key});
-
-  @override
-  ConsumerState<AboutScreen> createState() => _AboutScreenState();
-}
-
-class _AboutScreenState extends ConsumerState<AboutScreen> {
-  /// Счётчик нажатий на версию.
-  ///
-  /// 8 нажатий подряд открывают отладочный экран — стандартный приём,
-  /// чтобы инструменты были доступны тестировщику и не видны студенту.
-  int _versionTaps = 0;
-
-  void _onVersionTap() {
-    _versionTaps++;
-    if (_versionTaps >= 8) {
-      _versionTaps = 0;
-      HapticFeedback.mediumImpact();
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const DebugScreen()),
-      );
-      return;
-    }
-    // подсказываем, что осталось немного — иначе трюк неоткрываем
-    if (_versionTaps >= 4) {
-      final left = 8 - _versionTaps;
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(
-            duration: const Duration(milliseconds: 700),
-            content: Text('До отладочного меню: $left'),
-          ),
-        );
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -68,7 +29,7 @@ class _AboutScreenState extends ConsumerState<AboutScreen> {
           pad,
           8,
           pad,
-          AppInsets.scrollBottom(context),
+          AppInsets.screenBottom(context),
         ),
         children: [
           const SizedBox(height: 8),
@@ -148,13 +109,13 @@ class _AboutScreenState extends ConsumerState<AboutScreen> {
                 icon: Icons.mail_outline_rounded,
                 title: 'Написать в карьерный центр',
                 subtitle: 'career@mirea.ru',
-                onTap: () => _openLink('mailto:career@mirea.ru'),
+                onTap: () => _openLink(context, 'mailto:career@mirea.ru'),
               ),
               SettingsTile(
                 icon: Icons.language_rounded,
                 title: 'Сайт университета',
                 subtitle: 'mirea.ru',
-                onTap: () => _openLink('https://mirea.ru'),
+                onTap: () => _openLink(context, 'https://mirea.ru'),
               ),
             ],
           ),
@@ -163,24 +124,21 @@ class _AboutScreenState extends ConsumerState<AboutScreen> {
             footer: 'Данные профиля не покидают устройство. '
                 'Просмотры и добавления в избранное передаются обезличенно — '
                 'без идентификаторов пользователя.',
-            children: [
-              // 8 нажатий подряд открывают отладочное меню
-              ListTile(
-                onTap: _onVersionTap,
-                title: Text('Версия', style: AppText.headline),
-                trailing: Text(
-                  '$_appVersion ($_appBuild)',
-                  style: AppText.footnote.copyWith(color: AppColors.secondaryLight),
-                ),
-              ),
-              const SettingsValueTile(title: 'Платформа', value: 'Flutter'),
+            children: const [
+              // Версия — просто значение. Раньше здесь был счётчик нажатий с
+              // подсказкой «осталось N»: он выдавал отладочный экран с первых
+              // четырёх кликов и делал его видным студенту. Диагностика теперь
+              // идёт через Sentry, а не через тап-секрет в интерфейсе.
+              SettingsValueTile(title: 'Версия', value: '$_appVersion ($_appBuild)'),
             ],
           ),
           const SizedBox(height: 24),
           Center(
             child: Text(
-              '© РТУ МИРЭА, ${DateTime.now().year}',
-              style: AppText.caption.copyWith(color: AppColors.secondaryLight),
+              '© РТУ МИРЭА, ${DateTime.now().year}\n'
+              '© Vibe Moments Technologies, ${DateTime.now().year}',
+              textAlign: TextAlign.center,
+              style: AppText.caption.copyWith(color: AppColors.secondaryLight, height: 1.5),
             ),
           ),
         ],
@@ -188,87 +146,19 @@ class _AboutScreenState extends ConsumerState<AboutScreen> {
     );
   }
 
-  Future<void> _openLink(String url) async {
+  /// Контекст передаётся явно: метод виджета не имеет поля `context`,
+  /// а ScaffoldMessenger нужен именно этому экрану.
+  Future<void> _openLink(BuildContext context, String url) async {
     final uri = Uri.tryParse(url);
     if (uri == null) return;
     // canLaunchUrl может вернуть false без явной регистрации схемы,
-    // поэтому пробуем запуск напрямую и сообщаем, если не получилось
+    // поэтому пробуем запуск напрямую
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!ok && mounted) {
+    if (!ok && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Не удалось открыть ссылку')),
       );
     }
-  }
-}
-
-/// Отладочное меню: открывается 8 нажатиями по версии.
-///
-/// В релизной сборке инструментов здесь нет — без них экран покажет
-/// только пояснение, чтобы было понятно, почему он пуст.
-class DebugScreen extends StatelessWidget {
-  const DebugScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Отладка'),
-        titleTextStyle: AppText.headline,
-      ),
-      body: ListView(
-        padding: EdgeInsets.fromLTRB(pad, 8, pad, AppInsets.scrollBottom(context)),
-        children: [
-          SettingsGroup(
-            title: 'Диагностика',
-            footer: 'Телеметрия помогает узнать о сбоях у тестировщиков. '
-                'Без неё release-сборка не сообщает об ошибках вообще.',
-            children: [
-              SettingsValueTile(
-                title: 'Sentry DSN',
-                value: CrashReporting.isEnabled ? 'задан' : 'не задан',
-              ),
-              const SettingsValueTile(
-                title: 'Окружение',
-                value: String.fromEnvironment('SENTRY_ENVIRONMENT', defaultValue: '—'),
-              ),
-              const SettingsValueTile(
-                title: 'Канал',
-                value: String.fromEnvironment('APP_CHANNEL', defaultValue: '—'),
-              ),
-            ],
-          ),
-          if (CrashReporting.isEnabled) ...[
-            const SizedBox(height: 24),
-            SettingsGroup(
-              title: 'Проверка',
-              children: [
-                Builder(
-                  builder: (context) => SettingsTile(
-                    icon: Icons.bug_report_outlined,
-                    title: 'Отправить тестовую ошибку',
-                    subtitle: 'Событие появится в Sentry в течение минуты',
-                    onTap: () async {
-                      try {
-                        throw StateError('Отладочная проверка из приложения');
-                      } catch (e, st) {
-                        await CrashReporting.report(e, st, context: 'debug_screen');
-                      }
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Ошибка отправлена')),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
   }
 }
 

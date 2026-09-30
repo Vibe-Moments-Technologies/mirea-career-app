@@ -149,6 +149,17 @@ List<Post> forYou(List<Post> posts, StudentProfile profile, {int limit = 10}) {
   return relevant.take(limit).toList();
 }
 
+/// Приоритетные карточки (is_featured) — вверх, порядок внутри групп
+/// сохраняется.
+///
+/// Именно разбиение, а не `sort`: сортировка в Dart НЕ стабильная, и посты
+/// с одинаковым признаком «приходили бы в случайном порядке» — в избранном
+/// это ломало «сначала недавно добавленные», в каталоге — порядок фильтра.
+List<Post> priorityFirst(List<Post> posts) => [
+      for (final p in posts.where((p) => p.isFeatured)) p,
+      for (final p in posts.where((p) => !p.isFeatured)) p,
+    ];
+
 /// Лента главной: приоритетное + подходящее по профилю + свежее — одним
 /// списком (docs/UI.md §4).
 ///

@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -5,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/post_card.dart';
 import '../../data/models.dart';
+import '../../state/feed_filters.dart';
 import '../../state/providers.dart';
 import '../post/post_detail_screen.dart';
 
@@ -23,7 +25,10 @@ class OrgScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final posts = ref.watch(feedProvider).posts;
     final favorites = ref.watch(favoritesProvider);
-    final own = posts.where((p) => p.organizationId == organizationId).toList();
+    // Приоритетные (is_featured) — вверху, как на главной и в каталоге.
+    final own = priorityFirst(
+      posts.where((p) => p.organizationId == organizationId).toList(),
+    );
     final org = own.isNotEmpty ? own.first.organization : null;
 
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
@@ -42,7 +47,7 @@ class OrgScreen extends ConsumerWidget {
               ),
             )
           : ListView(
-              padding: EdgeInsets.fromLTRB(pad, 8, pad, 32),
+              padding: EdgeInsets.fromLTRB(pad, 8, pad, AppInsets.screenBottom(context)),
               children: [
                 _Header(org: org, postCount: own.length),
                 if ((org.description ?? '').isNotEmpty) ...[
@@ -59,7 +64,7 @@ class OrgScreen extends ConsumerWidget {
                     post: p,
                     isFavorite: favorites.contains(p.id),
                     onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => PostDetailScreen(post: p)),
+                      CupertinoPageRoute(builder: (_) => PostDetailScreen(post: p)),
                     ),
                     onToggleFavorite: () async {
                       final added =

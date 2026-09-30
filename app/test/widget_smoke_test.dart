@@ -8,7 +8,7 @@ import 'package:mirea_career/data/crash_reporting.dart';
 import 'package:mirea_career/data/local_store.dart';
 import 'package:mirea_career/data/metrics.dart';
 import 'package:mirea_career/data/posts_repo.dart';
-import 'package:mirea_career/screens/more/more_screen.dart';
+import 'package:mirea_career/screens/more/profile_screen.dart';
 import 'package:mirea_career/screens/onboarding/onboarding_screen.dart';
 import 'package:mirea_career/screens/root_shell.dart';
 import 'package:mirea_career/state/providers.dart';
@@ -58,6 +58,7 @@ Map<String, dynamic> samplePost({
   List<String> tags = const ['карьера'],
   DateTime? publishedAt,
   Map<String, dynamic>? organization,
+  String? externalLink,
 }) =>
     {
       'id': id,
@@ -69,6 +70,7 @@ Map<String, dynamic> samplePost({
       'status': 'published',
       'organizations': organization ??
           {'id': 'org1', 'name': 'Карьерный центр', 'type': 'university_dept'},
+      'external_link': externalLink,
       'tags': tags,
       'campuses': <String>[],
       'institutes': <String>[],
@@ -587,6 +589,143 @@ void main() {
         lessThanOrEqualTo(915 - 48),
         reason: 'док ($dockBottom) уходит под кнопки навигации (867)',
       );
+    });
+
+    testWidgets('док не растянут на всю ширину экрана', (tester) async {
+      // Реальная правка: ConstrainedBox(maxWidth:) внутри Positioned с
+      // left+right даёт ЖЁСТКУЮ ширину, и док занимал весь экран. Теперь
+      // размер задан явно и не зависит от ширины экрана.
+      tester.view.physicalSize = const Size(430, 932);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final c = await container(profile: const StudentProfile(completed: true));
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+
+      final dock = tester.getRect(find.byType(GlassDock));
+      expect(dock.width, lessThan(430), reason: 'док растянут на весь экран: $dock');
+      // и центрирован, а не прижат к краю
+      expect(dock.center.dx, moreOrLessEquals(430 / 2, epsilon: 1));
+    });
+
+    testWidgets('пункты дока не переполняются при выборе', (tester) async {
+      // Подпись выбранного пункта расширяла кнопку и сдвигала соседей.
+      // Теперь в доке только иконки, а название живёт в Semantics.
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [samplePost()],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.grid_view_rounded));
+      await tester.pumpAndSettle();
+
+      final overflows =
+          frameworkErrors.where((e) => e.contains('overflowed')).toList();
+      expect(overflows, isEmpty, reason: 'переполнение дока: $overflows');
+    });
+  });
+
+  group('Приоритетные карточки', () {
+    testWidgets('приоритетная идёт первой и получает акцентную обводку',
+        (tester) async {
+      final base = DateTime(2026, 1, 1);
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [
+          samplePost(id: 'a', title: 'Свежая обычная', publishedAt: base),
+          samplePost(
+            id: 'b',
+            title: 'Старая приоритетная',
+            featured: true,
+            publishedAt: base.subtract(const Duration(days: 30)),
+          ),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+
+      // приоритетная поднялась вверх, несмотря на возраст
+      expect(find.text('Старая приоритетная'), findsOneWidget);
+      expect(find.text('Приоритет'), findsOneWidget);
+
+      // витрины-карусели больше нет: обе карточки в общем потоке
+      expect(find.text('Свежая обычная'), findsOneWidget);
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
+  });
+
+  group('Кнопка регистрации', () {
+    testWidgets('встроена в карточку, а не висит блоком поверх', (tester) async {
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [
+          samplePost(
+            id: 'a',
+            title: 'Стажировка с регистрацией',
+            externalLink: 'https://example.com/apply',
+            organization: {
+              'id': 'org1',
+              'name': 'Яндекс',
+              'type': 'partner',
+            },
+          ),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+
+      // кнопка видна прямо в карточке ленты
+      expect(find.text('Регистрация'), findsOneWidget);
+
+      // и на экране деталей — в конце контента, а не в закреплённой панели
+      await tester.tap(find.text('Стажировка с регистрацией'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Перейти к регистрации'), findsOneWidget);
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
+  });
+
+  group('Профиль студента', () {
+    testWidgets('открывается отдельной страницей и правится по строкам',
+        (tester) async {
+      final c = await container(profile: const StudentProfile(completed: true));
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+
+      // док → «Ещё»
+      await tester.tap(find.byIcon(Icons.person_rounded));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Профиль'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Институт'), findsOneWidget);
+      expect(find.text('Уровень обучения'), findsOneWidget);
+      expect(find.text('Интересы'), findsOneWidget);
+
+      // строка открывается и выбранный институт сохраняется
+      await tester.tap(find.text('Институт'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('ИИТ'));
+      await tester.pumpAndSettle();
+
+      expect(c.read(profileProvider).institute, 'iit');
+      expect(find.text('ИИТ'), findsOneWidget);
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
   });
 
