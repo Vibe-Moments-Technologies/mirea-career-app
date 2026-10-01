@@ -105,12 +105,15 @@ class _RootShellState extends ConsumerState<RootShell>
                 // по уезжающей капсуле открывает вкладку под подстраницей.
                 ignoring: _dockVisibility.value < 1,
                 child: SlideTransition(
+                  // begin — скрытое положение (ниже экрана), end — рабочее.
+                  // Значение 1 = док на месте: если поменять местами, при
+                  // единице док уезжает вниз и висит за краем экрана.
                   position: Tween<Offset>(
-                    begin: Offset.zero,
-                    end: const Offset(0, 1.4),
+                    begin: const Offset(0, 1.4),
+                    end: Offset.zero,
                   ).animate(CurvedAnimation(
                     parent: _dockVisibility,
-                    curve: Curves.easeInCubic,
+                    curve: Curves.easeOutCubic,
                   )),
                   child: FadeTransition(
                     opacity: _dockVisibility,

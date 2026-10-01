@@ -15,6 +15,7 @@ import 'package:mirea_career/data/posts_repo.dart';
 import 'package:mirea_career/screens/favorites/favorites_screen.dart';
 import 'package:mirea_career/screens/home/home_screen.dart';
 import 'package:mirea_career/screens/more/profile_screen.dart';
+import 'package:mirea_career/screens/org/organizations_screen.dart';
 import 'package:mirea_career/screens/onboarding/onboarding_screen.dart';
 import 'package:mirea_career/screens/root_shell.dart';
 import 'package:mirea_career/state/feed_filters.dart';
@@ -787,9 +788,17 @@ void main() {
       await tester.tap(find.byIcon(Icons.bookmark_rounded).last);
       await tester.pumpAndSettle();
 
-      // карточка видна, но модераторской метки в избранном нет
-      expect(find.text('Приоритетная'), findsOneWidget);
-      expect(find.text('Приоритет'), findsNothing);
+      // Заголовок встречается несколько раз: IndexedStack держит в дереве
+      // все вкладки, а карточка есть и в витрине, и в ленте. Важно, что
+      // модераторской МЕТКИ в избранном нет.
+      expect(find.text('Приоритетная'), findsWidgets);
+      expect(
+        find.descendant(
+          of: find.byType(FavoritesScreen),
+          matching: find.text('Приоритет'),
+        ),
+        findsNothing,
+      );
     });
   });
 
@@ -807,8 +816,16 @@ void main() {
       await tester.tap(find.byIcon(Icons.bookmark_rounded).last);
       await tester.pumpAndSettle();
 
-      // На избранном нет свайпа-обновления…
-      expect(find.byType(RefreshIndicator), findsNothing);
+      // На избранном нет свайпа-обновления. Проверяем ВНУТРИ вкладки:
+      // IndexedStack держит главную в дереве, и её RefreshIndicator
+      // находился бы через глобальный поиск.
+      expect(
+        find.descendant(
+          of: find.byType(FavoritesScreen),
+          matching: find.byType(RefreshIndicator),
+        ),
+        findsNothing,
+      );
       // …и прокрутка ограничена содержимым, а не отскакивает за края.
       final scroll = tester.widget<CustomScrollView>(
         find.descendant(
@@ -829,10 +846,37 @@ void main() {
       await tester.pumpWidget(wrap(c, const RootShell()));
       await tester.pump();
 
-      expect(find.byType(RefreshIndicator), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(HomeScreen),
+          matching: find.byType(RefreshIndicator),
+        ),
+        findsOneWidget,
+      );
       final scroll = tester.widget<CustomScrollView>(
         find.descendant(
           of: find.byType(HomeScreen),
+          matching: find.byType(CustomScrollView),
+        ),
+      );
+      expect(scroll.physics, isA<AlwaysScrollableScrollPhysics>());
+    });
+
+    testWidgets('организации обновляются жестом, как главная', (tester) async {
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [samplePost()],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.apartment_rounded).last);
+      await tester.pumpAndSettle();
+
+      final scroll = tester.widget<CustomScrollView>(
+        find.descendant(
+          of: find.byType(OrganizationsScreen),
           matching: find.byType(CustomScrollView),
         ),
       );
