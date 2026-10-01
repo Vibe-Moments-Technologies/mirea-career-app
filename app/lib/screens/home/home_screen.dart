@@ -170,7 +170,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           // Появление карточек внахлёст: список проявляется,
                           // а не «выпрыгивает» целиком после скелетонов.
                           itemBuilder: (_, i) => RevealOnMount(
-                            index: i,
                             child: PostCard(
                               post: shown[i],
                               isFavorite: favorites.contains(shown[i].id),

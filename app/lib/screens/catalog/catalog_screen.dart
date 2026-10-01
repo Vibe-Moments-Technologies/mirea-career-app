@@ -193,13 +193,13 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                               mainAxisExtent: 190,
                             ),
                             itemCount: shown.length,
-                            itemBuilder: (_, i) => RevealOnMount(index: i, child: _card(shown[i], favorites)),
+                            itemBuilder: (_, i) => RevealOnMount(child: _card(shown[i], favorites)),
                           )
                         : SliverList.separated(
                             itemCount: shown.length,
                             separatorBuilder: (_, _) =>
                                 const SizedBox(height: 10),
-                            itemBuilder: (_, i) => RevealOnMount(index: i, child: _card(shown[i], favorites)),
+                            itemBuilder: (_, i) => RevealOnMount(child: _card(shown[i], favorites)),
                           ),
                   ),
                   SliverToBoxAdapter(

@@ -188,7 +188,7 @@ class _OrganizationsScreenState extends ConsumerState<OrganizationsScreen> {
                       itemCount: orgs.length,
                       separatorBuilder: (_, _) => const SizedBox(height: 10),
                       itemBuilder: (_, i) =>
-                          RevealOnMount(index: i, child: _OrgCard(org: orgs[i])),
+                          RevealOnMount(child: _OrgCard(org: orgs[i])),
                     ),
                   ),
                 SliverToBoxAdapter(
