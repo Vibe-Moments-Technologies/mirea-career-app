@@ -73,7 +73,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                 children: [
                   _MetaChips(post: post),
                   const SizedBox(height: 12),
-                  Text(post.title, style: AppText.largeTitle.copyWith(fontSize: 28)),
+                  Text(post.title, style: AppText.title),
                   const SizedBox(height: 16),
                   _Organizer(post: post),
                   const SizedBox(height: 20),
@@ -208,7 +208,10 @@ class _Organizer extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return Material(
       color: scheme.surface,
-      borderRadius: BorderRadius.circular(AppRadius.card),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        side: BorderSide(color: AppColors.separator(context)),
+      ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         // Ведёт на профиль организатора: там контакты и все его предложения.

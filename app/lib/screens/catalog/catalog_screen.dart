@@ -263,9 +263,13 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
   Widget _card(Post post, List<String> favorites) => PostCard(
         post: post,
         isFavorite: favorites.contains(post.id),
-        onTap: () => Navigator.of(context).push(
-          appRoute(context, PostDetailScreen(post: post))
-        ),
+        onTap: () {
+          // Запрос остаётся: возврат показывает ту же найденную ленту.
+          FocusManager.instance.primaryFocus?.unfocus();
+          Navigator.of(context).push(
+            appRoute(context, PostDetailScreen(post: post))
+          );
+        },
         onToggleFavorite: () async {
           final added = await ref.read(favoritesProvider.notifier).toggle(post.id);
           await ref.read(metricsProvider).registerFavorite(post.id, added ? 1 : -1);
@@ -476,11 +480,16 @@ class _SectionState extends State<_Section> {
           onTap: () => setState(() => _expanded = !expanded),
           borderRadius: BorderRadius.circular(AppRadius.field),
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
+            padding: const EdgeInsets.symmetric(vertical: 10),
             child: Row(
               children: [
                 Expanded(
-                  child: Text(widget.title, style: AppText.headline),
+                  child: Text(
+                    widget.title.toUpperCase(),
+                    style: AppText.section.copyWith(
+                      color: AppColors.secondaryLight,
+                    ),
+                  ),
                 ),
                 AnimatedRotation(
                   turns: expanded ? 0.5 : 0,

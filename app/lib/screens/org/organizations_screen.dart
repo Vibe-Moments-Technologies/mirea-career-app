@@ -262,9 +262,13 @@ class _OrgCard extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => Navigator.of(context).push(
-          appRoute(context, OrgScreen(organizationId: org.id)),
-        ),
+        onTap: () {
+          // Запрос остаётся: возврат показывает ту же найденную ленту.
+          FocusManager.instance.primaryFocus?.unfocus();
+          Navigator.of(context).push(
+            appRoute(context, OrgScreen(organizationId: org.id)),
+          );
+        },
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(

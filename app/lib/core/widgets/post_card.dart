@@ -39,7 +39,7 @@ class PostCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppRadius.card),
         side: BorderSide(
           color: isPriority ? scheme.primary : AppColors.separator(context),
-          width: isPriority ? 2 : 1,
+          width: isPriority ? 1.5 : 1,
         ),
       ),
       clipBehavior: Clip.antiAlias,
@@ -48,36 +48,28 @@ class PostCard extends StatelessWidget {
         highlightColor: scheme.primary.withValues(alpha: 0.06),
         splashColor: scheme.primary.withValues(alpha: 0.08),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 14, 6, 14),
+          padding: const EdgeInsets.fromLTRB(12, 12, 6, 12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _Thumb(post: post),
-              const SizedBox(width: 14),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _TypeBadge(type: post.type, isPriority: isPriority),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 5),
                     Text(
                       post.title,
-                      style: AppText.headline,
+                      style: AppText.cardTitle,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 8),
-                    _OrgLine(post: post),
-                    if (post.eventDate != null) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        _formatDate(post.eventDate!),
-                        style: AppText.footnote
-                            .copyWith(color: AppColors.secondaryLight),
-                      ),
-                    ],
+                    const SizedBox(height: 5),
+                    _MetaLine(post: post),
                     if (post.tags.isNotEmpty) ...[
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 7),
                       _TagsRow(tags: post.tags),
                     ],
                   ],
@@ -114,7 +106,7 @@ class PostCardSkeleton extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = AppColors.placeholder(Theme.of(context).brightness);
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
@@ -123,8 +115,8 @@ class PostCardSkeleton extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _block(color, 84, 84, AppRadius.thumb),
-          const SizedBox(width: 14),
+          _block(color, 72, 72, AppRadius.thumb),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -159,7 +151,7 @@ class _Thumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      PostCover(post: post, size: 84, radius: AppRadius.thumb, letter: true);
+      PostCover(post: post, size: 72, radius: AppRadius.thumb, letter: true);
 }
 
 class _TypeBadge extends StatelessWidget {
@@ -190,12 +182,16 @@ class _TypeBadge extends StatelessWidget {
             style: AppText.caption.copyWith(color: AppColors.secondaryLight),
           ),
         ],
-        Text(
-          (Catalogs.postTypes[type] ?? type).toUpperCase(),
-          style: AppText.caption.copyWith(
-            color: isPriority ? scheme.primary : AppColors.secondaryLight,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.4,
+        Flexible(
+          child: Text(
+            (Catalogs.postTypes[type] ?? type).toUpperCase(),
+            style: AppText.caption.copyWith(
+              color: isPriority ? scheme.primary : AppColors.secondaryLight,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.4,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       ],
@@ -246,17 +242,23 @@ class _TagsRow extends StatelessWidget {
   }
 }
 
-class _OrgLine extends StatelessWidget {
-  const _OrgLine({required this.post});
+class _MetaLine extends StatelessWidget {
+  const _MetaLine({required this.post});
   final Post post;
 
   @override
   Widget build(BuildContext context) {
-    // Логотип-картинка убран: в демо у организаций placehold.co, который
-    // отдаёт 403, и на его месте мигал серый квадрат. Имя организации
-    // и так рядом — квадрат не добавлял ничего, кроме мерцания.
+    // Организация и дата в одну строку: две отдельные серые строки опускали
+    // заголовок и выглядели как дублирование метаданных.
+    final organization = post.organizationName?.trim();
+    final details = [
+      if (organization?.isNotEmpty ?? false) organization!,
+      if (post.eventDate != null) _formatDate(post.eventDate!),
+    ].join(' · ');
+    if (details.isEmpty) return const SizedBox.shrink();
+
     return Text(
-      post.organizationName ?? '',
+      details,
       style: AppText.footnote.copyWith(color: AppColors.secondaryLight),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,

@@ -25,7 +25,10 @@ class SettingsGroup extends StatelessWidget {
     // всплески нажатия и Flutter ругается в debug-сборке.
     final card = Material(
       color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(AppRadius.card),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        side: BorderSide(color: AppColors.separator(context)),
+      ),
       clipBehavior: Clip.antiAlias,
       child: Column(children: children),
     );
@@ -38,7 +41,7 @@ class SettingsGroup extends StatelessWidget {
             padding: const EdgeInsets.only(left: 4, bottom: 6),
             child: Text(
               title!.toUpperCase(),
-              style: AppText.caption.copyWith(color: AppColors.secondaryLight),
+              style: AppText.section.copyWith(color: AppColors.secondaryLight),
             ),
           ),
         card,

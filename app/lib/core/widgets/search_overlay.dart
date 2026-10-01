@@ -35,50 +35,51 @@ class SearchOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Закрытый оверлей НИЧЕГО не строит. Иначе живущее в дереве поле держит
-    // фокус: клавиатура вылезала при запуске приложения, а после закрытия
-    // поиска оставалась висеть поверх ленты.
+    // Закрытый оверлей ничего не строит, поэтому скрытое поле не может
+    // держать фокус и подтягивать клавиатуру.
     if (!open) return const SizedBox.shrink();
 
+    // Фон — только визуальный слой: он не перехватывает касания, и карточки
+    // под ним остаются живыми. Касание фона лишь прячет клавиатуру через
+    // TextField.onTapOutside; очищает запрос только закрытие.
     return Positioned.fill(
-      child: IgnorePointer(
-        ignoring: !open,
-        child: AnimatedOpacity(
-          duration: const Duration(milliseconds: 180),
-          opacity: open ? 1 : 0,
-          child: GestureDetector(
-            // тап мимо поля — закрыть
-            onTap: onClose,
-            behavior: HitTestBehavior.opaque,
-            child: Column(
-              children: [
-                SafeArea(
-                  bottom: false,
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      AppInsets.horizontal(MediaQuery.sizeOf(context).width),
-                      AppInsets.top(context),
-                      AppInsets.horizontal(MediaQuery.sizeOf(context).width),
-                      0,
-                    ),
-                    child: AnimatedSlide(
-                      duration: const Duration(milliseconds: 220),
-                      curve: Curves.easeOutCubic,
-                      offset: open ? Offset.zero : const Offset(0, -1),
-                      child: _Field(
-                        controller: controller,
-                        autofocus: open,
-                        onChanged: onChanged,
-                        onClose: onClose,
-                      ),
-                    ),
-                  ),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: IgnorePointer(
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 180),
+                opacity: 1,
+                child: Container(
+                  constraints: const BoxConstraints.expand(),
+                  color: Colors.black.withValues(alpha: 0.34),
                 ),
-                const Spacer(),
-              ],
+              ),
             ),
           ),
-        ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Padding(
+              padding: EdgeInsets.only(
+                left: AppInsets.horizontal(MediaQuery.sizeOf(context).width),
+                right: AppInsets.horizontal(MediaQuery.sizeOf(context).width),
+                top: AppInsets.top(context),
+              ),
+              child: AnimatedSlide(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                offset: open ? Offset.zero : const Offset(0, -1),
+                child: _Field(
+                  controller: controller,
+                  onChanged: onChanged,
+                  onClose: onClose,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -89,25 +90,15 @@ class _Field extends StatelessWidget {
     required this.controller,
     required this.onChanged,
     required this.onClose,
-    required this.autofocus,
   });
 
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
   final VoidCallback onClose;
 
-  /// Фокус только в момент открытия. Постоянно живущий TextField с
-  /// autofocus=true забирал фокус уже на старте приложения — клавиатура
-  /// вылезала, хотя поиск не был активен.
-  final bool autofocus;
-
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    // Поле монтируется только когда оверлей открыт (ключ меняется вместе с
-    // open), поэтому autofocus срабатывает ровно в момент открытия.
-    // Постоянно живущий TextField иначе просил фокус при старте приложения,
-    // и клавиатура вылезала сама, хотя поиск не был активен.
     return Material(
       color: scheme.surface,
       borderRadius: BorderRadius.circular(AppRadius.field),
@@ -126,8 +117,11 @@ class _Field extends StatelessWidget {
             Expanded(
               child: TextField(
                 controller: controller,
-                autofocus: autofocus,
+                // Поле монтируется только открытым, поэтому фокус безопасен.
+                autofocus: true,
                 onChanged: onChanged,
+                onTapOutside: (_) =>
+                    FocusManager.instance.primaryFocus?.unfocus(),
                 textInputAction: TextInputAction.search,
                 style: AppText.body,
                 decoration: InputDecoration(

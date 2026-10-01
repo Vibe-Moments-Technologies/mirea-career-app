@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mirea_career/core/theme/app_theme.dart';
 import 'package:mirea_career/core/app_route.dart';
 import 'package:mirea_career/core/widgets/glass_dock.dart';
+import 'package:mirea_career/core/widgets/screen_header.dart';
 import 'package:mirea_career/data/catalogs.dart';
 import 'package:mirea_career/data/crash_reporting.dart';
 import 'package:mirea_career/data/local_store.dart';
@@ -570,9 +571,9 @@ void main() {
       await tester.pump();
 
       final bottom = tester.getRect(find.byType(GlassDock)).bottom;
-      // док вплотную к полоске-индикатору, но не на самом краю
-      expect(bottom, lessThanOrEqualTo(844 - 8));
-      expect(bottom, greaterThan(844 - 24));
+      // док чуть выше полоски-индикатора, но не на самом краю
+      expect(bottom, lessThanOrEqualTo(844 - 14));
+      expect(bottom, greaterThanOrEqualTo(844 - 22));
     });
 
     testWidgets('на Android док перекрывает панель навигации', (tester) async {
@@ -694,9 +695,8 @@ void main() {
       // витрину важного, поэтому одного и того же заголовка в дереве два.
       expect(find.text('Старая приоритетная'), findsWidgets);
       expect(find.text('Свежая обычная'), findsOneWidget);
-      // витрина: помечено «Важное», а в ленте — «Приоритет»
-      expect(find.text('Важное'), findsOneWidget);
-      expect(find.text('Приоритет'), findsOneWidget);
+      // один и тот же приоритет: витрина и лента используют одну метку
+      expect(find.text('Приоритет'), findsWidgets);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
   });
@@ -812,6 +812,12 @@ void main() {
       expect(find.byType(TextField), findsOneWidget);
       expect(tester.testTextInput.isVisible, isTrue,
           reason: 'поле открылось, но клавиатура не поднялась');
+
+      // Поле стартует на уровне строки шапки, а не проваливается под неё.
+      final fieldTop = tester.getTopLeft(find.byType(TextField)).dy;
+      final actionTop =
+          tester.getTopLeft(find.byType(HeaderAction).first).dy;
+      expect(fieldTop, lessThanOrEqualTo(actionTop + 2));
 
       await tester.tap(find.byIcon(Icons.close_rounded));
       await tester.pumpAndSettle();
@@ -934,6 +940,20 @@ void main() {
 
       expect(find.text('Хакатон МИРЭА'), findsOneWidget);
       expect(find.text('Обычная вакансия'), findsNothing);
+
+      // Затемнение не перехватывает карточку: тап открывает детали, а запрос
+      // остаётся и после возврата.
+      await tester.tap(find.text('Хакатон МИРЭА'));
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsNothing);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.text('Хакатон МИРЭА'), findsOneWidget);
+      expect(find.text('Обычная вакансия'), findsNothing);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller?.text,
+        'хакатон',
+      );
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
 

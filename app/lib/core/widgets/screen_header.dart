@@ -68,18 +68,23 @@ class HeaderAction extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(left: 8),
-      child: Material(
-        color: active
-            ? scheme.primary.withValues(alpha: 0.14)
-            : AppColors.placeholder(Theme.of(context).brightness),
-        shape: const CircleBorder(),
-        clipBehavior: Clip.antiAlias,
-        child: IconButton(
-          onPressed: onTap,
-          icon: Icon(icon, size: 20, color: active ? scheme.primary : null),
-          tooltip: tooltip,
-          visualDensity: VisualDensity.compact,
+      child: IconButton(
+        onPressed: onTap,
+        tooltip: tooltip,
+        visualDensity: VisualDensity.compact,
+        style: IconButton.styleFrom(
+          minimumSize: const Size(44, 44),
+          padding: EdgeInsets.zero,
+          backgroundColor: active
+              ? scheme.primary.withValues(alpha: 0.14)
+              : scheme.surface,
+          foregroundColor: active ? scheme.primary : null,
+          side: BorderSide(
+            color: active ? scheme.primary : AppColors.separator(context),
+          ),
+          shape: const CircleBorder(),
         ),
+        icon: Icon(icon, size: 20),
       ),
     );
   }

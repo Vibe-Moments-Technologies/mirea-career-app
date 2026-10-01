@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mirea_career/core/widgets/spotlight_gallery.dart';
 import 'package:mirea_career/data/catalogs.dart';
 import 'package:mirea_career/data/local_store.dart';
 import 'package:mirea_career/data/models.dart';
@@ -169,6 +170,13 @@ void main() {
       expect(priorityFirst(const []), isEmpty);
       expect(priorityFirst([post(id: 'a'), post(id: 'b')]).map((p) => p.id),
           ['a', 'b']);
+    });
+  });
+
+  group('Витрина (spotlightIndex)', () {
+    test('после последнего слайда идёт первый, а не упор в край', () {
+      expect([for (var i = 0; i < 7; i++) spotlightIndex(i, 3)], [0, 1, 2, 0, 1, 2, 0]);
+      expect(spotlightIndex(-1, 3), 2);
     });
   });
 

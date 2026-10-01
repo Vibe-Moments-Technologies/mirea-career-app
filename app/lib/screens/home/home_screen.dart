@@ -205,6 +205,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   void _open(Post post) {
+    // Поиск остаётся открытым за деталями, но клавиатура обязана уйти.
+    FocusManager.instance.primaryFocus?.unfocus();
     Navigator.of(context).push(
       appRoute(context, PostDetailScreen(post: post)),
     );

@@ -147,7 +147,7 @@ class _GroupTitle extends StatelessWidget {
         padding: const EdgeInsets.only(left: 4, bottom: 8),
         child: Text(
           text.toUpperCase(),
-          style: AppText.caption.copyWith(color: AppColors.secondaryLight),
+          style: AppText.section.copyWith(color: AppColors.secondaryLight),
         ),
       );
 }

@@ -146,6 +146,8 @@ class AppText {
   const AppText._();
   static const largeTitle = TextStyle(fontSize: 32, fontWeight: FontWeight.w700, letterSpacing: -0.8);
   static const title = TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.5);
+  static const cardTitle = TextStyle(fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: -0.25);
+  static const section = TextStyle(fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 0.4);
   static const headline = TextStyle(fontSize: 17, fontWeight: FontWeight.w600, letterSpacing: -0.3);
   static const body = TextStyle(fontSize: 16, fontWeight: FontWeight.w400);
   static const footnote = TextStyle(fontSize: 13, fontWeight: FontWeight.w400);

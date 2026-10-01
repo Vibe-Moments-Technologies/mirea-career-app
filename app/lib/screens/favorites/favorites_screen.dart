@@ -4,11 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_route.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/post_card.dart';
+import '../../core/widgets/screen_header.dart';
 import '../../state/providers.dart';
 import '../post/post_detail_screen.dart';
 
 /// Избранное: локальный список, работает офлайн.
-/// Приоритетные (isFeatured) — сверху.
 class FavoritesScreen extends ConsumerWidget {
   const FavoritesScreen({super.key});
 
@@ -28,11 +28,8 @@ class FavoritesScreen extends ConsumerWidget {
         // Отступ учитывает верхний safe area — заголовок больше не упирается
         // в вырез экрана.
         slivers: [
-          SliverPadding(
-            padding: EdgeInsets.fromLTRB(pad, AppInsets.top(context), pad, 8),
-            sliver: SliverToBoxAdapter(
-              child: ScreenTitle('Избранное'),
-            ),
+          const SliverToBoxAdapter(
+            child: ScreenHeader(title: 'Избранное', bottom: 10),
           ),
           if (posts.isEmpty)
             SliverFillRemaining(
