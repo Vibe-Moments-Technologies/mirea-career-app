@@ -473,17 +473,35 @@ void main() {
 
       expect(find.byType(CatalogScreen), findsOneWidget);
 
-      // Каталог показывает все 25 — до последней карточки надо долистать
-      // именно его, а не ленту под ним.
+      // Лента под каталогом осталась в дереве, поэтому ищем кнопку
+      // догрузки и скролл только внутри каталога — там список до конца.
+      final catalogScroll = find
+          .descendant(
+            of: find.byType(CatalogScreen),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+
+      // Каталог догружает блоками по кнопке, а не бесконечной прокруткой:
+      // без тапов 'Карточка 24' просто не существует в дереве.
+      for (final block in ['10 из 25', '20 из 25']) {
+        final more = find.descendant(
+          of: find.byType(CatalogScreen),
+          matching: find.text('Показать ещё ($block)'),
+        );
+        await tester.scrollUntilVisible(more, 400, scrollable: catalogScroll);
+        await tester.pump();
+        expect(more, findsOneWidget);
+        await tester.ensureVisible(more);
+        await tester.tap(more);
+        await tester.pump();
+      }
+
+      // Все 25 загружены — последняя карточка на месте.
       await tester.scrollUntilVisible(
         find.text('Карточка 24'),
         400,
-        scrollable: find
-            .descendant(
-              of: find.byType(CatalogScreen),
-              matching: find.byType(Scrollable),
-            )
-            .first,
+        scrollable: catalogScroll,
       );
       await tester.pump();
       expect(find.text('Карточка 24'), findsOneWidget);
