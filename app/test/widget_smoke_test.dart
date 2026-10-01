@@ -807,17 +807,14 @@ void main() {
       await tester.tap(find.byIcon(Icons.search_rounded));
       await tester.pumpAndSettle();
       expect(find.byType(TextField), findsOneWidget);
-      expect(FocusManager.instance.primaryFocus?.hasFocus ?? false, isTrue,
+      expect(tester.testTextInput.isVisible, isTrue,
           reason: 'поле открылось, но клавиатура не поднялась');
 
       await tester.tap(find.byIcon(Icons.close_rounded));
       await tester.pumpAndSettle();
 
-      expect(
-        FocusManager.instance.primaryFocus?.hasFocus ?? false,
-        isFalse,
-        reason: 'клавиатура осталась висеть после закрытия поиска',
-      );
+      expect(tester.testTextInput.isVisible, isFalse,
+          reason: 'клавиатура осталась висеть после закрытия поиска');
     });
   });
 
@@ -856,7 +853,12 @@ void main() {
       await tester.tap(find.byIcon(Icons.apartment_rounded));
       await tester.pumpAndSettle();
 
-      expect(find.text('Организации'), findsOneWidget);
+      // сколько организаций насчитал экран — сразу видно, если список
+      // собрался не из всех постов
+      expect(find.text('Все · 2'), findsOneWidget);
+      expect(find.text('От вуза · 1'), findsOneWidget);
+      expect(find.text('Партнёры · 1'), findsOneWidget);
+
       // findsWidgets, а не findsOneWidget: IndexedStack держит в дереве все
       // вкладки, и имя организации дублируется в карточке поста на главной
       expect(find.text('Яндекс'), findsWidgets);
