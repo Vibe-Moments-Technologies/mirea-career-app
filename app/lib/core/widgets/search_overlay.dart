@@ -54,8 +54,8 @@ class SearchOverlay extends StatelessWidget {
                       curve: Curves.easeOutCubic,
                       offset: open ? Offset.zero : const Offset(0, -1),
                       child: _Field(
-                        key: ValueKey(open),
                         controller: controller,
+                        autofocus: open,
                         onChanged: onChanged,
                         onClose: onClose,
                       ),
@@ -78,11 +78,17 @@ class _Field extends StatelessWidget {
     required this.controller,
     required this.onChanged,
     required this.onClose,
+    required this.autofocus,
   });
 
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
   final VoidCallback onClose;
+
+  /// Фокус только в момент открытия. Постоянно живущий TextField с
+  /// autofocus=true забирал фокус уже на старте приложения — клавиатура
+  /// вылезала, хотя поиск не был активен.
+  final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
@@ -109,7 +115,7 @@ class _Field extends StatelessWidget {
             Expanded(
               child: TextField(
                 controller: controller,
-                autofocus: true,
+                autofocus: autofocus,
                 onChanged: onChanged,
                 textInputAction: TextInputAction.search,
                 style: AppText.body,

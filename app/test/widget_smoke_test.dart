@@ -615,8 +615,8 @@ void main() {
       expect(capsule, findsOneWidget);
 
       final rect = tester.getRect(capsule);
-      // жмётся под значки, а не под экран
-      expect(rect.width, lessThan(230), reason: 'док растянут: $rect');
+      // жмётся под значки (5 кнопок), а не под экран
+      expect(rect.width, lessThan(300), reason: 'док растянут: $rect');
       expect(rect.center.dx, moreOrLessEquals(430 / 2, epsilon: 1));
     });
 
@@ -689,12 +689,13 @@ void main() {
       await tester.pumpWidget(wrap(c, const RootShell()));
       await tester.pump();
 
-      // приоритетная поднялась вверх, несмотря на возраст
-      expect(find.text('Старая приоритетная'), findsOneWidget);
-      expect(find.text('Приоритет'), findsOneWidget);
-
-      // витрины-карусели больше нет: обе карточки в общем потоке
+      // приоритетная поднялась вверх, несмотря на возраст. Она же попадает в
+      // витрину важного, поэтому одного и того же заголовка в дереве два.
+      expect(find.text('Старая приоритетная'), findsWidgets);
       expect(find.text('Свежая обычная'), findsOneWidget);
+      // витрина: помечено «Важное», а в ленте — «Приоритет»
+      expect(find.text('Важное'), findsOneWidget);
+      expect(find.text('Приоритет'), findsOneWidget);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
   });
@@ -800,18 +801,18 @@ void main() {
       await tester.pumpWidget(wrap(c, const RootShell()));
       await tester.pump();
 
-      // закрытый поиск вообще не строит поле: иначе autofocus вылезал
-      // клавиатурой уже на старте приложения
-      expect(find.byType(TextField), findsNothing);
+      // закрытый поиск не забирает фокус: иначе клавиатура вылезала сама
+      expect(FocusManager.instance.primaryFocus?.hasFocus ?? false, isFalse);
 
       await tester.tap(find.byIcon(Icons.search_rounded));
       await tester.pumpAndSettle();
       expect(find.byType(TextField), findsOneWidget);
+      expect(FocusManager.instance.primaryFocus?.hasFocus ?? false, isTrue,
+          reason: 'поле открылось, но клавиатура не поднялась');
 
       await tester.tap(find.byIcon(Icons.close_rounded));
       await tester.pumpAndSettle();
 
-      expect(find.byType(TextField), findsNothing);
       expect(
         FocusManager.instance.primaryFocus?.hasFocus ?? false,
         isFalse,
@@ -856,17 +857,18 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Организации'), findsOneWidget);
-      expect(find.text('Яндекс'), findsOneWidget);
-      expect(find.text('Карьерный центр'), findsOneWidget);
+      // findsWidgets, а не findsOneWidget: IndexedStack держит в дереве все
+      // вкладки, и имя организации дублируется в карточке поста на главной
+      expect(find.text('Яндекс'), findsWidgets);
+      expect(find.text('Карьерный центр'), findsWidgets);
 
       // фильтр по партнёрам убирает подразделение вуза
       await tester.tap(find.text('Партнёры · 1'));
       await tester.pumpAndSettle();
-      expect(find.text('Яндекс'), findsOneWidget);
       expect(find.text('Карьерный центр'), findsNothing);
 
       // тап ведёт в профиль организации
-      await tester.tap(find.text('Яндекс'));
+      await tester.tap(find.text('Яндекс').last);
       await tester.pumpAndSettle();
       expect(find.text('Предложения'), findsOneWidget);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
