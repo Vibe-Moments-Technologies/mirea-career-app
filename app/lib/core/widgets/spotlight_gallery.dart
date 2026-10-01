@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../data/crash_reporting.dart';
 import '../../data/models.dart';
 import '../theme/app_theme.dart';
 
@@ -291,7 +292,14 @@ class _Cover extends StatelessWidget {
       gaplessPlayback: true,
       cacheWidth: (width * dpr).round().clamp(64, 2048),
       loadingBuilder: (_, child, progress) => progress == null ? child : place,
-      errorBuilder: (_, _, _) => place,
+      errorBuilder: (_, error, stack) {
+        CrashReporting.report(
+          error,
+          stack ?? StackTrace.current,
+          context: 'spotlight_cover_load:$url',
+        );
+        return place;
+      },
     );
   }
 }

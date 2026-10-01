@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../data/crash_reporting.dart';
 import '../../data/models.dart';
 import '../theme/app_theme.dart';
 
@@ -65,10 +66,14 @@ class PostCover extends StatelessWidget {
                 // без иконки: она «мигала» поверх недогруженного фото.
                 loadingBuilder: (_, child, progress) =>
                     progress == null ? child : _Placeholder(post: post, letter: letter),
-                errorBuilder: (_, error, _) {
-                  // Причина видна в консоли: иначе «серый квадрат» на
-                  // устройстве невозможно отличить от 404, 403 и битого URL.
-                  debugPrint('PostCover: не загрузилась $url → $error');
+                errorBuilder: (_, error, stack) {
+                  // В release-сборке debugPrint не виден. Отправляем в Sentry,
+                  // чтобы узнать реальную причину серых квадратов на устройстве.
+                  CrashReporting.report(
+                    error,
+                    stack ?? StackTrace.current,
+                    context: 'post_cover_load:$url',
+                  );
                   return _Placeholder(post: post, letter: letter);
                 },
               ),
