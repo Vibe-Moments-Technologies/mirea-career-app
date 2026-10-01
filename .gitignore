@@ -1,5 +1,12 @@
 # секреты и локальные инструменты
 .env
+.env.*
+*.pem
+*.p12
+*.pfx
+google-services.json
+GoogleService-Info.plist
+supabase/.roles-apply.sql
 .pydeps/
 .tmp/
 tools/node_modules/
@@ -20,8 +27,7 @@ app/ios/Pods/
 *.jks
 *.keystore
 
-# Node (веб-админка)
-admin/node_modules/
-admin/dist/
+# Веб-админка — живёт только локально + деплой статикой на VDS, в git мобильного репо не входит
+admin/
 # pnpm store
 .pnpm-store/
