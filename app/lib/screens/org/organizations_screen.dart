@@ -3,7 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_route.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_scroll.dart';
+import '../../core/widgets/collapsible_section.dart';
+import '../../core/widgets/list_tail.dart';
 import '../../core/widgets/screen_header.dart';
+import '../../core/widgets/reveal_on_mount.dart';
 import '../../core/widgets/search_overlay.dart';
 import '../../data/models.dart';
 import '../../state/providers.dart';
@@ -11,10 +15,9 @@ import 'org_screen.dart';
 
 /// Организации: список тех, кто публикует карточки.
 ///
-/// Список собирается из уже загруженной ленты — отдельного запроса к БД не
-/// нужно: каждая карточка несёт вложенную организацию. Таблицы
-/// organizations в фиде нет отдельным списком, поэтому показываем тех, у кого
-/// есть хотя бы одна опубликованная карточка.
+/// Механика та же, что на главной: свайп-обновление и раскрывающаяся панель
+/// фильтров. Список собирается из уже загруженной ленты — отдельного запроса
+/// к БД не нужно: каждая карточка несёт вложенную организацию.
 class OrganizationsScreen extends ConsumerStatefulWidget {
   const OrganizationsScreen({super.key});
 
@@ -26,7 +29,15 @@ class _OrganizationsScreenState extends ConsumerState<OrganizationsScreen> {
   /// null = все, иначе 'university_dept' | 'partner'.
   String? _source;
   bool _searchOpen = false;
+  bool _filtersOpen = false;
   String _query = '';
+
+  /// Какие типы организаций показывать. Пусто = все.
+  final Set<String> _kinds = {};
+
+  /// Показывать только с заполненными контактами.
+  bool _withContacts = false;
+
   final _search = TextEditingController();
 
   void _closeSearch() {
@@ -38,6 +49,13 @@ class _OrganizationsScreenState extends ConsumerState<OrganizationsScreen> {
     });
   }
 
+  int get _activeFilters => _kinds.length + (_withContacts ? 1 : 0);
+
+  void _resetFilters() => setState(() {
+        _kinds.clear();
+        _withContacts = false;
+      });
+
   @override
   void dispose() {
     _search.dispose();
@@ -47,84 +65,148 @@ class _OrganizationsScreenState extends ConsumerState<OrganizationsScreen> {
   @override
   Widget build(BuildContext context) {
     final feed = ref.watch(feedProvider);
-    final orgs = _organizationsOf(feed.posts, _source, _query);
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
     final loading = feed.loading && feed.posts.isEmpty;
+
+    final orgs = _organizationsOf(
+      feed.posts,
+      source: _source,
+      query: _query,
+      kinds: _kinds,
+      withContacts: _withContacts,
+    );
 
     return Scaffold(
       body: Stack(
         children: [
-          CustomScrollView(
-            slivers: [
-              SliverToBoxAdapter(
-                child: ScreenHeader(
-                  title: 'Организации',
-                  actions: [
-                    HeaderAction(
-                      icon: Icons.search_rounded,
-                      tooltip: 'Поиск',
-                      onTap: () => setState(() => _searchOpen = true),
-                    ),
-                  ],
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(pad, 0, pad, 12),
-                  child: _SourceTabs(
-                    value: _source,
-                    counts: _counts(feed.posts),
-                    onChanged: (v) => setState(() => _source = v),
+          RefreshIndicator(
+            // свайп сверху вниз у самого верха списка; ниже тянет скролл
+            onRefresh: () => ref.read(feedProvider.notifier).refresh(),
+            child: CustomScrollView(
+              physics: AppScroll.refreshable,
+              slivers: [
+                SliverToBoxAdapter(
+                  child: ScreenHeader(
+                    title: 'Организации',
+                    actions: [
+                      HeaderAction(
+                        icon: Icons.tune_rounded,
+                        tooltip: 'Фильтры',
+                        active: _filtersOpen && _activeFilters > 0,
+                        onTap: () =>
+                            setState(() => _filtersOpen = !_filtersOpen),
+                      ),
+                      HeaderAction(
+                        icon: Icons.search_rounded,
+                        tooltip: 'Поиск',
+                        onTap: () => setState(() => _searchOpen = true),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-              if (loading)
-                SliverPadding(
-                  padding: EdgeInsets.fromLTRB(pad, 0, pad, 0),
-                  sliver: SliverList.separated(
-                    itemCount: 4,
-                    separatorBuilder: (_, _) => const SizedBox(height: 10),
-                    itemBuilder: (_, _) => const _OrgSkeleton(),
-                  ),
-                )
-              else if (orgs.isEmpty)
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: Text(
-                        _query.isEmpty
-                            ? 'Организаций пока нет'
-                            : 'Никого не нашлось по запросу «$_query»',
-                        textAlign: TextAlign.center,
-                        style: AppText.body
-                            .copyWith(color: AppColors.secondaryLight),
+                // Фильтры раскрываются прямо на странице — как в каталоге.
+                SliverToBoxAdapter(
+                  child: AnimatedCrossFade(
+                    duration: const Duration(milliseconds: 220),
+                    crossFadeState: _filtersOpen
+                        ? CrossFadeState.showSecond
+                        : CrossFadeState.showFirst,
+                    firstChild: const SizedBox(width: double.infinity),
+                    secondChild: Padding(
+                      padding: EdgeInsets.fromLTRB(pad, 0, pad, 12),
+                      child: _FiltersPanel(
+                        active: _activeFilters,
+                        kinds: _kinds,
+                        withContacts: _withContacts,
+                        onKind: (kind, on) => setState(() {
+                          on ? _kinds.add(kind) : _kinds.remove(kind);
+                        }),
+                        onContacts: (on) =>
+                            setState(() => _withContacts = on),
+                        onReset: _resetFilters,
                       ),
                     ),
                   ),
-                )
-              else
-                SliverPadding(
-                  padding: EdgeInsets.fromLTRB(pad, 0, pad, 0),
-                  sliver: SliverList.separated(
-                    itemCount: orgs.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 10),
-                    itemBuilder: (_, i) => _OrgCard(org: orgs[i]),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(pad, 0, pad, 10),
+                    child: _SourceTabs(
+                      value: _source,
+                      counts: _counts(feed.posts),
+                      onChanged: (v) => setState(() => _source = v),
+                    ),
                   ),
                 ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    pad,
-                    16,
-                    pad,
-                    AppInsets.scrollBottom(context),
+                if (loading)
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(pad, 0, pad, 0),
+                    sliver: SliverList.separated(
+                      itemCount: 4,
+                      separatorBuilder: (_, _) => const SizedBox(height: 10),
+                      itemBuilder: (_, _) => const _OrgSkeleton(),
+                    ),
+                  )
+                else if (orgs.isEmpty)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.apartment_rounded,
+                              size: 48,
+                              color: AppColors.secondaryLight
+                                  .withValues(alpha: 0.6),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              _query.isEmpty
+                                  ? 'Организаций пока нет'
+                                  : 'Никого не нашлось',
+                              style: AppText.headline,
+                            ),
+                            if (_activeFilters > 0) ...[
+                              const SizedBox(height: 16),
+                              OutlinedButton(
+                                onPressed: _resetFilters,
+                                child: const Text('Сбросить фильтры'),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(pad, 0, pad, 0),
+                    sliver: SliverList.separated(
+                      itemCount: orgs.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 10),
+                      itemBuilder: (_, i) =>
+                          RevealOnMount(index: i, child: _OrgCard(org: orgs[i])),
+                    ),
                   ),
-                  child: const SizedBox.shrink(),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      pad,
+                      16,
+                      pad,
+                      AppInsets.scrollBottom(context),
+                    ),
+                    child: ListTail(
+                      isEmpty: false,
+                      footer: 'Найдено организаций: ${orgs.length}',
+                    ),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           SearchOverlay(
             open: _searchOpen,
@@ -149,23 +231,29 @@ Map<String, int> _counts(List<Post> posts) {
   return counts;
 }
 
-/// Список организаций, собранный из ленты, с фильтром по типу и поиском.
+/// Список организаций, собранный из ленты, с фильтрами и поиском.
 List<Organization> _organizationsOf(
-  List<Post> posts,
+  List<Post> posts, {
   String? source,
-  String query,
-) {
+  String query = '',
+  Set<String> kinds = const {},
+  bool withContacts = false,
+}) {
   final byId = <String, Organization>{};
-  final postCount = <String, int>{};
   for (final p in posts) {
     final org = p.organization;
     if (org == null) continue;
-    postCount[p.organizationId] = (postCount[p.organizationId] ?? 0) + 1;
     byId.putIfAbsent(p.organizationId, () => org);
   }
+
   final q = query.trim().toLowerCase();
   final out = byId.values
       .where((o) => source == null || o.type == source)
+      .where((o) => kinds.isEmpty || kinds.contains(o.type))
+      .where((o) => !withContacts ||
+          (o.contactEmail ?? '').isNotEmpty ||
+          (o.contactPhone ?? '').isNotEmpty ||
+          (o.website ?? '').isNotEmpty)
       .where((o) => q.isEmpty || o.name.toLowerCase().contains(q))
       .toList()
     ..sort((a, b) => a.name.compareTo(b.name));
@@ -209,9 +297,8 @@ class _SourceTabs extends StatelessWidget {
     ColorScheme scheme,
   ) {
     final selected = value == id;
-    final count = id == null
-        ? counts.values.fold(0, (a, b) => a + b)
-        : (counts[id] ?? 0);
+    final count =
+        id == null ? counts.values.fold(0, (a, b) => a + b) : (counts[id] ?? 0);
     return Expanded(
       child: GestureDetector(
         onTap: () => onChanged(id),
@@ -242,6 +329,84 @@ class _SourceTabs extends StatelessWidget {
   }
 }
 
+/// Фильтры организаций: тип и наличие контактов.
+class _FiltersPanel extends StatelessWidget {
+  const _FiltersPanel({
+    required this.active,
+    required this.kinds,
+    required this.withContacts,
+    required this.onKind,
+    required this.onContacts,
+    required this.onReset,
+  });
+
+  final int active;
+  final Set<String> kinds;
+  final bool withContacts;
+  final void Function(String kind, bool on) onKind;
+  final ValueChanged<bool> onContacts;
+  final VoidCallback onReset;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: AppColors.separator(context)),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 4, 14, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CollapsibleSection(
+            title: 'Тип организации',
+            initiallyOpen: true,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilterChip(
+                  label: const Text('От вуза'),
+                  selected: kinds.contains('university_dept'),
+                  onSelected: (on) => onKind('university_dept', on),
+                ),
+                FilterChip(
+                  label: const Text('Партнёры'),
+                  selected: kinds.contains('partner'),
+                  onSelected: (on) => onKind('partner', on),
+                ),
+              ],
+            ),
+          ),
+          CollapsibleSection(
+            title: 'Контакты',
+            initiallyOpen: true,
+            child: Wrap(
+              spacing: 8,
+              children: [
+                FilterChip(
+                  label: const Text('Только с контактами'),
+                  selected: withContacts,
+                  onSelected: onContacts,
+                ),
+              ],
+            ),
+          ),
+          if (active > 0)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: onReset,
+                child: const Text('Сбросить'),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Карточка организации: кто это, сколько у него предложений.
 class _OrgCard extends StatelessWidget {
   const _OrgCard({required this.org});
@@ -251,8 +416,12 @@ class _OrgCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final initial =
-        org.name.trim().isEmpty ? '—' : org.name.trim().substring(0, 1).toUpperCase();
+    final initial = org.name.trim().isEmpty
+        ? '—'
+        : org.name.trim().substring(0, 1).toUpperCase();
+    final hasContacts = (org.contactEmail ?? '').isNotEmpty ||
+        (org.contactPhone ?? '').isNotEmpty ||
+        (org.website ?? '').isNotEmpty;
 
     return Material(
       color: scheme.surface,
@@ -293,7 +462,7 @@ class _OrgCard extends StatelessWidget {
                   children: [
                     Text(
                       org.name,
-                      style: AppText.headline,
+                      style: AppText.cardTitle,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -317,6 +486,9 @@ class _OrgCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
+              if (hasContacts)
+                Icon(Icons.contacts_outlined,
+                    size: 18, color: AppColors.secondaryLight),
               Icon(Icons.chevron_right_rounded, color: AppColors.secondaryLight),
             ],
           ),

@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_route.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_scroll.dart';
 import '../../core/widgets/post_card.dart';
 import '../../data/models.dart';
 import '../../state/feed_filters.dart';
@@ -47,6 +48,7 @@ class OrgScreen extends ConsumerWidget {
               ),
             )
           : ListView(
+              physics: AppScroll.plain,
               padding: EdgeInsets.fromLTRB(pad, 8, pad, AppInsets.screenBottom(context)),
               children: [
                 _Header(org: org, postCount: own.length),

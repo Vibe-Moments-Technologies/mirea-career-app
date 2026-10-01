@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_route.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/collapsible_section.dart';
+import '../../core/widgets/list_tail.dart';
 import '../../core/widgets/post_card.dart';
+import '../../core/widgets/reveal_on_mount.dart';
 import '../../core/widgets/screen_header.dart';
 import '../../core/widgets/search_overlay.dart';
 import '../../data/catalogs.dart';
@@ -105,137 +108,119 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                         onTap: () =>
                             setState(() => _filtersOpen = !_filtersOpen),
                       ),
-                    HeaderAction(
-                      icon: Icons.search_rounded,
-                      tooltip: 'Поиск',
-                      onTap: () => setState(() => _searchOpen = true),
-                    ),
-                  ],
-                ),
-              ),
-              // Фильтры раскрываются прямо на странице: шторка снизу прятала
-              // выборку и требовала ещё одного тапа «Показать».
-              SliverToBoxAdapter(
-                child: AnimatedCrossFade(
-                  duration: const Duration(milliseconds: 220),
-                  crossFadeState: _filtersOpen
-                      ? CrossFadeState.showSecond
-                      : CrossFadeState.showFirst,
-                  firstChild: const SizedBox(width: double.infinity),
-                  secondChild: Padding(
-                    padding: EdgeInsets.fromLTRB(pad, 0, pad, 12),
-                    child: _FiltersPanel(
-                      filters: _filters,
-                      source: _source,
-                      organizations: _organizationsOf(
-                        ref.read(feedProvider).posts,
-                        _source,
+                      HeaderAction(
+                        icon: Icons.search_rounded,
+                        tooltip: 'Поиск',
+                        onTap: () => setState(() => _searchOpen = true),
                       ),
-                      sortPopular: _sortPopular,
-                      onChanged: (f, sort) => setState(() {
-                        _filters = f;
-                        _sortPopular = sort;
+                    ],
+                  ),
+                ),
+                // Фильтры раскрываются прямо на странице: шторка снизу
+                // прятала выборку и требовала ещё одного тапа «Показать».
+                SliverToBoxAdapter(
+                  child: AnimatedCrossFade(
+                    duration: const Duration(milliseconds: 220),
+                    crossFadeState: _filtersOpen
+                        ? CrossFadeState.showSecond
+                        : CrossFadeState.showFirst,
+                    firstChild: const SizedBox(width: double.infinity),
+                    secondChild: Padding(
+                      padding: EdgeInsets.fromLTRB(pad, 0, pad, 12),
+                      child: _FiltersPanel(
+                        filters: _filters,
+                        source: _source,
+                        organizations: _organizationsOf(
+                          ref.read(feedProvider).posts,
+                          _source,
+                        ),
+                        sortPopular: _sortPopular,
+                        onChanged: (f, sort) => setState(() {
+                          _filters = f;
+                          _sortPopular = sort;
+                          _visible = _pageSize;
+                          _persist();
+                        }),
+                      ),
+                    ),
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(pad, 0, pad, 10),
+                    child: _SourceSwitcher(
+                      value: _source,
+                      onChanged: (v) => setState(() {
+                        _source = v;
                         _visible = _pageSize;
                         _persist();
                       }),
                     ),
                   ),
                 ),
-              ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(pad, 0, pad, 10),
-                  child: _SourceSwitcher(
-                    value: _source,
-                    onChanged: (v) => setState(() {
-                      _source = v;
-                      _visible = _pageSize;
-                      _persist();
-                    }),
-                  ),
-                ),
-              ),
-          if (feed.loading && feed.posts.isEmpty)
-            // Первая загрузка: скелетоны, а не «ничего не нашлось».
-            SliverPadding(
-              padding: EdgeInsets.fromLTRB(pad, 8, pad, 0),
-              sliver: SliverList.separated(
-                itemCount: 4,
-                separatorBuilder: (_, _) => const SizedBox(height: 10),
-                itemBuilder: (_, _) => PostCardSkeleton(),
-              ),
-            )
-          else if (posts.isEmpty && !feed.loading)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: _EmptyCatalog(
-                onReset: () => setState(() {
-                  _filters = const FeedFilters();
-                  _search.clear();
-                  _visible = _pageSize;
-                  _persist();
-                }),
-              ),
-            )
-          else ...[
-            SliverPadding(
-              padding: EdgeInsets.fromLTRB(pad, 8, pad, 0),
-              sliver: twoColumns
-                  ? SliverGrid.builder(
-                      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: 380,
-                        mainAxisSpacing: 10,
-                        crossAxisSpacing: 10,
-                        // Карточка выросла: блок контента + кнопка «Регистрация»
-                        // внутри. 148 pt обрезали её на планшетах.
-                        mainAxisExtent: 190,
-                      ),
-                      itemCount: shown.length,
-                      itemBuilder: (_, i) => _card(shown[i], favorites),
-                    )
-                  : SliverList.separated(
-                      itemCount: shown.length,
+                if (feed.loading && feed.posts.isEmpty)
+                  // Первая загрузка: скелетоны, а не «ничего не нашлось».
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(pad, 8, pad, 0),
+                    sliver: SliverList.separated(
+                      itemCount: 4,
                       separatorBuilder: (_, _) => const SizedBox(height: 10),
-                      itemBuilder: (_, i) => _card(shown[i], favorites),
+                      itemBuilder: (_, _) => const PostCardSkeleton(),
                     ),
-            ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(
-                  pad,
-                  16,
-                  pad,
-                  AppInsets.scrollBottom(context),
-                ),
-                child: hasMore
-                    ? OutlinedButton(
-                        onPressed: () => setState(() => _visible += _pageSize),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size.fromHeight(48),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(AppRadius.pill),
+                  )
+                else if (posts.isEmpty && !feed.loading)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _EmptyCatalog(
+                      onReset: () => setState(() {
+                        _filters = const FeedFilters();
+                        _search.clear();
+                        _visible = _pageSize;
+                        _persist();
+                      }),
+                    ),
+                  )
+                else ...[
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(pad, 8, pad, 0),
+                    sliver: twoColumns
+                        ? SliverGrid.builder(
+                            gridDelegate:
+                                const SliverGridDelegateWithMaxCrossAxisExtent(
+                              maxCrossAxisExtent: 380,
+                              mainAxisSpacing: 10,
+                              crossAxisSpacing: 10,
+                              mainAxisExtent: 190,
+                            ),
+                            itemCount: shown.length,
+                            itemBuilder: (_, i) => RevealOnMount(index: i, child: _card(shown[i], favorites)),
+                          )
+                        : SliverList.separated(
+                            itemCount: shown.length,
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(height: 10),
+                            itemBuilder: (_, i) => RevealOnMount(index: i, child: _card(shown[i], favorites)),
                           ),
-                        ),
-                        child: Text('Показать ещё (${shown.length} из ${posts.length})'),
-                      )
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.check_circle_outline_rounded,
-                              size: 16, color: AppColors.secondaryLight),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Это всё — новых записей больше нет',
-                            style: AppText.footnote
-                                .copyWith(color: AppColors.secondaryLight),
-                          ),
-                        ],
+                  ),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        pad,
+                        16,
+                        pad,
+                        AppInsets.scrollBottom(context),
                       ),
-              ),
+                      child: ListTail(
+                        hasMore: hasMore,
+                        loaded: shown.length,
+                        total: posts.length,
+                        onMore: () => setState(() => _visible += _pageSize),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
-          ],
-            ],
-          ),
           ),
           SearchOverlay(
             open: _searchOpen,
@@ -310,7 +295,7 @@ class _FiltersPanel extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
       child: Column(
         children: [
-          _Section(
+          CollapsibleSection(
             title: 'Сортировка',
             initiallyOpen: true,
             child: Wrap(
@@ -329,7 +314,7 @@ class _FiltersPanel extends StatelessWidget {
               ],
             ),
           ),
-          _Section(
+          CollapsibleSection(
             title: 'Тип',
             open: filters.types.isNotEmpty,
             child: Wrap(
@@ -347,7 +332,7 @@ class _FiltersPanel extends StatelessWidget {
               ],
             ),
           ),
-          _Section(
+          CollapsibleSection(
             title: 'Формат',
             open: filters.format != null,
             child: Wrap(
@@ -363,7 +348,7 @@ class _FiltersPanel extends StatelessWidget {
               ],
             ),
           ),
-          _Section(
+          CollapsibleSection(
             title: 'Кампус',
             open: filters.campus != null,
             child: Wrap(
@@ -380,7 +365,7 @@ class _FiltersPanel extends StatelessWidget {
               ],
             ),
           ),
-          _Section(
+          CollapsibleSection(
             title: 'Институт',
             open: filters.institute != null,
             child: Wrap(
@@ -398,7 +383,7 @@ class _FiltersPanel extends StatelessWidget {
             ),
           ),
           if (organizations.isNotEmpty)
-            _Section(
+            CollapsibleSection(
               title: source == 'partner' ? 'Компания' : 'Подразделение',
               open: filters.organizationId != null,
               child: Wrap(
@@ -416,7 +401,7 @@ class _FiltersPanel extends StatelessWidget {
                 ],
               ),
             ),
-          _Section(
+          CollapsibleSection(
             title: 'Теги',
             open: filters.tags.isNotEmpty,
             child: Wrap(
@@ -446,74 +431,6 @@ class _FiltersPanel extends StatelessWidget {
       on ? {...current, id} : ({...current}..remove(id));
 }
 
-/// Раскрывающаяся секция панели фильтров.
-class _Section extends StatefulWidget {
-  const _Section({
-    required this.title,
-    required this.child,
-    this.initiallyOpen = false,
-    this.open,
-  });
-
-  final String title;
-  final Widget child;
-  final bool initiallyOpen;
-
-  /// Открыть по наличию выбранных значений (управляется снаружи).
-  final bool? open;
-
-  @override
-  State<_Section> createState() => _SectionState();
-}
-
-class _SectionState extends State<_Section> {
-  late bool _expanded = widget.initiallyOpen || (widget.open ?? false);
-
-  @override
-  Widget build(BuildContext context) {
-    // внешний флаг важнее: выбрали фильтр — секция обязана раскрыться
-    final expanded = widget.open == true || _expanded;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        InkWell(
-          onTap: () => setState(() => _expanded = !expanded),
-          borderRadius: BorderRadius.circular(AppRadius.field),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    widget.title.toUpperCase(),
-                    style: AppText.section.copyWith(
-                      color: AppColors.secondaryLight,
-                    ),
-                  ),
-                ),
-                AnimatedRotation(
-                  turns: expanded ? 0.5 : 0,
-                  duration: const Duration(milliseconds: 200),
-                  child: const Icon(Icons.expand_more_rounded),
-                ),
-              ],
-            ),
-          ),
-        ),
-        AnimatedCrossFade(
-          duration: const Duration(milliseconds: 200),
-          crossFadeState:
-              expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
-          firstChild: const SizedBox(width: double.infinity),
-          secondChild: Padding(
-            padding: const EdgeInsets.only(bottom: 14),
-            child: widget.child,
-          ),
-        ),
-      ],
-    );
-  }
-}
 
 class _SourceSwitcher extends StatelessWidget {
   const _SourceSwitcher({required this.value, required this.onChanged});

@@ -12,6 +12,8 @@ import 'package:mirea_career/data/crash_reporting.dart';
 import 'package:mirea_career/data/local_store.dart';
 import 'package:mirea_career/data/metrics.dart';
 import 'package:mirea_career/data/posts_repo.dart';
+import 'package:mirea_career/screens/favorites/favorites_screen.dart';
+import 'package:mirea_career/screens/home/home_screen.dart';
 import 'package:mirea_career/screens/more/profile_screen.dart';
 import 'package:mirea_career/screens/onboarding/onboarding_screen.dart';
 import 'package:mirea_career/screens/root_shell.dart';
@@ -788,6 +790,53 @@ void main() {
       // карточка видна, но модераторской метки в избранном нет
       expect(find.text('Приоритетная'), findsOneWidget);
       expect(find.text('Приоритет'), findsNothing);
+    });
+  });
+
+  group('Прокрутка', () {
+    testWidgets('избранное не листается за границы и без обновления',
+        (tester) async {
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [samplePost()],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.bookmark_rounded).last);
+      await tester.pumpAndSettle();
+
+      // На избранном нет свайпа-обновления…
+      expect(find.byType(RefreshIndicator), findsNothing);
+      // …и прокрутка ограничена содержимым, а не отскакивает за края.
+      final scroll = tester.widget<CustomScrollView>(
+        find.descendant(
+          of: find.byType(FavoritesScreen),
+          matching: find.byType(CustomScrollView),
+        ),
+      );
+      expect(scroll.physics, isA<ClampingScrollPhysics>());
+    });
+
+    testWidgets('на главной обновление жестом осталось', (tester) async {
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [samplePost()],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+
+      expect(find.byType(RefreshIndicator), findsOneWidget);
+      final scroll = tester.widget<CustomScrollView>(
+        find.descendant(
+          of: find.byType(HomeScreen),
+          matching: find.byType(CustomScrollView),
+        ),
+      );
+      expect(scroll.physics, isA<AlwaysScrollableScrollPhysics>());
     });
   });
 

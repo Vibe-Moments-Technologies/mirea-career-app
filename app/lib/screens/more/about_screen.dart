@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_scroll.dart';
 import '../../core/widgets/glass_back_button.dart';
 import '../../core/widgets/settings_list.dart';
 
@@ -27,6 +28,7 @@ class AboutScreen extends StatelessWidget {
         leading: const GlassBackButton(),
       ),
       body: ListView(
+        physics: AppScroll.plain,
         padding: EdgeInsets.fromLTRB(
           pad,
           8,

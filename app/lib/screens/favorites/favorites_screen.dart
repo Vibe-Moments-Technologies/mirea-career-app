@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_route.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_scroll.dart';
 import '../../core/widgets/post_card.dart';
 import '../../core/widgets/screen_header.dart';
 import '../../state/providers.dart';
@@ -25,8 +26,9 @@ class FavoritesScreen extends ConsumerWidget {
 
     return Scaffold(
       body: CustomScrollView(
-        // Отступ учитывает верхний safe area — заголовок больше не упирается
-        // в вырез экрана.
+        // Прокрутка только в пределах страницы: короткий список больше не
+        // отклеивается от краёв. Обновления здесь нет — данные локальные.
+        physics: AppScroll.plain,
         slivers: [
           const SliverToBoxAdapter(
             child: ScreenHeader(title: 'Избранное', bottom: 10),

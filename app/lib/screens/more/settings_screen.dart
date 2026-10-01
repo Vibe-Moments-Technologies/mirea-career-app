@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_route.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_scroll.dart';
 import '../../core/widgets/glass_back_button.dart';
 import '../../core/widgets/settings_list.dart';
 import '../../state/providers.dart';
@@ -27,6 +28,7 @@ class SettingsScreen extends ConsumerWidget {
         leading: const GlassBackButton(),
       ),
       body: ListView(
+        physics: AppScroll.plain,
         padding: EdgeInsets.fromLTRB(
           pad,
           8,

@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_route.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_scroll.dart';
+import '../../core/widgets/list_tail.dart';
 import '../../core/widgets/post_card.dart';
+import '../../core/widgets/reveal_on_mount.dart';
 import '../../core/widgets/screen_header.dart';
 import '../../core/widgets/search_overlay.dart';
 import '../../core/widgets/spotlight_gallery.dart';
@@ -98,6 +101,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             // ниже тянет уже сам скролл
             onRefresh: () => ref.read(feedProvider.notifier).refresh(),
             child: CustomScrollView(
+              physics: AppScroll.refreshable,
               slivers: [
                 if (feed.offline)
                   const SliverToBoxAdapter(child: _OfflineBanner()),
@@ -119,10 +123,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   SliverToBoxAdapter(
                     child: _PromptProfile(profile: profile),
                   ),
-                if (spotlight.isNotEmpty)
+                if (spotlight.isNotEmpty) ...[
                   SliverToBoxAdapter(
                     child: SpotlightGallery(posts: spotlight, onOpen: _open),
                   ),
+                  // Тонкий разделитель между витриной и фильтрами ленты:
+                  // два блока подряд без границы сливались в одно полотно.
+                  const SliverToBoxAdapter(child: _SectionDivider()),
+                ],
                 SliverToBoxAdapter(
                   child: SizedBox(
                     height: 48,
@@ -159,11 +167,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       : SliverList.separated(
                           itemCount: shown.length,
                           separatorBuilder: (_, _) => const SizedBox(height: 10),
-                          itemBuilder: (_, i) => PostCard(
-                            post: shown[i],
-                            isFavorite: favorites.contains(shown[i].id),
-                            onTap: () => _open(shown[i]),
-                            onToggleFavorite: () => _toggleFavorite(shown[i].id),
+                          // Появление карточек внахлёст: список проявляется,
+                          // а не «выпрыгивает» целиком после скелетонов.
+                          itemBuilder: (_, i) => RevealOnMount(
+                            index: i,
+                            child: PostCard(
+                              post: shown[i],
+                              isFavorite: favorites.contains(shown[i].id),
+                              onTap: () => _open(shown[i]),
+                              onToggleFavorite: () =>
+                                  _toggleFavorite(shown[i].id),
+                            ),
                           ),
                         ),
                 ),
@@ -178,7 +192,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     // Пока грузится, хвост скрыт: он мигал поверх скелетонов.
                     child: loading
                         ? const SizedBox.shrink()
-                        : _ListTail(
+                        : ListTail(
                             hasMore: all.length > shown.length,
                             isEmpty: all.isEmpty && !feed.loading,
                             loaded: shown.length,
@@ -270,6 +284,26 @@ class _PromptProfile extends ConsumerWidget {
   }
 }
 
+/// Тонкая линия-разделитель между секциями главной.
+class _SectionDivider extends StatelessWidget {
+  const _SectionDivider();
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: EdgeInsets.fromLTRB(
+          AppInsets.horizontal(MediaQuery.sizeOf(context).width),
+          12,
+          AppInsets.horizontal(MediaQuery.sizeOf(context).width),
+          0,
+        ),
+        child: Divider(
+          height: 1,
+          thickness: 1,
+          color: AppColors.separator(context),
+        ),
+      );
+}
+
 /// Чип быстрого фильтра: капсула с мягкой анимацией выбора.
 class _QuickChip extends StatelessWidget {
   const _QuickChip({
@@ -312,58 +346,6 @@ class _QuickChip extends StatelessWidget {
   }
 }
 
-/// Хвост ленты: «показать ещё» или «лента закончилась».
-class _ListTail extends StatelessWidget {
-  const _ListTail({
-    required this.hasMore,
-    required this.isEmpty,
-    required this.loaded,
-    required this.total,
-    required this.onMore,
-  });
-
-  final bool hasMore;
-  final bool isEmpty;
-  final int loaded;
-  final int total;
-  final VoidCallback onMore;
-
-  @override
-  Widget build(BuildContext context) {
-    if (isEmpty) return const _EmptyState();
-    if (hasMore) {
-      return OutlinedButton(
-        onPressed: onMore,
-        style: OutlinedButton.styleFrom(
-          minimumSize: const Size.fromHeight(48),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.pill),
-          ),
-        ),
-        child: Text('Показать ещё ($loaded из $total)'),
-      );
-    }
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        const Icon(Icons.check_circle_outline_rounded,
-            size: 16, color: AppColors.secondaryLight),
-        const SizedBox(width: 6),
-        // Flexible: длинная подпись на узком экране должна сжиматься,
-        // иначе строка вылезает за границы (RenderFlex overflow).
-        Flexible(
-          child: Text(
-            'Это всё — новых записей больше нет',
-            style: AppText.footnote.copyWith(color: AppColors.secondaryLight),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _OfflineBanner extends StatelessWidget {
   const _OfflineBanner();
 
@@ -390,30 +372,3 @@ class _OfflineBanner extends StatelessWidget {
   }
 }
 
-class _EmptyState extends StatelessWidget {
-  const _EmptyState();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 48),
-      child: Column(
-        children: [
-          Icon(Icons.inbox_rounded,
-              size: 44, color: AppColors.secondaryLight.withValues(alpha: 0.6)),
-          const SizedBox(height: 12),
-          Text(
-            'Пока ничего нет',
-            style: AppText.headline.copyWith(color: AppColors.secondaryLight),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Новые записи появятся здесь сразу после публикации',
-            textAlign: TextAlign.center,
-            style: AppText.footnote.copyWith(color: AppColors.secondaryLight),
-          ),
-        ],
-      ),
-    );
-  }
-}

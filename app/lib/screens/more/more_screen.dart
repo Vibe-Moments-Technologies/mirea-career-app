@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_route.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_scroll.dart';
 import '../../core/widgets/settings_list.dart';
 import '../../state/providers.dart';
 import 'profile_screen.dart';
@@ -19,6 +20,9 @@ class MoreScreen extends ConsumerWidget {
 
     return Scaffold(
       body: ListView(
+        // Прокрутка только в пределах страницы: короткий список не тянется
+        // за края. Обновления тут нет — данные локальные.
+        physics: AppScroll.plain,
         padding: EdgeInsets.fromLTRB(
           pad,
           AppInsets.top(context, extra: 4),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/dock_visibility.dart';
 import 'core/theme/app_theme.dart';
 import 'data/crash_reporting.dart';
 import 'data/metrics.dart';
@@ -46,6 +47,15 @@ Future<void> _start() async {
         localStoreProvider.overrideWithValue(boot.store),
         metricsProvider.overrideWithValue(boot.metrics),
         supabaseConfiguredProvider.overrideWithValue(boot.configured),
+        // Тема из хранилища — до первого кадра: иначе стартовала светлая
+        // по умолчанию, и на тёмном устройстве вспыхивал белый экран.
+        initialThemeModeProvider.overrideWithValue(
+          switch (boot.themeMode) {
+            'light' => ThemeMode.light,
+            'dark' => ThemeMode.dark,
+            _ => ThemeMode.system,
+          },
+        ),
       ],
       child: const MireaCareerApp(),
     ),
@@ -95,6 +105,8 @@ class MireaCareerApp extends ConsumerWidget {
       theme: buildAppTheme(Brightness.light),
       darkTheme: buildAppTheme(Brightness.dark),
       themeMode: themeMode,
+      // Док прячется, когда открыта подстраница (см. RootShell).
+      navigatorObservers: [dockCovered],
       home: const _Gate(),
     );
   }

@@ -100,7 +100,6 @@ class _SpotlightGalleryState extends State<SpotlightGallery> {
 
   @override
   Widget build(BuildContext context) {
-    final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
     final count = widget.posts.length;
     return Column(
       children: [
@@ -108,18 +107,23 @@ class _SpotlightGalleryState extends State<SpotlightGallery> {
           height: _height,
           child: PageView.builder(
             controller: _controller,
-            padEnds: false,
+            // Активная карточка всегда по центру, по бокам — одинаковые
+            // половинки соседних. При `padEnds: false` первая прижималась к
+            // краю: слева щели нет, справа большая, и лента перестаёт
+            // выглядеть бесконечной. Это верно и для двух карточек: ряд
+            // виртуально бесконечный, поэтому сосед есть с обеих сторон.
+            padEnds: true,
             // itemCount нет намеренно: физический ряд бесконечный, поэтому
             // таймер не может упереться в последнюю страницу и отпружинить.
-            onPageChanged: (i) => setState(() => _page = spotlightIndex(i, count)),
+            onPageChanged: (i) =>
+                setState(() => _page = spotlightIndex(i, count)),
             itemBuilder: (_, i) {
               final index = spotlightIndex(i, count);
               final post = widget.posts[index];
               return Padding(
-                padding: EdgeInsets.only(
-                  left: index == 0 ? pad : 6,
-                  right: index == count - 1 ? pad : 6,
-                ),
+                // Одинаковые боковые поля у всех карточек: размер не
+                // зависит от позиции, поэтому активная не «дышит».
+                padding: const EdgeInsets.symmetric(horizontal: 6),
                 child: _Card(
                   post: post,
                   onTap: () => widget.onOpen(post),

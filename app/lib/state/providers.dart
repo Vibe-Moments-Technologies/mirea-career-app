@@ -45,9 +45,23 @@ final profileProvider =
 
 // ---------------- Тема ----------------
 
+/// Начальное значение темы, прочитанное при старте ДО первого кадра.
+///
+/// Провайдер темы всё равно читает то же хранилище, но строится уже после
+/// первого кадра, и до этого `MaterialApp` рисовался светлой темой — на
+/// тёмном телефоне это была белая вспышка. main() переопределяет значение
+/// тем же чтением из LocalStore.
+final initialThemeModeProvider = Provider<ThemeMode>((ref) => ThemeMode.system);
+
 class ThemeModeNotifier extends Notifier<ThemeMode> {
   @override
-  ThemeMode build() => _decode(ref.watch(localStoreProvider).themeMode);
+  ThemeMode build() {
+    // Значение со старта приоритетнее: оно прочитано из того же хранилища,
+    // поэтому тема не «переключается» на глазах при первом кадре.
+    final seeded = ref.watch(initialThemeModeProvider);
+    if (seeded != ThemeMode.system) return seeded;
+    return _decode(ref.watch(localStoreProvider).themeMode);
+  }
 
   static ThemeMode _decode(String v) => switch (v) {
         'light' => ThemeMode.light,

@@ -66,13 +66,31 @@ class Metrics {
 
 /// Итог старта приложения.
 class Bootstrap {
-  const Bootstrap({required this.store, required this.metrics, required this.configured});
+  const Bootstrap({
+    required this.store,
+    required this.metrics,
+    required this.configured,
+  });
   final LocalStore store;
   final Metrics metrics;
 
   /// false — ключи Supabase не переданы при сборке: приложение работает
   /// на пустом кэше и показывает подсказку вместо падения.
   final bool configured;
+
+  /// Выбранная тема, прочитанная ДО первого кадра.
+  ///
+  /// `LocalStore.open()` уже отработал к этому моменту, а провайдер темы
+  /// читает то же хранилище. Без этого первый кадр рисовался светлой темой
+  /// (значение по умолчанию), и на тёмной телефоне была белая вспышка.
+  String get themeMode => store.themeMode;
+
+  /// Тема из настроек, иначе — системная.
+  bool? get prefersDark => switch (store.themeMode) {
+        'dark' => true,
+        'light' => false,
+        _ => null,
+      };
 }
 
 /// Инициализация Supabase и локального хранилища.
