@@ -284,13 +284,11 @@ class _Cover extends StatelessWidget {
     final url = banner.imageUrl;
     if (url == null || url.isEmpty) return place;
 
-    final dpr = MediaQuery.devicePixelRatioOf(context);
-    final width = MediaQuery.sizeOf(context).width;
     return Image.network(
       url,
       fit: BoxFit.cover,
       gaplessPlayback: true,
-      cacheWidth: (width * dpr).round().clamp(64, 2048),
+      // cacheWidth убран — см. post_image.dart: на iOS блокировал декодирование.
       loadingBuilder: (_, child, progress) => progress == null ? child : place,
       errorBuilder: (_, error, stack) {
         CrashReporting.report(

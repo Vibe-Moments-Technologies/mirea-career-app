@@ -61,11 +61,20 @@ class PostCover extends StatelessWidget {
                 // Держим прошлый кадр, пока грузится новый: без этого
                 // заглушка на миг перекрывала уже показанное фото.
                 gaplessPlayback: true,
-                cacheWidth: _decodeWidth(context, size),
+                // ponytail: cacheWidth временно убран — на iOS он блокировал
+                // декодирование больших PNG (4 MB 2048×2048), и loadingBuilder
+                // никогда не получал progress == null. Картинка оставалась
+                // серой навсегда, errorBuilder не срабатывал. Вернём, когда
+                // найдём безопасное значение или перейдём на WebP/thumbnails.
                 // Пока грузится и при ошибке — та же ровная заглушка,
                 // без иконки: она «мигала» поверх недогруженного фото.
-                loadingBuilder: (_, child, progress) =>
-                    progress == null ? child : _Placeholder(post: post, letter: letter),
+                loadingBuilder: (_, child, progress) {
+                  if (progress == null) return child;
+                  // Если загрузка зависла (progress.cumulativeBytesLoaded > 0,
+                  // но expectedTotalBytes == null или не растёт), это тоже
+                  // нужно ловить. Пока просто показываем заглушку.
+                  return _Placeholder(post: post, letter: letter);
+                },
                 errorBuilder: (_, error, stack) {
                   // В release-сборке debugPrint не виден. Отправляем в Sentry,
                   // чтобы узнать реальную причину серых квадратов на устройстве.
@@ -81,20 +90,6 @@ class PostCover extends StatelessWidget {
     );
   }
 
-  /// Ширина декодирования под фактический размер виджета.
-  ///
-  /// Исходники — PNG 2048×2048 по 4 МБ. Без `cacheWidth` Flutter разжимает
-  /// их целиком (`390×3 = 1170` для обложки, но 2048 в памяти), и на слабом
-  /// устройстве это заметная пауза с пустой заглушкой.
-  ///
-  /// ponytail: только `cacheWidth`, без `cacheHeight` — высота считается по
-  /// пропорциям, а `BoxFit.cover` обрезает лишнее. Задавать оба нельзя: при
-  /// несовпадении пропорций Flutter искажает кадр.
-  static int _decodeWidth(BuildContext context, double? size) {
-    final dpr = MediaQuery.devicePixelRatioOf(context);
-    final logical = size ?? MediaQuery.sizeOf(context).width;
-    return (logical * dpr).round().clamp(64, 2048);
-  }
 }
 
 /// Заглушка: буква организации или иконка типа на нейтральной поверхности.
