@@ -268,19 +268,19 @@ void main() {
       completed: true,
     );
 
-    test('приоритетное (featured) всегда сверху, даже если оно старое', () {
+    test('приоритетное поднимается вверх списка, даже если оно старое', () {
       final old = post(id: 'old', publishedDaysAgo: 30);
       final featuredOld = post(id: 'featured', featured: true, publishedDaysAgo: 30);
       final fresh = post(id: 'fresh');
 
-      // featured поднимается выше свежего, несмотря на возраст
+      // приоритетное встаёт выше свежего, несмотря на возраст
       expect(homeFeed([fresh, old, featuredOld], profile).first.id, 'featured');
     });
 
     test('релевантность профилю поднимает пост выше нерелевантного', () {
       final relevant = post(id: 'rel', institutes: ['iit'], tags: ['it']);
       final irrelevant = post(id: 'irr', orgType: 'partner');
-      // обе не featured, одинаково свежие — решает скоринг
+      // обе не приоритетные, одинаково свежие — решает скоринг
       expect(
         homeFeed([irrelevant, relevant], profile).first.id,
         'rel',
@@ -288,14 +288,13 @@ void main() {
       );
     });
 
-    test('при равном featured и скоринге свежее выше', () {
+    test('при равном приоритете и скоринге свежее выше', () {
       final older = post(id: 'older', publishedDaysAgo: 5);
       final newer = post(id: 'newer', publishedDaysAgo: 1);
       expect(homeFeed([older, newer], profile).first.id, 'newer');
     });
 
-    test('featured не исключаются из ленты — остаются и в общем потоке', () {
-      // карусель — витрина, но пост не должен исчезать из списка
+    test('приоритетные не исключаются из ленты и остаются в общем потоке', () {
       final featured = post(id: 'f', featured: true);
       final normal = post(id: 'n');
       final ids = homeFeed([normal, featured], profile).map((p) => p.id).toList();

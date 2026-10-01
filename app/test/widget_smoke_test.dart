@@ -675,7 +675,7 @@ void main() {
   });
 
   group('Приоритетные карточки', () {
-    testWidgets('приоритетная идёт первой и получает акцентную обводку',
+    testWidgets('приоритетная просто идёт первой, без меток и обводки',
         (tester) async {
       final base = DateTime(2026, 1, 1);
       final c = await container(
@@ -695,12 +695,54 @@ void main() {
       await tester.pumpWidget(wrap(c, const RootShell()));
       await tester.pump();
 
-      // приоритетная поднялась вверх, несмотря на возраст. Она же попадает в
-      // витрину важного, поэтому одного и того же заголовка в дереве два.
       expect(find.text('Старая приоритетная'), findsWidgets);
       expect(find.text('Свежая обычная'), findsOneWidget);
-      // один и тот же приоритет: витрина и лента используют одну метку
-      expect(find.text('Приоритет'), findsWidgets);
+
+      // Приоритет — это только порядок: ни метки, ни звезды, ни особой
+      // обводки на карточке нет.
+      expect(find.text('Приоритет'), findsNothing);
+      expect(find.text('Важное'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(HomeScreen),
+          matching: find.byIcon(Icons.star_rounded),
+        ),
+        findsNothing,
+      );
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
+  });
+
+  group('Витрина главной', () {
+    testWidgets('слайды не берутся из постов и живут отдельно',
+        (tester) async {
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [
+          samplePost(id: 'a', title: 'Обычный пост', featured: true),
+        ],
+      );
+      addTearDown(c.dispose);
+      // Слайд витрины — отдельная сущность, у него нет id поста.
+      await c.read(localStoreProvider).saveSpotlightCache([
+        {
+          'id': 'b1',
+          'title': 'Баннер витрины',
+          'subtitle': 'Отдельный слайд',
+          'image_url': null,
+          'link_url': null,
+          'sort_order': 1,
+        },
+      ]);
+      c.invalidate(spotlightProvider);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+
+      expect(find.text('Баннер витрины'), findsOneWidget);
+      expect(find.text('Отдельный слайд'), findsOneWidget);
+      // Пост с приоритетом остаётся в ленте и НЕ становится слайдом.
+      expect(find.text('Обычный пост'), findsOneWidget);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
   });
@@ -788,9 +830,8 @@ void main() {
       await tester.tap(find.byIcon(Icons.bookmark_rounded).last);
       await tester.pumpAndSettle();
 
-      // Заголовок встречается несколько раз: IndexedStack держит в дереве
-      // все вкладки, а карточка есть и в витрине, и в ленте. Важно, что
-      // модераторской МЕТКИ в избранном нет.
+      // Карточка на месте и выглядит как любая другая: приоритет на ней
+      // больше ничем не отмечен.
       expect(find.text('Приоритетная'), findsWidgets);
       expect(
         find.descendant(

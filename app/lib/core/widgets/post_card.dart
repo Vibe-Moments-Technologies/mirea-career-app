@@ -7,9 +7,9 @@ import 'post_image.dart';
 
 /// Карточка поста в ленте.
 ///
-/// Приоритетная (isFeatured) — с акцентной обводкой и меткой «Приоритет».
-/// В избранном выделение выключается: там список уже собран студентом, и
-/// модераторская метка в нём только шумит.
+/// Приоритет (is_featured) на карточке никак не рисуется: он влияет только
+/// на порядок в списке (`priorityFirst`). Метка, обводка и подпись делали из
+/// карточки «особый тип», которого на самом деле нет.
 class PostCard extends StatelessWidget {
   const PostCard({
     super.key,
@@ -17,7 +17,6 @@ class PostCard extends StatelessWidget {
     required this.isFavorite,
     required this.onTap,
     required this.onToggleFavorite,
-    this.showPriority = true,
   });
 
   final Post post;
@@ -25,22 +24,15 @@ class PostCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onToggleFavorite;
 
-  /// Рисовать ли приоритетную обводку и метку.
-  final bool showPriority;
-
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final isPriority = showPriority && post.isFeatured;
 
     return Material(
       color: scheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppRadius.card),
-        side: BorderSide(
-          color: isPriority ? scheme.primary : AppColors.separator(context),
-          width: isPriority ? 1.5 : 1,
-        ),
+        side: BorderSide(color: AppColors.separator(context)),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -58,7 +50,7 @@ class PostCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _TypeBadge(type: post.type, isPriority: isPriority),
+                    _TypeBadge(type: post.type),
                     const SizedBox(height: 5),
                     Text(
                       post.title,
@@ -154,47 +146,25 @@ class _Thumb extends StatelessWidget {
       PostCover(post: post, size: 72, radius: AppRadius.thumb, letter: true);
 }
 
+/// Тип поста нейтральным текстом.
+///
+/// Бейдж не цветной по типу: пять разных цветов на карточках превращали ленту
+/// в пёстрое поле, а разницу между «вакансией» и «стажировкой» несёт подпись.
 class _TypeBadge extends StatelessWidget {
-  const _TypeBadge({required this.type, required this.isPriority});
+  const _TypeBadge({required this.type});
   final String type;
-  final bool isPriority;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    // Метка «Приоритет» ставит главный модератор: она и есть опознавательный
-    // знак карточки, поэтому идёт перед типом, а не заменяет его.
-    return Row(
-      children: [
-        if (isPriority) ...[
-          Icon(Icons.star_rounded, size: 13, color: scheme.primary),
-          const SizedBox(width: 3),
-          Text(
-            'Приоритет',
-            style: AppText.caption.copyWith(
-              color: scheme.primary,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.2,
-            ),
-          ),
-          Text(
-            '  ·  ',
-            style: AppText.caption.copyWith(color: AppColors.secondaryLight),
-          ),
-        ],
-        Flexible(
-          child: Text(
-            (Catalogs.postTypes[type] ?? type).toUpperCase(),
-            style: AppText.caption.copyWith(
-              color: isPriority ? scheme.primary : AppColors.secondaryLight,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.4,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
+    return Text(
+      (Catalogs.postTypes[type] ?? type).toUpperCase(),
+      style: AppText.caption.copyWith(
+        color: AppColors.secondaryLight,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.4,
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
     );
   }
 }

@@ -194,6 +194,44 @@ class FeedNotifier extends Notifier<FeedState> {
 
 final feedProvider = NotifierProvider<FeedNotifier, FeedState>(FeedNotifier.new);
 
+// ---------------- Витрина главной ----------------
+
+/// Слайды витрины: отдельная сущность, которую наполняет администратор.
+///
+/// Раньше витрина собиралась из приоритетных постов, и баннер был обычной
+/// карточкой с меткой — теперь это независимый список (`spotlight_banners`),
+/// а приоритет влияет только на порядок в ленте.
+class SpotlightNotifier extends Notifier<List<SpotlightBanner>> {
+  @override
+  List<SpotlightBanner> build() {
+    final cached = ref.watch(localStoreProvider).spotlightCache;
+    final initial = cached == null
+        ? const <SpotlightBanner>[]
+        : cached.map(SpotlightBanner.tryParse).whereType<SpotlightBanner>().toList();
+    Future.microtask(refresh);
+    return initial;
+  }
+
+  Future<void> refresh() async {
+    try {
+      final banners = await ref.read(postsRepoProvider).fetchSpotlight();
+      if (!ref.mounted) return;
+      // Пустой ответ не затираем: это может быть неудачная выборка, а не
+      // «администратор всё удалил».
+      if (banners.isEmpty && state.isNotEmpty) return;
+      state = banners;
+      await ref
+          .read(localStoreProvider)
+          .saveSpotlightCache(banners.map((b) => b.toJson()).toList());
+    } catch (_) {
+      // нет сети — остаёмся на кэше, витрина просто не обновится
+    }
+  }
+}
+
+final spotlightProvider =
+    NotifierProvider<SpotlightNotifier, List<SpotlightBanner>>(SpotlightNotifier.new);
+
 // ---------------- Избранное ----------------
 
 class FavoritesNotifier extends Notifier<List<String>> {

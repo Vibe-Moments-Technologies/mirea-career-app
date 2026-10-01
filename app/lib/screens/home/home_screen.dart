@@ -85,11 +85,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final all = homeFeed(picked.isNotEmpty ? picked : filtered, profile);
     final shown = all.take(_visible).toList();
     final loading = feed.loading && feed.posts.isEmpty;
-
-    // Витрина — приоритетные из той же подборки: в ленте профиля их может
-    // не быть вовсе, а показывать то, что системе не подошло, нельзя.
-    final source = picked.isNotEmpty ? picked : filtered;
-    final spotlight = source.where((p) => p.isFeatured).take(5).toList();
+    // Витрина — самостоятельные баннеры из консоли, к постам отношения не
+    // имеют: в ленту не попадают, приоритет не трогают.
+    final banners = ref.watch(spotlightProvider);
 
     return Scaffold(
       // Поиск лежит поверх ленты, поэтому экран — Stack: поле затемняет
@@ -99,7 +97,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           RefreshIndicator(
             // свайп сверху вниз: срабатывает только у самого верха ленты,
             // ниже тянет уже сам скролл
-            onRefresh: () => ref.read(feedProvider.notifier).refresh(),
+            onRefresh: () async {
+              // витрина — отдельная сущность, обновляем вместе с лентой
+              await Future.wait([
+                ref.read(feedProvider.notifier).refresh(),
+                ref.read(spotlightProvider.notifier).refresh(),
+              ]);
+            },
             child: CustomScrollView(
               physics: AppScroll.refreshable,
               slivers: [
@@ -123,14 +127,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   SliverToBoxAdapter(
                     child: _PromptProfile(profile: profile),
                   ),
-                if (spotlight.isNotEmpty) ...[
+                if (banners.isNotEmpty)
                   SliverToBoxAdapter(
-                    child: SpotlightGallery(posts: spotlight, onOpen: _open),
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: SpotlightGallery(banners: banners),
+                    ),
                   ),
-                  // Тонкий разделитель между витриной и фильтрами ленты:
-                  // два блока подряд без границы сливались в одно полотно.
-                  const SliverToBoxAdapter(child: _SectionDivider()),
-                ],
                 SliverToBoxAdapter(
                   child: SizedBox(
                     height: 48,
@@ -281,26 +284,6 @@ class _PromptProfile extends ConsumerWidget {
       ),
     );
   }
-}
-
-/// Тонкая линия-разделитель между секциями главной.
-class _SectionDivider extends StatelessWidget {
-  const _SectionDivider();
-
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          AppInsets.horizontal(MediaQuery.sizeOf(context).width),
-          12,
-          AppInsets.horizontal(MediaQuery.sizeOf(context).width),
-          0,
-        ),
-        child: Divider(
-          height: 1,
-          thickness: 1,
-          color: AppColors.separator(context),
-        ),
-      );
 }
 
 /// Чип быстрого фильтра: капсула с мягкой анимацией выбора.

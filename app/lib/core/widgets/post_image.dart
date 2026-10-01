@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../data/models.dart';
@@ -46,12 +47,6 @@ class PostCover extends StatelessWidget {
   Widget build(BuildContext context) {
     final br = borderRadius ?? BorderRadius.circular(radius ?? AppRadius.thumb);
     final url = post.imageUrl;
-    // Размер декодируемого изображения. Исходники в базе — PNG по 4 МБ;
-    // без cacheWidth Flutter грузит их целиком, и в ленте картинка не
-    // успевает появиться (пользователь видел вечную заглушку). Декодируем
-    // ровно под экран — на превью это ~250 px вместо 4000.
-    final target = size ?? MediaQuery.sizeOf(context).width;
-    final dpr = MediaQuery.devicePixelRatioOf(context);
 
     return ClipRRect(
       borderRadius: br,
@@ -63,15 +58,38 @@ class PostCover extends StatelessWidget {
             : Image.network(
                 url,
                 fit: BoxFit.cover,
-                cacheWidth: (target * dpr).round().clamp(64, 2000),
+                // Держим прошлый кадр, пока грузится новый: без этого
+                // заглушка на миг перекрывала уже показанное фото.
+                gaplessPlayback: true,
+                cacheWidth: _decodeWidth(context, size),
                 // Пока грузится и при ошибке — та же ровная заглушка,
                 // без иконки: она «мигала» поверх недогруженного фото.
                 loadingBuilder: (_, child, progress) =>
                     progress == null ? child : _Placeholder(post: post, letter: letter),
-                errorBuilder: (_, _, _) => _Placeholder(post: post, letter: letter),
+                errorBuilder: (_, error, _) {
+                  // Причина видна в консоли: иначе «серый квадрат» на
+                  // устройстве невозможно отличить от 404, 403 и битого URL.
+                  debugPrint('PostCover: не загрузилась $url → $error');
+                  return _Placeholder(post: post, letter: letter);
+                },
               ),
       ),
     );
+  }
+
+  /// Ширина декодирования под фактический размер виджета.
+  ///
+  /// Исходники — PNG 2048×2048 по 4 МБ. Без `cacheWidth` Flutter разжимает
+  /// их целиком (`390×3 = 1170` для обложки, но 2048 в памяти), и на слабом
+  /// устройстве это заметная пауза с пустой заглушкой.
+  ///
+  /// ponytail: только `cacheWidth`, без `cacheHeight` — высота считается по
+  /// пропорциям, а `BoxFit.cover` обрезает лишнее. Задавать оба нельзя: при
+  /// несовпадении пропорций Flutter искажает кадр.
+  static int _decodeWidth(BuildContext context, double? size) {
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final logical = size ?? MediaQuery.sizeOf(context).width;
+    return (logical * dpr).round().clamp(64, 2048);
   }
 }
 

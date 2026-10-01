@@ -1,6 +1,55 @@
 /// Модели данных, приходящие из Supabase. Чистые immutable-классы без кодогенерации.
 library;
 
+/// Слайд витрины главной.
+///
+/// Отдельная сущность, а не пост: витрину наполняет администратор в консоли,
+/// и она не должна появляться в ленте. Раньше баннер был приоритетным постом,
+/// из-за чего приходилось помечать обычную карточку «приоритетной», и она
+/// всплывала в ленте.
+class SpotlightBanner {
+  const SpotlightBanner({
+    required this.id,
+    required this.title,
+    this.subtitle,
+    this.imageUrl,
+    this.linkUrl,
+    this.sortOrder = 0,
+  });
+
+  final String id;
+  final String title;
+  final String? subtitle;
+  final String? imageUrl;
+  final String? linkUrl;
+  final int sortOrder;
+
+  static SpotlightBanner? tryParse(Object? json) {
+    if (json is! Map) return null;
+    final id = json['id'];
+    final title = json['title'];
+    if (id is! String || title is! String) return null;
+    return SpotlightBanner(
+      id: id,
+      title: title,
+      subtitle: json['subtitle'] as String?,
+      imageUrl: json['image_url'] as String?,
+      linkUrl: json['link_url'] as String?,
+      sortOrder: (json['sort_order'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  /// Для локального кэша.
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'subtitle': subtitle,
+        'image_url': imageUrl,
+        'link_url': linkUrl,
+        'sort_order': sortOrder,
+      };
+}
+
 class Organization {
   const Organization({
     required this.id,

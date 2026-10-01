@@ -93,6 +93,7 @@ class LocalStore {
   static const _kFeedCache = 'feed_cache';
   static const _kTheme = 'theme_mode';
   static const _kCatalog = 'catalog_state';
+  static const _kSpotlight = 'spotlight_cache';
 
   // ---------- Профиль ----------
   StudentProfile get profile {
@@ -118,6 +119,19 @@ class LocalStore {
 
   Future<void> saveCatalogState(Map<String, dynamic> value) =>
       _prefs.setString(_kCatalog, jsonEncode(value));
+
+  // ---------- Кэш витрины главной ----------
+  //
+  // Витрина — отдельная сущность (не посты), поэтому и кэш свой: она должна
+  // показываться офлайн при запуске, ещё до первого запроса.
+  List<Map<String, dynamic>>? get spotlightCache {
+    final raw = _prefs.getString(_kSpotlight);
+    if (raw == null) return null;
+    return (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
+  }
+
+  Future<void> saveSpotlightCache(List<Map<String, dynamic>> banners) =>
+      _prefs.setString(_kSpotlight, jsonEncode(banners));
 
   // ---------- Избранное ----------
   List<String> get favorites => _prefs.getStringList(_kFavorites) ?? const [];
@@ -172,7 +186,7 @@ class LocalStore {
 
   // ---------- Сброс ----------
   Future<void> reset() async {
-    for (final k in [_kProfile, _kFavorites, _kViewed, _kPending, _kFeedCache, _kCatalog]) {
+    for (final k in [_kProfile, _kFavorites, _kViewed, _kPending, _kFeedCache, _kCatalog, _kSpotlight]) {
       await _prefs.remove(k);
     }
   }

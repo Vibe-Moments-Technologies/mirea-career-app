@@ -1,35 +1,36 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../data/models.dart';
 import '../theme/app_theme.dart';
-import 'post_image.dart';
 
-/// Индекс витрины для физически бесконечного `PageView`.
+/// Индекс слайда для физически бесконечного `PageView`.
 ///
 /// Возвращает остаток от деления, поэтому после последнего слайда идёт
 /// первый, а не дотягивание за край с возвратом. Стартовая страница кратна
-/// всем допустимым размерам галереи (2–5 слайдов).
+/// всем допустимым размерам витрины (2–5 слайдов).
 int spotlightIndex(int page, int count) {
-  assert(count > 0, 'в витрине должен быть хотя бы один пост');
+  assert(count > 0, 'в витрине должен быть хотя бы один слайд');
   return page % count;
 }
 
-/// Витрина важного: небольшие карточки, листающиеся сами.
+/// Витрина главной: баннеры, которые листаются сами.
 ///
-/// Источник — приоритетные посты (их ставит главный модератор): это и есть
-/// «новости и важная информация». Если таких нет, витрина не строится —
-/// пустой блок выше ленты только отнимал бы экран.
+/// Это **отдельная сущность**, а не выборка постов: слайды создаёт
+/// администратор в консоли (`spotlight_banners`), поэтому баннер не попадает
+/// в ленту и не требует помечать обычную карточку «приоритетной».
+///
+/// Если слайдов нет, витрина не строится — пустой блок выше ленты только
+/// отнимал бы экран.
 class SpotlightGallery extends StatefulWidget {
   const SpotlightGallery({
     super.key,
-    required this.posts,
-    required this.onOpen,
+    required this.banners,
   });
 
-  final List<Post> posts;
-  final ValueChanged<Post> onOpen;
+  final List<SpotlightBanner> banners;
 
   @override
   State<SpotlightGallery> createState() => _SpotlightGalleryState();
@@ -48,12 +49,12 @@ class _SpotlightGalleryState extends State<SpotlightGallery> {
     initialPage: _startPage,
   );
   Timer? _timer;
-  late int _page = spotlightIndex(_startPage, widget.posts.length);
+  late int _page = spotlightIndex(_startPage, widget.banners.length);
 
-  /// Автолистание включается только от двух карточек: одна и так видна
-  /// целиком, а листать нечего. Заодно это не мешает тестам — без таймера
-  /// анимации нет и `pumpAndSettle` не зависает.
-  bool get _autoScroll => widget.posts.length > 1;
+  /// Автолистание включается от двух слайдов: один и так виден целиком.
+  /// Заодно это не мешает тестам — без таймера анимации нет и
+  /// `pumpAndSettle` не зависает.
+  bool get _autoScroll => widget.banners.length > 1;
 
   @override
   void initState() {
@@ -64,9 +65,10 @@ class _SpotlightGalleryState extends State<SpotlightGallery> {
   @override
   void didUpdateWidget(SpotlightGallery oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.posts.length != oldWidget.posts.length && widget.posts.isNotEmpty) {
+    if (widget.banners.length != oldWidget.banners.length &&
+        widget.banners.isNotEmpty) {
       // Физическая позиция контроллера остаётся, нормализуем только точку.
-      _page = spotlightIndex(_page, widget.posts.length);
+      _page = spotlightIndex(_page, widget.banners.length);
     }
     if (_autoScroll) {
       _start();
@@ -100,7 +102,7 @@ class _SpotlightGalleryState extends State<SpotlightGallery> {
 
   @override
   Widget build(BuildContext context) {
-    final count = widget.posts.length;
+    final count = widget.banners.length;
     return Column(
       children: [
         SizedBox(
@@ -110,26 +112,19 @@ class _SpotlightGalleryState extends State<SpotlightGallery> {
             // Активная карточка всегда по центру, по бокам — одинаковые
             // половинки соседних. При `padEnds: false` первая прижималась к
             // краю: слева щели нет, справа большая, и лента перестаёт
-            // выглядеть бесконечной. Это верно и для двух карточек: ряд
+            // выглядеть бесконечной. Это верно и для двух слайдов: ряд
             // виртуально бесконечный, поэтому сосед есть с обеих сторон.
             padEnds: true,
             // itemCount нет намеренно: физический ряд бесконечный, поэтому
             // таймер не может упереться в последнюю страницу и отпружинить.
             onPageChanged: (i) =>
                 setState(() => _page = spotlightIndex(i, count)),
-            itemBuilder: (_, i) {
-              final index = spotlightIndex(i, count);
-              final post = widget.posts[index];
-              return Padding(
-                // Одинаковые боковые поля у всех карточек: размер не
-                // зависит от позиции, поэтому активная не «дышит».
-                padding: const EdgeInsets.symmetric(horizontal: 6),
-                child: _Card(
-                  post: post,
-                  onTap: () => widget.onOpen(post),
-                ),
-              );
-            },
+            itemBuilder: (_, i) => Padding(
+              // Одинаковые боковые поля у всех карточек: размер не зависит
+              // от позиции, поэтому активная не «дышит».
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: _Card(banner: widget.banners[spotlightIndex(i, count)]),
+            ),
           ),
         ),
         if (_autoScroll) ...[
@@ -137,7 +132,7 @@ class _SpotlightGalleryState extends State<SpotlightGallery> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              for (var i = 0; i < widget.posts.length; i++)
+              for (var i = 0; i < count; i++)
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   margin: const EdgeInsets.symmetric(horizontal: 3),
@@ -158,17 +153,25 @@ class _SpotlightGalleryState extends State<SpotlightGallery> {
   }
 }
 
-/// Компактная карточка витрины: фото, заголовок и источник.
+/// Карточка витрины: обложка, заголовок, подпись. Тап ведёт по ссылке, если
+/// администратор её задал.
 class _Card extends StatelessWidget {
-  const _Card({required this.post, required this.onTap});
+  const _Card({required this.banner});
 
-  final Post post;
-  final VoidCallback onTap;
+  final SpotlightBanner banner;
+
+  Future<void> _open() async {
+    final link = banner.linkUrl;
+    if (link == null || link.isEmpty) return;
+    final uri = Uri.tryParse(link);
+    if (uri == null) return;
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
 
   @override
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
-    final organization = (post.organizationName ?? '').trim();
+    final hasLink = (banner.linkUrl ?? '').isNotEmpty;
 
     return Container(
       decoration: BoxDecoration(
@@ -185,23 +188,18 @@ class _Card extends StatelessWidget {
         child: Material(
           color: Theme.of(context).colorScheme.surface,
           child: InkWell(
-            onTap: onTap,
+            onTap: hasLink ? _open : null,
             child: Stack(
               fit: StackFit.expand,
               children: [
-                PostCover(
-                  post: post,
-                  size: null,
-                  borderRadius: BorderRadius.zero,
-                  letter: true,
-                ),
+                _Cover(banner: banner),
                 const DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [Colors.transparent, Color(0xCC000000)],
-                      stops: [0.4, 1],
+                      stops: [0.35, 1],
                     ),
                   ),
                 ),
@@ -213,43 +211,87 @@ class _Card extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.star_rounded,
-                              size: 13, color: Colors.white),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Приоритет',
-                            style: AppText.caption.copyWith(color: Colors.white),
-                          ),
-                        ],
+                      Text(
+                        banner.title,
+                        style: AppText.cardTitle.copyWith(color: Colors.white),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      if (organization.isNotEmpty) ...[
+                      if ((banner.subtitle ?? '').isNotEmpty) ...[
                         const SizedBox(height: 3),
                         Text(
-                          organization,
+                          banner.subtitle!,
                           style: AppText.caption.copyWith(
-                            color: Colors.white.withValues(alpha: 0.82),
+                            color: Colors.white.withValues(alpha: 0.85),
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],
-                      const SizedBox(height: 4),
-                      Text(
-                        post.title,
-                        style: AppText.cardTitle.copyWith(color: Colors.white),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
                     ],
                   ),
                 ),
+                if (hasLink)
+                  const Positioned(
+                    right: 10,
+                    top: 10,
+                    child: _OpenBadge(),
+                  ),
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _OpenBadge extends StatelessWidget {
+  const _OpenBadge();
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.35),
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(Icons.open_in_new_rounded,
+            size: 14, color: Colors.white),
+      );
+}
+
+/// Обложка баннера. Правила те же, что у постов (см. post_image.dart):
+/// фото → ровная заглушка, без иконок поверх недогруженного кадра.
+class _Cover extends StatelessWidget {
+  const _Cover({required this.banner});
+  final SpotlightBanner banner;
+
+  @override
+  Widget build(BuildContext context) {
+    final place = ColoredBox(
+      color: AppColors.placeholder(Theme.of(context).brightness),
+      child: Center(
+        child: Icon(
+          Icons.campaign_rounded,
+          size: 30,
+          color: AppColors.secondaryLight,
+        ),
+      ),
+    );
+
+    final url = banner.imageUrl;
+    if (url == null || url.isEmpty) return place;
+
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final width = MediaQuery.sizeOf(context).width;
+    return Image.network(
+      url,
+      fit: BoxFit.cover,
+      gaplessPlayback: true,
+      cacheWidth: (width * dpr).round().clamp(64, 2048),
+      loadingBuilder: (_, child, progress) => progress == null ? child : place,
+      errorBuilder: (_, _, _) => place,
     );
   }
 }

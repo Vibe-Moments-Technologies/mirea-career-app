@@ -90,7 +90,6 @@ class FavoritesScreen extends ConsumerWidget {
                     child: PostCard(
                       post: post,
                       isFavorite: true,
-                      showPriority: false,
                       onTap: () => Navigator.of(context).push(
                         appRoute(context, PostDetailScreen(post: post))
                       ),

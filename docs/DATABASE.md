@@ -78,18 +78,40 @@
 
 ## 3. Матрица прав (кто какой переход статуса может)
 
-| Переход | org_admin / org_member | assistant_moderator | main_moderator | super_admin |
-|---|---|---|---|---|
-| create draft | ✅ (своя org) | — | ✅ | ✅ |
-| draft → pending_review | ✅ | — | ✅ | ✅ |
-| rejected → draft (исправить) | ✅ | — | ✅ | ✅ |
-| pending_review → reviewed_ready | — | ✅ | ✅ | ✅ |
-| pending_review → rejected (+note) | — | ✅ | ✅ | ✅ |
-| reviewed_ready → published | — | — | ✅ | ✅ |
-| published → draft (снять) | — | — | ✅ | ✅ |
-| is_featured / priority_weight / целевые аудитории | — | — | ✅ | ✅ |
+**Публикует автор (компания), а не модерация.** Модерация только штампует одобрение,
+автор публикует сам. Глава организации действует за всю организацию, сотрудник — за свои
+посты и только в пределах выданных разрешений.
 
-Реализация: RLS-политики на UPDATE с проверкой перехода (см. п.4), а не только клиентская логика.
+Роли (миграции 0012–0013): `super_admin` · `administrator` (бывший `main_moderator`) ·
+`moderator` (бывший `assistant_moderator`) · `org_admin` · `org_member`.
+Модераторская служба — сотрудники системной организации **«Администрация»**
+(`org_type = 'administration'`, id `0000…0001`); над ней по правам только супер-админ.
+
+| Переход | org_member | org_admin | moderator | administrator | super_admin |
+|---|---|---|---|---|---|
+| create draft | ✅ свои | ✅ за org | — | — | ✅ |
+| draft → pending_review | ✅ | ✅ | — | — | ✅ |
+| pending_review → draft (отозвать) | ✅ | ✅ | — | — | ✅ |
+| rejected → draft / pending_review | ✅ | ✅ | — | — | ✅ |
+| withdrawn → draft / pending_review | ✅ | ✅ | — | — | ✅ |
+| pending_review → reviewed_ready | — | — | ✅ | ✅ | ✅ |
+| pending_review → rejected (+пояснение) | — | — | ✅ | ✅ | ✅ |
+| reviewed_ready → published | ✅ по `can_publish` | ✅ | — | **—** | ✅ |
+| published → draft (скрыть) | ✅ по `can_withdraw` | ✅ | — | — | ✅ |
+| published → withdrawn (снять) | — | — | — | ✅ (+пояснение) | ✅ |
+| is_featured / priority_weight / аудитории | — | — | — | ✅ | ✅ |
+| роль и организация профиля | — | — | — | ✅ ответственный | ✅ |
+| разрешения/активность сотрудника | — | ✅ свои | — | ✅ | ✅ |
+| CRUD организаций | — | ✅ своя | — | ✅ кроме «Администрации» | ✅ |
+| удаление поста | ✅ по `can_delete_posts` | ✅ своя org | — | ✅ | ✅ |
+
+Права сотрудника (`profiles`): `can_publish`, `can_withdraw`, `can_delete_posts` —
+три независимых флага, выдаёт глава организации. Деактивация — `is_active` (вход закрыт),
+сброс пароля — `must_change_password` (только ответственный).
+
+Реализация: RLS-политики + триггеры `guard_post_update` / `guard_moderation_note` /
+`guard_profile_update` (см. п.4) — не клиентская логика. **Отклонение и снятие требуют
+пояснения**: пустая заметка не даст сменить статус (проверяется в БД).
 
 ## 4. RLS — политики (суть, исполняемый SQL в миграции 0002)
 

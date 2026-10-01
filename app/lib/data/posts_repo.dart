@@ -60,6 +60,20 @@ class PostsRepo {
         .asyncMap((_) => fetchPublished());
   }
 
+  /// Слайды витрины главной.
+  ///
+  /// Отдельная таблица `spotlight_banners`: её наполняет администратор, и к
+  /// постам она отношения не имеет. RLS отдаёт только активные и не
+  /// вышедшие за окно показа (см. 0008_spotlight.sql).
+  Future<List<SpotlightBanner>> fetchSpotlight() async {
+    final rows = await _client
+        .from('spotlight_banners')
+        .select('id, title, subtitle, image_url, link_url, sort_order')
+        .order('sort_order')
+        .limit(20);
+    return rows.map(SpotlightBanner.tryParse).whereType<SpotlightBanner>().toList();
+  }
+
   /// Счётчики — только через RPC (у анонима нет UPDATE на posts).
   Future<void> incrementViews(String postId) =>
       _client.rpc('increment_post_views', params: {'target_post_id': postId});
