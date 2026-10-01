@@ -48,7 +48,7 @@ class GlassDock extends StatelessWidget {
   ///
   /// Разный по платформам не по вкусу, а по устройству:
   ///  * iOS — home-indicator это тонкая полоска ПОВЕРХ контента, а не панель.
-  ///    Резервируем только её видимую зону: нижний край остаётся на 18 pt,
+  ///    Резервируем только её видимую зону: нижний край остаётся на 22 pt,
   ///    то есть чуть выше полоски, но не виснет в воздухе.
   ///  * Android — панель навигации настоящая: жестовая ~24 pt, кнопочная
   ///    ~48 pt. Её надо перекрыть целиком, поэтому берём системный inset.
@@ -57,7 +57,7 @@ class GlassDock extends StatelessWidget {
   static double bottomInset(BuildContext context) {
     final inset = MediaQuery.viewPaddingOf(context).bottom;
     return switch (Theme.of(context).platform) {
-      TargetPlatform.iOS => inset > 0 ? 18 : 8,
+      TargetPlatform.iOS => inset > 0 ? 22 : 8,
       _ => inset + 8,
     };
   }

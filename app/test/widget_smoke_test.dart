@@ -575,9 +575,9 @@ void main() {
       await tester.pump();
 
       final bottom = tester.getRect(find.byType(GlassDock)).bottom;
-      // док чуть выше полоски-индикатора, но не на самом краю
-      expect(bottom, lessThanOrEqualTo(844 - 14));
-      expect(bottom, greaterThanOrEqualTo(844 - 22));
+      // Нижний край дока на 22 pt выше низа экрана: чуть выше полоски
+      // Home, но без прежнего парения в воздухе.
+      expect(bottom, equals(844 - 22));
     });
 
     testWidgets('на Android док перекрывает панель навигации', (tester) async {
@@ -739,8 +739,10 @@ void main() {
       await tester.pumpWidget(wrap(c, const RootShell()));
       await tester.pump();
 
-      expect(find.text('Баннер витрины'), findsOneWidget);
-      expect(find.text('Отдельный слайд'), findsOneWidget);
+      expect(find.text('Баннер витрины'), findsWidgets);
+      // Бесконечный PageView держит текущего и соседних виртуальных соседей
+      // смонтированными: один логический слайд повторяется в дереве.
+      expect(find.text('Отдельный слайд'), findsWidgets);
       // Пост с приоритетом остаётся в ленте и НЕ становится слайдом.
       expect(find.text('Обычный пост'), findsOneWidget);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
