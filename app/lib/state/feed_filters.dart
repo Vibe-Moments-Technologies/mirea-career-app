@@ -98,6 +98,41 @@ class FeedFilters {
       );
 }
 
+/// Истёк ли пост — по событию, а не по дате публикации.
+///
+/// Граница — начало сегодняшних суток по часам телефона: событие вчерашним
+/// днём уже прошло, сегодняшнее ещё нет. Сравнение обязано идти через
+/// `DateTime(...)` со сбросом часов, иначе пост за вчерашний вечер пережил бы
+/// полночь и остался в ленте ещё на сутки.
+///
+/// Пост без даты события истёкшим не считается: срок не задан — значит, и
+/// прошёл он или нет, неизвестно. Такие записи живут в ленте всегда, а не
+/// проваливаются в архив «за отсутствие даты».
+bool isPast(Post p, {DateTime? now}) {
+  final d = p.eventDate;
+  if (d == null) return false;
+  final today = now ?? DateTime.now();
+  return d.isBefore(DateTime(today.year, today.month, today.day));
+}
+
+/// Только то, что ещё актуально — для главной и каталога.
+List<Post> relevantOnly(List<Post> posts, {DateTime? now}) =>
+    posts.where((p) => !isPast(p, now: now)).toList();
+
+/// Только то, что уже прошло, — для архива.
+///
+/// Порядок — от недавних к давним: в архиве ищут «что было недавно», и
+/// сортировка по возрастанию даты прятала бы свежие записи под весь хвост.
+List<Post> archiveOnly(List<Post> posts, {DateTime? now}) {
+  final past = posts.where((p) => isPast(p, now: now)).toList();
+  past.sort((a, b) {
+    final c = (b.eventDate ?? DateTime(0)).compareTo(a.eventDate ?? DateTime(0));
+    if (c != 0) return c;
+    return (b.publishedAt ?? DateTime(0)).compareTo(a.publishedAt ?? DateTime(0));
+  });
+  return past;
+}
+
 /// Применяет фильтры к ленте. Чистая функция — тестируется без сети.
 List<Post> applyFilters(List<Post> posts, FeedFilters f, {DateTime? now}) {
   final today = now ?? DateTime.now();
@@ -111,10 +146,7 @@ List<Post> applyFilters(List<Post> posts, FeedFilters f, {DateTime? now}) {
     if (f.campus != null && !p.matchesCampus(f.campus)) return false;
     if (f.institute != null && !p.matchesInstitute(f.institute)) return false;
     if (f.tags.isNotEmpty && !f.tags.any(p.tags.contains)) return false;
-    if (f.onlyUpcoming) {
-      final d = p.eventDate;
-      if (d != null && d.isBefore(DateTime(today.year, today.month, today.day))) return false;
-    }
+    if (f.onlyUpcoming && isPast(p, now: today)) return false;
     if (q.isNotEmpty) {
       final haystack = '${p.title} ${p.tags.join(' ')} ${p.organizationName ?? ''}'.toLowerCase();
       if (!haystack.contains(q)) return false;

@@ -77,11 +77,14 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
     final pad = AppInsets.horizontal(width);
     final twoColumns = width >= 600;
 
+    final current = relevantOnly(feed.posts);
+
     // priorityFirst обязателен: applyFilters сортирует по дате и возвращал
     // приоритетные в середину, хотя в остальных разделах они всегда первые.
+    // Прошедшие записи уходят в архив — здесь только то, что ещё актуально.
     final effective =
         _filters.copyWith(source: _source, sortByPopularity: _sortPopular);
-    final posts = priorityFirst(applyFilters(feed.posts, effective));
+    final posts = priorityFirst(applyFilters(current, effective));
 
     final shown = posts.take(_visible).toList();
     final hasMore = posts.length > shown.length;
@@ -130,10 +133,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                       child: _FiltersPanel(
                         filters: _filters,
                         source: _source,
-                        organizations: _organizationsOf(
-                          ref.read(feedProvider).posts,
-                          _source,
-                        ),
+                        organizations: _organizationsOf(current, _source),
                         sortPopular: _sortPopular,
                         onChanged: (f, sort) => setState(() {
                           _filters = f;
@@ -208,7 +208,9 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                         pad,
                         16,
                         pad,
-                        AppInsets.scrollBottom(context),
+                        // Каталог больше не в доке, а выталкивается с главной: резервировать
+                        // под ним высоту дока нельзя, внизу осталась бы пустота.
+                        AppInsets.screenBottom(context),
                       ),
                       child: ListTail(
                         hasMore: hasMore,

@@ -14,6 +14,7 @@ import '../../data/local_store.dart';
 import '../../data/models.dart';
 import '../../state/feed_filters.dart';
 import '../../state/providers.dart';
+import '../catalog/catalog_screen.dart';
 import '../onboarding/onboarding_screen.dart';
 import '../post/post_detail_screen.dart';
 
@@ -32,9 +33,12 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   String _quick = 'all';
 
-  /// Блочная подгрузка: сколько карточек показываем и докладываем за раз.
+  /// Сколько карточек показываем на главной.
+  ///
+  /// Остальное — по кнопке внизу, которая открывает каталог. Догружать
+  /// прямо в ленту смысла нет: подборка «для вас» и так урезана, а полный
+  /// список со всеми фильтрами всё равно показывает каталог.
   static const _pageSize = 10;
-  int _visible = _pageSize;
 
   bool _searchOpen = false;
   String _query = '';
@@ -80,10 +84,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final favorites = ref.watch(favoritesProvider);
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
 
-    final filtered = applyFilters(feed.posts, _applyQuick(const FeedFilters()));
+    // Прошедшие записи живут в архиве: в ленте им не место, но и выбрасывать
+    // их из выборки раньше времени нельзя — фильтр по актуальности общий с
+    // каталогом, иначе главная и каталог показывали бы разное.
+    final current = relevantOnly(feed.posts);
+    final filtered = applyFilters(current, _applyQuick(const FeedFilters()));
     final picked = forYou(filtered, profile, limit: 60);
     final all = homeFeed(picked.isNotEmpty ? picked : filtered, profile);
-    final shown = all.take(_visible).toList();
+    final shown = all.take(_pageSize).toList();
     final loading = feed.loading && feed.posts.isEmpty;
     // Витрина — самостоятельные баннеры из консоли, к постам отношения не
     // имеют: в ленту не попадают, приоритет не трогают.
@@ -147,10 +155,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             child: _QuickChip(
                               label: c.label,
                               selected: _quick == c.id,
-                              onTap: () => setState(() {
-                                _quick = c.id;
-                                _visible = _pageSize; // смена фильтра — с начала
-                              }),
+                              onTap: () => setState(() => _quick = c.id),
                             ),
                           ),
                       ],
@@ -199,7 +204,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             isEmpty: all.isEmpty && !feed.loading,
                             loaded: shown.length,
                             total: all.length,
-                            onMore: () => setState(() => _visible += _pageSize),
+                            // Кнопка не догружает, а уводит в каталог: там
+                            // полный список и фильтры, здесь — только витрина.
+                            onMore: _openCatalog,
                           ),
                   ),
                 ),
@@ -209,14 +216,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           SearchOverlay(
             open: _searchOpen,
             controller: _search,
-            onChanged: (v) => setState(() {
-              _query = v;
-              _visible = _pageSize;
-            }),
+            onChanged: (v) => setState(() => _query = v),
             onClose: _closeSearch,
           ),
         ],
       ),
+    );
+  }
+
+  void _openCatalog() {
+    // Каталог убран из дока, поэтому вход в него только отсюда.
+    Navigator.of(context).push(
+      appRoute(context, const CatalogScreen()),
     );
   }
 

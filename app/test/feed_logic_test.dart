@@ -383,4 +383,73 @@ void main() {
       expect(p.isFeatured, isFalse);
     });
   });
+
+  group('Актуальность по дате события', () {
+    // Фиксированное «сейчас»: правило должно зависеть от переданного времени,
+    // а не от часов машины, иначе тест плавает по ночам.
+    final now = DateTime(2026, 5, 20, 15, 30);
+    final today = DateTime(2026, 5, 20);
+
+    Post dated(String id, DateTime? eventDate) => Post(
+          id: id,
+          organizationId: 'org1',
+          title: 'Заголовок $id',
+          description: '',
+          type: 'event',
+          format: 'offline',
+          status: 'published',
+          eventDate: eventDate,
+        );
+
+    test('будущее и сегодняшнее событие не истекло', () {
+      expect(isPast(dated('a', DateTime(2026, 5, 21)), now: now), isFalse);
+      // сегодняшнее начало суток равно границе — ещё актуально
+      expect(isPast(dated('b', today), now: now), isFalse);
+    });
+
+    test('событие вчерашним днём уже истекло', () {
+      expect(
+        isPast(dated('c', DateTime(2026, 5, 19, 23, 59)), now: now),
+        isTrue,
+      );
+    });
+
+    test('без даты события пост остаётся актуальным', () {
+      expect(isPast(dated('d', null), now: now), isFalse);
+    });
+
+    test('relevantOnly и archiveOnly делят список без потерь', () {
+      final posts = [
+        dated('past', DateTime(2026, 5, 1)),
+        dated('future', DateTime(2026, 6, 1)),
+        dated('nodate', null),
+      ];
+      expect(relevantOnly(posts, now: now).map((p) => p.id),
+          ['future', 'nodate']);
+      expect(archiveOnly(posts, now: now).map((p) => p.id), ['past']);
+    });
+
+    test('архив отсортирован от недавних к давним', () {
+      final posts = [
+        dated('old', DateTime(2026, 1, 10)),
+        dated('recent', DateTime(2026, 5, 15)),
+        dated('mid', DateTime(2026, 3, 1)),
+      ];
+      expect(archiveOnly(posts, now: now).map((p) => p.id),
+          ['recent', 'mid', 'old']);
+    });
+
+    test('«ближайшие» в фильтрах совпадают с isPast', () {
+      final posts = [
+        dated('past', DateTime(2026, 5, 19)),
+        dated('nodate', null),
+        dated('future', DateTime(2026, 6, 1)),
+      ];
+      expect(
+        applyFilters(posts, const FeedFilters(onlyUpcoming: true), now: now)
+            .map((p) => p.id),
+        ['future', 'nodate'],
+      );
+    });
+  });
 }
