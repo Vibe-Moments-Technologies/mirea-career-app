@@ -2,12 +2,16 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 
+/// Закрыть поиск: снять фокус, иначе клавиатура остаётся висеть поверх
+/// уже невидимого поля.
+void closeSearch() {
+  FocusManager.instance.primaryFocus?.unfocus();
+}
+
 /// Поиск поверх экрана: затемняет фон и «выплывает» сверху из значка.
 ///
-/// Живёт в дереве всегда и просто прячется через `IgnorePointer` + анимацию:
-/// так поле уезжает и обратно, а не исчезает по щелчку. Имя экрана под ним
-/// остаётся видимым — ориентироваться нужно где вы находитесь, а не в каком
-/// поле печатаете.
+/// Живёт в дереве всегда и прячется через `IgnorePointer` + анимацию: так
+/// поле уезжает и обратно, а не исчезает по щелчку.
 class SearchOverlay extends StatelessWidget {
   const SearchOverlay({
     super.key,
@@ -50,6 +54,7 @@ class SearchOverlay extends StatelessWidget {
                       curve: Curves.easeOutCubic,
                       offset: open ? Offset.zero : const Offset(0, -1),
                       child: _Field(
+                        key: ValueKey(open),
                         controller: controller,
                         onChanged: onChanged,
                         onClose: onClose,
@@ -69,6 +74,7 @@ class SearchOverlay extends StatelessWidget {
 
 class _Field extends StatelessWidget {
   const _Field({
+    super.key,
     required this.controller,
     required this.onChanged,
     required this.onClose,
@@ -81,6 +87,10 @@ class _Field extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    // Поле монтируется только когда оверлей открыт (ключ меняется вместе с
+    // open), поэтому autofocus срабатывает ровно в момент открытия.
+    // Постоянно живущий TextField иначе просил фокус при старте приложения,
+    // и клавиатура вылезала сама, хотя поиск не был активен.
     return Material(
       color: scheme.surface,
       borderRadius: BorderRadius.circular(AppRadius.field),

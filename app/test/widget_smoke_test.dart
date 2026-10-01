@@ -788,7 +788,109 @@ void main() {
     });
   });
 
+  group('Поиск', () {
+    testWidgets('клавиатура не вылезает сама и гасится при закрытии',
+        (tester) async {
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [samplePost()],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+
+      // закрытый поиск вообще не строит поле: иначе autofocus вылезал
+      // клавиатурой уже на старте приложения
+      expect(find.byType(TextField), findsNothing);
+
+      await tester.tap(find.byIcon(Icons.search_rounded));
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.close_rounded));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TextField), findsNothing);
+      expect(
+        FocusManager.instance.primaryFocus?.hasFocus ?? false,
+        isFalse,
+        reason: 'клавиатура осталась висеть после закрытия поиска',
+      );
+    });
+  });
+
+  group('Организации', () {
+    testWidgets('страница в доке: список и фильтр вуз/партнёры',
+        (tester) async {
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [
+          samplePost(
+            id: 'a',
+            title: 'Стажировка',
+            organization: {
+              'id': 'org1',
+              'name': 'Яндекс',
+              'type': 'partner',
+              'description': 'Технологическая компания',
+            },
+          ),
+          samplePost(
+            id: 'b',
+            title: 'Олимпиада',
+            organization: {
+              'id': 'org2',
+              'name': 'Карьерный центр',
+              'type': 'university_dept',
+            },
+          ),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.apartment_rounded));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Организации'), findsOneWidget);
+      expect(find.text('Яндекс'), findsOneWidget);
+      expect(find.text('Карьерный центр'), findsOneWidget);
+
+      // фильтр по партнёрам убирает подразделение вуза
+      await tester.tap(find.text('Партнёры · 1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Яндекс'), findsOneWidget);
+      expect(find.text('Карьерный центр'), findsNothing);
+
+      // тап ведёт в профиль организации
+      await tester.tap(find.text('Яндекс'));
+      await tester.pumpAndSettle();
+      expect(find.text('Предложения'), findsOneWidget);
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
+  });
+
   group('Каталог', () {
+    testWidgets('вкладки только «От вуза» и «От партнёров»', (tester) async {
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [samplePost()],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.grid_view_rounded));
+      await tester.pumpAndSettle();
+
+      expect(find.text('От вуза'), findsOneWidget);
+      expect(find.text('От партнёров'), findsOneWidget);
+      expect(find.text('Для вас'), findsNothing);
+    });
     testWidgets('поиск фильтрует ленту и переживает перезапуск', (tester) async {
       final base = DateTime(2026, 1, 1);
       final c = await container(

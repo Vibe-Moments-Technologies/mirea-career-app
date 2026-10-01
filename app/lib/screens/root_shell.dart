@@ -8,6 +8,7 @@ import 'favorites/favorites_screen.dart';
 import 'home/home_screen.dart';
 import 'more/more_screen.dart';
 import 'onboarding/onboarding_screen.dart';
+import 'org/organizations_screen.dart';
 
 /// Корневой экран: контент во весь экран + парящий док поверх.
 ///
@@ -26,6 +27,7 @@ class _RootShellState extends ConsumerState<RootShell> {
   static const _items = <DockItem>[
     DockItem(Icons.home_rounded, 'Главная'),
     DockItem(Icons.grid_view_rounded, 'Каталог'),
+    DockItem(Icons.apartment_rounded, 'Организации'),
     DockItem(Icons.bookmark_rounded, 'Избранное'),
     DockItem(Icons.person_rounded, 'Ещё'),
   ];
@@ -50,6 +52,7 @@ class _RootShellState extends ConsumerState<RootShell> {
             children: const [
               HomeScreen(),
               CatalogScreen(),
+              OrganizationsScreen(),
               FavoritesScreen(),
               MoreScreen(),
             ],

@@ -6,15 +6,19 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/post_card.dart';
 import '../../core/widgets/screen_header.dart';
 import '../../core/widgets/search_overlay.dart';
+import '../../core/widgets/spotlight_gallery.dart';
+import '../../data/local_store.dart';
 import '../../data/models.dart';
 import '../../state/feed_filters.dart';
 import '../../state/providers.dart';
+import '../onboarding/onboarding_screen.dart';
 import '../post/post_detail_screen.dart';
 
-/// Главная: шапка → быстрые фильтры → лента, подсобранная под профиль.
+/// Главная: шапка → витрина важного → персональная лента.
 ///
-/// Приоритетные карточки (is_featured) всегда вверху, с акцентной обводкой.
-/// Отдельной витрины-карусели нет: она дублировала эти же посты.
+/// Ленту подбирает система под профиль (институт, уровень, интересы). Если
+/// профиль не заполнен, показываем всё: пустой главный экран хуже, чем
+/// общий список.
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -50,6 +54,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     };
   }
 
+  void _closeSearch() {
+    // снять фокус: иначе клавиатура остаётся висеть поверх закрытого поля
+    closeSearch();
+    setState(() {
+      _searchOpen = false;
+      _query = '';
+      _search.clear();
+    });
+  }
+
   @override
   void dispose() {
     _search.dispose();
@@ -64,106 +78,117 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
 
     final filtered = applyFilters(feed.posts, _applyQuick(const FeedFilters()));
-    // homeFeed уже ставит приоритетные выше остальных (docs/ARCHITECTURE.md §3)
-    final all = homeFeed(filtered, profile);
+    final picked = forYou(filtered, profile, limit: 60);
+    final all = homeFeed(picked.isNotEmpty ? picked : filtered, profile);
     final shown = all.take(_visible).toList();
     final loading = feed.loading && feed.posts.isEmpty;
+
+    // Витрина — приоритетные из той же подборки: в ленте профиля их может
+    // не быть вовсе, а показывать то, что системе не подошло, нельзя.
+    final source = picked.isNotEmpty ? picked : filtered;
+    final spotlight = source.where((p) => p.isFeatured).take(5).toList();
 
     return Scaffold(
       // Поиск лежит поверх ленты, поэтому экран — Stack: поле затемняет
       // контент целиком, а не торчит из-под дока.
       body: Stack(
         children: [
-          CustomScrollView(
-            slivers: [
-              if (feed.offline)
-                const SliverToBoxAdapter(child: _OfflineBanner())
-              else
+          RefreshIndicator(
+            // свайп сверху вниз: срабатывает только у самого верха ленты,
+            // ниже тянет уже сам скролл
+            onRefresh: () => ref.read(feedProvider.notifier).refresh(),
+            child: CustomScrollView(
+              slivers: [
+                if (feed.offline)
+                  const SliverToBoxAdapter(child: _OfflineBanner()),
+                // Верхний отступ берёт сама шапка: отдельный отступ давал
+                // пустое поле над названием страницы.
                 SliverToBoxAdapter(
-                  child: SizedBox(height: AppInsets.top(context)),
-                ),
-              SliverToBoxAdapter(
-                child: ScreenHeader(
-                  title: 'Карьера МИРЭА',
-                  actions: [
-                    HeaderAction(
-                      icon: Icons.refresh_rounded,
-                      tooltip: 'Обновить',
-                      onTap: () => ref.read(feedProvider.notifier).refresh(),
-                    ),
-                    HeaderAction(
-                      icon: Icons.search_rounded,
-                      tooltip: 'Поиск',
-                      onTap: () => setState(() => _searchOpen = true),
-                    ),
-                  ],
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: SizedBox(
-                  height: 48,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    padding: EdgeInsets.fromLTRB(pad, 4, pad, 0),
-                    children: [
-                      for (final c in _quickChips)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: _QuickChip(
-                            label: c.label,
-                            selected: _quick == c.id,
-                            onTap: () => setState(() {
-                              _quick = c.id;
-                              _visible = _pageSize; // смена фильтра — с начала
-                            }),
-                          ),
-                        ),
+                  child: ScreenHeader(
+                    title: 'Карьера МИРЭА',
+                    actions: [
+                      HeaderAction(
+                        icon: Icons.search_rounded,
+                        tooltip: 'Поиск',
+                        onTap: () => setState(() => _searchOpen = true),
+                      ),
                     ],
                   ),
                 ),
-              ),
-              SliverPadding(
-                padding: EdgeInsets.fromLTRB(pad, 8, pad, 0),
-                // Первая загрузка: показываем форму карточек, а не
-                // «Пока ничего нет» — контент уже едет, просто не дошёл.
-                sliver: loading
-                    ? SliverList.separated(
-                        itemCount: 4,
-                        separatorBuilder: (_, _) => const SizedBox(height: 10),
-                        itemBuilder: (_, _) => const PostCardSkeleton(),
-                      )
-                    : SliverList.separated(
-                        itemCount: shown.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 10),
-                        itemBuilder: (_, i) => PostCard(
-                          post: shown[i],
-                          isFavorite: favorites.contains(shown[i].id),
-                          onTap: () => _open(shown[i]),
-                          onToggleFavorite: () => _toggleFavorite(shown[i].id),
-                        ),
-                      ),
-              ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    pad,
-                    16,
-                    pad,
-                    AppInsets.scrollBottom(context),
+                if (!profile.hasAnswers)
+                  SliverToBoxAdapter(
+                    child: _PromptProfile(profile: profile),
                   ),
-                  // Пока грузится, хвост скрыт: он мигал поверх скелетонов.
-                  child: loading
-                      ? const SizedBox.shrink()
-                      : _ListTail(
-                          hasMore: all.length > shown.length,
-                          isEmpty: all.isEmpty && !feed.loading,
-                          loaded: shown.length,
-                          total: all.length,
-                          onMore: () => setState(() => _visible += _pageSize),
+                if (spotlight.isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: SpotlightGallery(posts: spotlight, onOpen: _open),
+                  ),
+                SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: 48,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      padding: EdgeInsets.fromLTRB(pad, 10, pad, 0),
+                      children: [
+                        for (final c in _quickChips)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: _QuickChip(
+                              label: c.label,
+                              selected: _quick == c.id,
+                              onTap: () => setState(() {
+                                _quick = c.id;
+                                _visible = _pageSize; // смена фильтра — с начала
+                              }),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(pad, 8, pad, 0),
+                  // Первая загрузка: показываем форму карточек, а не
+                  // «Пока ничего нет» — контент уже едет, просто не дошёл.
+                  sliver: loading
+                      ? SliverList.separated(
+                          itemCount: 4,
+                          separatorBuilder: (_, _) => const SizedBox(height: 10),
+                          itemBuilder: (_, _) => const PostCardSkeleton(),
+                        )
+                      : SliverList.separated(
+                          itemCount: shown.length,
+                          separatorBuilder: (_, _) => const SizedBox(height: 10),
+                          itemBuilder: (_, i) => PostCard(
+                            post: shown[i],
+                            isFavorite: favorites.contains(shown[i].id),
+                            onTap: () => _open(shown[i]),
+                            onToggleFavorite: () => _toggleFavorite(shown[i].id),
+                          ),
                         ),
                 ),
-              ),
-            ],
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      pad,
+                      16,
+                      pad,
+                      AppInsets.scrollBottom(context),
+                    ),
+                    // Пока грузится, хвост скрыт: он мигал поверх скелетонов.
+                    child: loading
+                        ? const SizedBox.shrink()
+                        : _ListTail(
+                            hasMore: all.length > shown.length,
+                            isEmpty: all.isEmpty && !feed.loading,
+                            loaded: shown.length,
+                            total: all.length,
+                            onMore: () => setState(() => _visible += _pageSize),
+                          ),
+                  ),
+                ),
+              ],
+            ),
           ),
           SearchOverlay(
             open: _searchOpen,
@@ -172,11 +197,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               _query = v;
               _visible = _pageSize;
             }),
-            onClose: () => setState(() {
-              _searchOpen = false;
-              _query = '';
-              _search.clear();
-            }),
+            onClose: _closeSearch,
           ),
         ],
       ),
@@ -193,6 +214,57 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // delta считаем ПО РЕЗУЛЬТАТУ переключения: +1 добавлено, -1 убрано
     final added = await ref.read(favoritesProvider.notifier).toggle(id);
     await ref.read(metricsProvider).registerFavorite(id, added ? 1 : -1);
+  }
+}
+
+/// Приглашение заполнить профиль: без него подбор не работает.
+class _PromptProfile extends ConsumerWidget {
+  const _PromptProfile({required this.profile});
+
+  final StudentProfile profile;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(pad, 0, pad, 12),
+      child: Material(
+        color: scheme.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => Navigator.of(context).push(
+            appRoute(
+              context,
+              OnboardingScreen(
+                initial: profile,
+                onDone: (p) {
+                  ref.read(profileProvider.notifier).save(p);
+                  Navigator.of(context).pop();
+                },
+              ),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                Icon(Icons.auto_awesome_rounded, color: scheme.primary),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Расскажите о себе — подберём подходящее',
+                    style: AppText.body,
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, color: scheme.primary),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
