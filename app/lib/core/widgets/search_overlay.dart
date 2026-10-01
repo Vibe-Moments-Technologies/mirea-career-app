@@ -74,7 +74,6 @@ class SearchOverlay extends StatelessWidget {
 
 class _Field extends StatelessWidget {
   const _Field({
-    super.key,
     required this.controller,
     required this.onChanged,
     required this.onClose,
