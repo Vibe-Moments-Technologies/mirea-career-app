@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mirea_career/core/theme/app_theme.dart';
 import 'package:mirea_career/core/app_route.dart';
+import 'package:mirea_career/core/widgets/glass_back_button.dart';
 import 'package:mirea_career/core/widgets/glass_dock.dart';
 import 'package:mirea_career/core/widgets/screen_header.dart';
 import 'package:mirea_career/data/catalogs.dart';
@@ -946,7 +947,8 @@ void main() {
       await tester.tap(find.text('Хакатон МИРЭА'));
       await tester.pumpAndSettle();
       expect(find.byType(TextField), findsNothing);
-      await tester.pageBack();
+      // pageBack() ищет системную кнопку, а у деталей своя — жмём её
+      await tester.tap(find.byType(GlassBackButton));
       await tester.pumpAndSettle();
       expect(find.text('Хакатон МИРЭА'), findsOneWidget);
       expect(find.text('Обычная вакансия'), findsNothing);
