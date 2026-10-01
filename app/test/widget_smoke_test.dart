@@ -12,6 +12,7 @@ import 'package:mirea_career/data/crash_reporting.dart';
 import 'package:mirea_career/data/local_store.dart';
 import 'package:mirea_career/data/metrics.dart';
 import 'package:mirea_career/data/posts_repo.dart';
+import 'package:mirea_career/screens/catalog/catalog_screen.dart';
 import 'package:mirea_career/screens/favorites/favorites_screen.dart';
 import 'package:mirea_career/screens/home/home_screen.dart';
 import 'package:mirea_career/screens/more/profile_screen.dart';
@@ -426,8 +427,9 @@ void main() {
   });
 
   group('Лента', () {
-    testWidgets('главная показывает не больше блока карточек', (tester) async {
-      // 25 постов, но за раз показывается блок (10). Даты задаём явно и по
+    testWidgets('главная показывает блок, а «Показать ещё» ведёт в каталог',
+        (tester) async {
+      // 25 постов, но на главной виден блок (10). Даты задаём явно и по
       // убыванию: иначе порядок недетерминирован и понять, какая карточка
       // попала в первый блок, невозможно.
       final base = DateTime(2026, 1, 1);
@@ -452,8 +454,8 @@ void main() {
       // самая свежая карточка видна
       expect(find.text('Карточка 0'), findsOneWidget);
 
-      // Кнопка подгрузки ниже видимой области, а SliverList ленив —
-      // прокручиваем до неё, как это сделал бы пользователь.
+      // Кнопка ниже видимой области, а SliverList ленив — прокручиваем
+      // до неё, как это сделал бы пользователь.
       await tester.scrollUntilVisible(
         find.textContaining('Показать ещё'),
         400,
@@ -462,22 +464,29 @@ void main() {
       await tester.pump();
 
       // Кнопка прямо называет размер блока: «10 из 25» доказывает, что
-      // за раз отдаётся ровно блок, а не весь список целиком.
+      // главная отдаёт ровно блок, а не весь список целиком.
       expect(find.text('Показать ещё (10 из 25)'), findsOneWidget);
 
-      // нажатие докладывает следующий блок
+      // Догрузки в ленте больше нет: тап уводит в каталог.
       await tester.tap(find.text('Показать ещё (10 из 25)'));
-      await tester.pump();
+      await tester.pumpAndSettle();
 
-      // после тапа список стал длиннее, и кнопка снова уехала вниз —
-      // прокручиваем к ней, как это сделал бы пользователь
+      expect(find.byType(CatalogScreen), findsOneWidget);
+
+      // Каталог показывает все 25 — до последней карточки надо долистать
+      // именно его, а не ленту под ним.
       await tester.scrollUntilVisible(
-        find.textContaining('Показать ещё'),
+        find.text('Карточка 24'),
         400,
-        scrollable: find.byType(Scrollable).first,
+        scrollable: find
+            .descendant(
+              of: find.byType(CatalogScreen),
+              matching: find.byType(Scrollable),
+            )
+            .first,
       );
       await tester.pump();
-      expect(find.text('Показать ещё (20 из 25)'), findsOneWidget);
+      expect(find.text('Карточка 24'), findsOneWidget);
     });
 
     testWidgets('когда всё показано — видно подпись о конце ленты', (tester) async {
@@ -637,7 +646,7 @@ void main() {
       await tester.pump();
 
       for (final icon in [
-        Icons.grid_view_rounded,
+        Icons.inventory_2_rounded,
         Icons.bookmark_rounded,
         Icons.person_rounded,
         Icons.home_rounded,
@@ -1033,11 +1042,10 @@ void main() {
       );
       addTearDown(c.dispose);
 
-      await tester.pumpWidget(wrap(c, const RootShell()));
+      // Каталог убран из дока и открывается с главной, поэтому экран
+      // строится напрямую: тест проверяет его вкладки, а не путь в него.
+      await tester.pumpWidget(wrap(c, const CatalogScreen()));
       await tester.pump();
-
-      await tester.tap(find.byIcon(Icons.grid_view_rounded));
-      await tester.pumpAndSettle();
 
       expect(find.text('От вуза'), findsOneWidget);
       expect(find.text('От партнёров'), findsOneWidget);
@@ -1059,11 +1067,8 @@ void main() {
       );
       addTearDown(c.dispose);
 
-      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pumpWidget(wrap(c, const CatalogScreen()));
       await tester.pump();
-
-      await tester.tap(find.byIcon(Icons.grid_view_rounded));
-      await tester.pumpAndSettle();
 
       expect(find.text('Обычная вакансия'), findsOneWidget);
 
