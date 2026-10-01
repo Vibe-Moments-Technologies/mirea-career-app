@@ -61,11 +61,12 @@ Map<String, dynamic> samplePost({
   List<String> tags = const ['карьера'],
   DateTime? publishedAt,
   Map<String, dynamic>? organization,
+  String organizationId = 'org1',
   String? externalLink,
 }) =>
     {
       'id': id,
-      'organization_id': 'org1',
+      'organization_id': organizationId,
       'title': title,
       'description': 'Описание',
       'type': 'event',
@@ -801,8 +802,10 @@ void main() {
       await tester.pumpWidget(wrap(c, const RootShell()));
       await tester.pump();
 
-      // закрытый поиск не забирает фокус: иначе клавиатура вылезала сама
-      expect(FocusManager.instance.primaryFocus?.hasFocus ?? false, isFalse);
+      // закрытый поиск не строит поле вообще: иначе оно держало фокус и
+      // клавиатура вылезала ещё на старте приложения
+      expect(find.byType(TextField), findsNothing);
+      expect(tester.testTextInput.isVisible, isFalse);
 
       await tester.tap(find.byIcon(Icons.search_rounded));
       await tester.pumpAndSettle();
@@ -813,6 +816,7 @@ void main() {
       await tester.tap(find.byIcon(Icons.close_rounded));
       await tester.pumpAndSettle();
 
+      expect(find.byType(TextField), findsNothing);
       expect(tester.testTextInput.isVisible, isFalse,
           reason: 'клавиатура осталась висеть после закрытия поиска');
     });
@@ -837,6 +841,7 @@ void main() {
           samplePost(
             id: 'b',
             title: 'Олимпиада',
+            organizationId: 'org2',
             organization: {
               'id': 'org2',
               'name': 'Карьерный центр',

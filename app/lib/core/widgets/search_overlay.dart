@@ -35,6 +35,11 @@ class SearchOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Закрытый оверлей НИЧЕГО не строит. Иначе живущее в дереве поле держит
+    // фокус: клавиатура вылезала при запуске приложения, а после закрытия
+    // поиска оставалась висеть поверх ленты.
+    if (!open) return const SizedBox.shrink();
+
     return Positioned.fill(
       child: IgnorePointer(
         ignoring: !open,
