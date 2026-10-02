@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../data/app_http_client.dart';
 import '../../data/crash_reporting.dart';
 import '../../data/models.dart';
 import '../theme/app_theme.dart';
@@ -284,20 +285,18 @@ class _Cover extends StatelessWidget {
     final url = banner.imageUrl;
     if (url == null || url.isEmpty) return place;
 
-    return Image.network(
-      url,
+    return DohNetworkImage(
+      url: url,
       fit: BoxFit.cover,
-      gaplessPlayback: true,
-      // cacheWidth убран — см. post_image.dart: на iOS блокировал декодирование.
-      loadingBuilder: (_, child, progress) => progress == null ? child : place,
-      errorBuilder: (_, error, stack) {
+      placeholder: place,
+      errorWidget: Builder(builder: (_) {
         CrashReporting.report(
-          error,
-          stack ?? StackTrace.current,
+          Exception('Spotlight cover: failed to load $url'),
+          StackTrace.current,
           context: 'spotlight_cover_load:$url',
         );
         return place;
-      },
+      }),
     );
   }
 }

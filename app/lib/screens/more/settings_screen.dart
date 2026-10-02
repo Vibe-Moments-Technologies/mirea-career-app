@@ -163,37 +163,36 @@ class _GroupTitle extends StatelessWidget {
       );
 }
 
-/// Переключатель DNS-over-HTTPS.
+/// Переключатель «Системный DNS».
 ///
-/// Требует перезапуска приложения: HttpOverrides.global ставится один раз
-/// при старте, до инициализации Supabase. Изменение в рантайме невозможно
-/// без пересоздания HTTP-клиента.
+/// По умолчанию выключен = DoH (Comss) активен. Включение переключает на
+/// системный DNS. Требует перезапуска: HttpOverrides.global ставится при старте.
 class _DohTile extends ConsumerStatefulWidget {
   @override
   ConsumerState<_DohTile> createState() => _DohTileState();
 }
 
 class _DohTileState extends ConsumerState<_DohTile> {
-  late bool _enabled;
+  late bool _systemDns;
 
   @override
   void initState() {
     super.initState();
-    _enabled = ref.read(localStoreProvider).dohEnabled;
+    _systemDns = ref.read(localStoreProvider).systemDns;
   }
 
   @override
   Widget build(BuildContext context) => SwitchListTile(
-        title: const Text('DNS-over-HTTPS', style: AppText.headline),
+        title: const Text('Системный DNS', style: AppText.headline),
         subtitle: Text(
-          _enabled ? 'Comss DNS (требуется перезапуск)' : 'Системный DNS',
+          _systemDns ? 'Системный DNS' : 'DoH Comss (рекомендуется в РФ)',
           style: AppText.caption,
         ),
         secondary: const Icon(Icons.dns_rounded),
-        value: _enabled,
+        value: _systemDns,
         onChanged: (v) async {
-          await ref.read(localStoreProvider).saveDohEnabled(v);
-          setState(() => _enabled = v);
+          await ref.read(localStoreProvider).saveSystemDns(v);
+          setState(() => _systemDns = v);
           if (!context.mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(

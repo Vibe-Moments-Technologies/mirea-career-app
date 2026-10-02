@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../data/app_http_client.dart';
 import '../../data/crash_reporting.dart';
 import '../../data/models.dart';
 import '../theme/app_theme.dart';
@@ -7,20 +8,8 @@ import '../theme/app_theme.dart';
 /// Единая обложка поста: картинка, буквенная заглушка или нейтральная
 /// поверхность — и больше ничего.
 ///
-/// Живёт отдельным файлом, потому что раньше каждая карточка рисовала
-/// свою версию (`_Thumb`, `_Cover`, `_HeroFallback`) с разной логикой
-/// отказа — отсюда «то значок, то пустота» при мерцающих загрузках.
-///
-/// Правило отображения (по правкам):
-///  1. `image_url` есть и загрузилась → фото;
-///  2. `image_url` есть, но не загрузилась (офлайн, 404, ещё грузится) →
-///     НЕ иконка, а ровная заглушка цвета поверхности: иконка поверх
-///     недогруженного фото выглядела как случайный глюк;
-///  3. `image_url` пуст → заглушка с буквой названия организации.
-///
-/// Логотип (`logo_url`) больше не рисуется иконкой-подменой: у организаций
-/// в демо-данных это placehold.co, который в приложении отдаёт 403 и вместо
-/// логотипа показывал серый квадрат. Нет логотипа — нет и квадрата.
+/// Использует [DohNetworkImage] вместо Image.network, потому что последний
+/// игнорирует HttpOverrides.global и не работает с DoH.
 class PostCover extends StatelessWidget {
   const PostCover({
     super.key,
@@ -32,21 +21,16 @@ class PostCover extends StatelessWidget {
   });
 
   final Post post;
-
-  /// Сторона квадрата (для карточки ленты).
   final double? size;
-
-  /// Радиус и способ отрисовки: квадрат или прямоугольник на всю ширину.
   final double? radius;
   final BorderRadius? borderRadius;
-
-  /// Показывать букву организации вместо иконки типа.
   final bool letter;
 
   @override
   Widget build(BuildContext context) {
     final br = borderRadius ?? BorderRadius.circular(radius ?? AppRadius.thumb);
     final url = post.imageUrl;
+    final placeholder = _Placeholder(post: post, letter: letter);
 
     return ClipRRect(
       borderRadius: br,
@@ -54,42 +38,26 @@ class PostCover extends StatelessWidget {
         width: size,
         height: size,
         child: url == null || url.isEmpty
-            ? _Placeholder(post: post, letter: letter)
-            : Image.network(
-                url,
+            ? placeholder
+            : DohNetworkImage(
+                url: url,
                 fit: BoxFit.cover,
-                // Держим прошлый кадр, пока грузится новый: без этого
-                // заглушка на миг перекрывала уже показанное фото.
-                gaplessPlayback: true,
-                // ponytail: cacheWidth временно убран — на iOS он блокировал
-                // декодирование больших PNG (4 MB 2048×2048), и loadingBuilder
-                // никогда не получал progress == null. Картинка оставалась
-                // серой навсегда, errorBuilder не срабатывал. Вернём, когда
-                // найдём безопасное значение или перейдём на WebP/thumbnails.
-                // Пока грузится и при ошибке — та же ровная заглушка,
-                // без иконки: она «мигала» поверх недогруженного фото.
-                loadingBuilder: (_, child, progress) {
-                  if (progress == null) return child;
-                  // Если загрузка зависла (progress.cumulativeBytesLoaded > 0,
-                  // но expectedTotalBytes == null или не растёт), это тоже
-                  // нужно ловить. Пока просто показываем заглушку.
-                  return _Placeholder(post: post, letter: letter);
-                },
-                errorBuilder: (_, error, stack) {
-                  // В release-сборке debugPrint не виден. Отправляем в Sentry,
-                  // чтобы узнать реальную причину серых квадратов на устройстве.
+                width: size,
+                height: size,
+                placeholder: placeholder,
+                errorWidget: Builder(builder: (_) {
+                  // Ошибка загрузки — отправляем в Sentry.
                   CrashReporting.report(
-                    error,
-                    stack ?? StackTrace.current,
+                    Exception('PostCover: failed to load $url'),
+                    StackTrace.current,
                     context: 'post_cover_load:$url',
                   );
-                  return _Placeholder(post: post, letter: letter);
-                },
+                  return placeholder;
+                }),
               ),
       ),
     );
   }
-
 }
 
 /// Заглушка: буква организации или иконка типа на нейтральной поверхности.
@@ -111,17 +79,19 @@ class _Placeholder extends StatelessWidget {
                 initial,
                 style: AppText.title.copyWith(
                   color: AppColors.secondaryLight,
-                  fontSize: post.organizationName != null && initial.length > 1 ? 18 : 26,
+                  fontSize:
+                      post.organizationName != null && initial.length > 1
+                          ? 18
+                          : 26,
                 ),
               )
-            : Icon(_iconForType(post.type), color: AppColors.secondaryLight, size: 30),
+            : Icon(_iconForType(post.type),
+                color: AppColors.secondaryLight, size: 30),
       ),
     );
   }
 }
 
-/// Первая буква организации — «Я» для Яндекса, «С» для Сбера.
-/// null, если имени нет: пустая буква выглядела бы как артефакт.
 String? _initialOf(String? name) {
   final trimmed = name?.trim();
   if (trimmed == null || trimmed.isEmpty) return null;
