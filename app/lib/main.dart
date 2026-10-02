@@ -25,9 +25,16 @@ Future<void> main() async {
   // DoH-переопределения ставим ДО любого сетевого кода (Supabase, Sentry).
   // Читаем флаг напрямую из SharedPreferences, потому что LocalStore ещё
   // не инициализирован, а DNS нужен уже сейчас.
+  //
+  // DohHttpOverrides.create() резолвит IP DoH-сервера через системный DNS
+  // (до установки overrides), чтобы избежать рекурсии. Если dns.comss.one
+  // заблокирован на уровне DNS — вернёт null, и DoH не включится.
   final prefs = await SharedPreferences.getInstance();
   if (prefs.getBool('doh_enabled') ?? false) {
-    HttpOverrides.global = DohHttpOverrides();
+    final overrides = await DohHttpOverrides.create();
+    if (overrides != null) {
+      HttpOverrides.global = overrides;
+    }
   }
 
   // По умолчанию Flutter в release рисует на месте упавшего виджета
