@@ -94,6 +94,7 @@ class LocalStore {
   static const _kTheme = 'theme_mode';
   static const _kCatalog = 'catalog_state';
   static const _kSpotlight = 'spotlight_cache';
+  static const _kDoh = 'doh_enabled';
 
   // ---------- Профиль ----------
   StudentProfile get profile {
@@ -108,6 +109,15 @@ class LocalStore {
   /// 'system' | 'light' | 'dark'
   String get themeMode => _prefs.getString(_kTheme) ?? 'system';
   Future<void> saveThemeMode(String mode) => _prefs.setString(_kTheme, mode);
+
+  // ---------- DNS-over-HTTPS ----------
+  /// Использовать ли DoH (Comss DNS) вместо системного DNS.
+  ///
+  /// В РФ провайдеры блокируют/замедляют DNS для некоторых доменов
+  /// (*.supabase.co). DoH обходит эту блокировку. По умолчанию выключено:
+  /// в большинстве стран системный DNS работает нормально.
+  bool get dohEnabled => _prefs.getBool(_kDoh) ?? false;
+  Future<void> saveDohEnabled(bool value) => _prefs.setBool(_kDoh, value);
 
   // ---------- Состояние каталога (фильтры, вкладка, сортировка) ----------
 

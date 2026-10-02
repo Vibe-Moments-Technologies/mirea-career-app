@@ -53,6 +53,15 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 24),
+          const _GroupTitle('Сеть'),
+          SettingsGroup(
+            footer: 'DNS-over-HTTPS обходит блокировки провайдеров. '
+                'Используйте, если картинки или данные не загружаются.',
+            children: [
+              _DohTile(),
+            ],
+          ),
+          const SizedBox(height: 24),
           const _GroupTitle('Приложение'),
           SettingsGroup(
             children: [
@@ -151,5 +160,47 @@ class _GroupTitle extends StatelessWidget {
           text.toUpperCase(),
           style: AppText.section.copyWith(color: AppColors.secondaryLight),
         ),
+      );
+}
+
+/// Переключатель DNS-over-HTTPS.
+///
+/// Требует перезапуска приложения: HttpOverrides.global ставится один раз
+/// при старте, до инициализации Supabase. Изменение в рантайме невозможно
+/// без пересоздания HTTP-клиента.
+class _DohTile extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_DohTile> createState() => _DohTileState();
+}
+
+class _DohTileState extends ConsumerState<_DohTile> {
+  late bool _enabled;
+
+  @override
+  void initState() {
+    super.initState();
+    _enabled = ref.read(localStoreProvider).dohEnabled;
+  }
+
+  @override
+  Widget build(BuildContext context) => SwitchListTile(
+        title: const Text('DNS-over-HTTPS', style: AppText.headline),
+        subtitle: Text(
+          _enabled ? 'Comss DNS (требуется перезапуск)' : 'Системный DNS',
+          style: AppText.caption,
+        ),
+        secondary: const Icon(Icons.dns_rounded),
+        value: _enabled,
+        onChanged: (v) async {
+          await ref.read(localStoreProvider).saveDohEnabled(v);
+          setState(() => _enabled = v);
+          if (!context.mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Перезапустите приложение для применения'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        },
       );
 }

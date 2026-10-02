@@ -1,9 +1,13 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/dock_visibility.dart';
 import 'core/theme/app_theme.dart';
 import 'data/crash_reporting.dart';
+import 'data/doh_overrides.dart';
 import 'data/metrics.dart';
 import 'screens/root_shell.dart';
 import 'state/providers.dart';
@@ -17,6 +21,14 @@ Future<void> main() async {
   //   2) Sentry — чтобы узнать о сбое, не переспрашивая тестировщика;
   //   3) try/catch, чтобы показать причину, если упал старт.
   WidgetsFlutterBinding.ensureInitialized();
+
+  // DoH-переопределения ставим ДО любого сетевого кода (Supabase, Sentry).
+  // Читаем флаг напрямую из SharedPreferences, потому что LocalStore ещё
+  // не инициализирован, а DNS нужен уже сейчас.
+  final prefs = await SharedPreferences.getInstance();
+  if (prefs.getBool('doh_enabled') ?? false) {
+    HttpOverrides.global = DohHttpOverrides();
+  }
 
   // По умолчанию Flutter в release рисует на месте упавшего виджета
   // серый прямоугольник без объяснений. Показываем текст ошибки.
