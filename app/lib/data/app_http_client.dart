@@ -31,6 +31,10 @@ class AppHttpClient {
   /// Создаётся один раз, переиспользуется везде.
   late final HttpClient _client;
 
+  /// Кэш загруженных картинок: URL → байты.
+  /// Избавляет от повторных HTTP-запросов при скролле ListView.
+  final Map<String, Uint8List> _imageCache = {};
+
   /// Инициализация. Вызывается один раз при старте.
   Future<void> init({bool systemDns = false}) async {
     _systemDns = systemDns;
@@ -84,10 +88,16 @@ class AppHttpClient {
   }
 
   /// Загружает байты по URL через глобальный DoH-клиент.
+  /// Результат кэшируется в памяти: повторные вызовы для того же URL
+  /// возвращают байты мгновенно, без HTTP-запроса.
   Future<Uint8List?> fetchBytes(
     String url, {
     Duration timeout = const Duration(seconds: 15),
   }) async {
+    // Кэш: если уже загружали — возвращаем сразу.
+    final cached = _imageCache[url];
+    if (cached != null) return cached;
+
     try {
       final request = await _client.getUrl(Uri.parse(url)).timeout(timeout);
       final response = await request.close().timeout(timeout);
@@ -96,7 +106,9 @@ class AppHttpClient {
       await for (final chunk in response.timeout(timeout)) {
         chunks.addAll(chunk);
       }
-      return Uint8List.fromList(chunks);
+      final bytes = Uint8List.fromList(chunks);
+      _imageCache[url] = bytes;
+      return bytes;
     } catch (_) {
       return null;
     }
