@@ -8,35 +8,32 @@ import 'dart:io';
 /// или таймаут, и картинки/данные не грузятся. DoH-сервер (Comss)
 /// не фильтрует эти домены и возвращает правильный IP.
 ///
-/// Как работает: переопределяем `connectionFactory` в `HttpOverrides`,
-/// чтобы перед подключением резолвить hostname через HTTPS-запрос к
-/// DoH-серверу вместо системного DNS.
+/// Как работает:
+///   1. При создании резолвим IP DoH-сервера через системный DNS
+///   2. В connectionFactory: резолвим hostname → IP через DoH
+///   3. TCP-подключение по IP (RawSocket.connect)
+///   4. TLS поверх с правильным SNI (RawSecureSocket.secure(host: hostname))
+///   5. Возвращаем ConnectionTask.fromSocket
 ///
-/// ВАЖНО: DoH-запрос сам идёт через системный DNS (не через себя).
-/// Для этого мы один раз резолвим IP DoH-сервера при создании overrides
-/// и потом подключаемся к нему напрямую по IP, минуя connectionFactory.
+/// Шаг 4 критичен: без явного host в secure() SNI был бы IP-адресом,
+/// и Cloudflare отвергал бы TLS handshake.
 class DohHttpOverrides extends HttpOverrides {
-  /// URL DoH-сервера (JSON API).
   static const _dohHost = 'dns.comss.one';
   static const _dohPath = '/dns-query';
 
-  /// Заранее зарезолвленный IP DoH-сервера.
-  /// Резолвим один раз при создании через системный DNS (до установки
-  /// overrides), чтобы избежать рекурсии: DoH-запрос → DoH-резолвинг → ∞.
   final String _dohIp;
+  final Map<String, String> _cache = {};
 
   DohHttpOverrides._(this._dohIp);
 
-  /// Создаёт overrides с предварительно зарезолвленным IP DoH-сервера.
-  ///
-  /// Вызывается ДО установки HttpOverrides.global, поэтому резолвинг
-  /// идёт через системный DNS. Если dns.comss.one заблокирован и на
-  /// уровне DNS — вернёт null, и DoH включать нельзя.
+  /// Создаёт overrides. Резолвит IP DoH-сервера через системный DNS.
+  /// Возвращает null если dns.comss.one недоступен.
   static Future<DohHttpOverrides?> create() async {
     try {
       final addresses = await InternetAddress.lookup(_dohHost)
           .timeout(const Duration(seconds: 5));
-      final ipv4 = addresses.where((a) => a.type == InternetAddressType.IPv4).firstOrNull;
+      final ipv4 =
+          addresses.where((a) => a.type == InternetAddressType.IPv4).firstOrNull;
       if (ipv4 == null) return null;
       return DohHttpOverrides._(ipv4.address);
     } catch (_) {
@@ -47,42 +44,75 @@ class DohHttpOverrides extends HttpOverrides {
   @override
   HttpClient createHttpClient(SecurityContext? context) {
     final client = super.createHttpClient(context);
-    client.connectionFactory = _dohConnectionFactory;
+    client.connectionFactory = _connectionFactory;
     return client;
   }
 
-  /// Резолвит hostname через DoH и возвращает соединение по IP.
-  Future<ConnectionTask<Socket>> _dohConnectionFactory(
+  Future<ConnectionTask<Socket>> _connectionFactory(
     Uri url,
     String? proxyHost,
     int? proxyPort,
   ) async {
     final host = url.host;
+    final port = url.port;
+    final isSecure = url.scheme == 'https';
 
-    // IP-адреса и сам DoH-сервер не нужно резолвить через DoH.
+    // IP-адреса и сам DoH-сервер не резолвим через DoH.
     if (InternetAddress.tryParse(host) != null || host == _dohHost) {
-      return Socket.startConnect(host, url.port);
-    }
-
-    try {
-      final ip = await _resolveViaDoh(host);
-      if (ip != null) {
-        return await Socket.startConnect(ip, url.port);
+      if (isSecure) {
+        return _secureConnectTask(host, port, host);
       }
-    } catch (_) {
-      // DoH не ответил — fallback на системный DNS.
+      return Socket.startConnect(host, port);
     }
 
-    // Fallback: обычный системный резолвинг.
-    return Socket.startConnect(host, url.port);
+    // DoH-резолвинг с кэшем.
+    String? ip;
+    try {
+      ip = _cache[host] ?? await _resolveViaDoh(host);
+      if (ip != null) _cache[host] = ip;
+    } catch (_) {}
+
+    if (ip != null && isSecure) {
+      // TCP по IP + TLS с SNI = оригинальный hostname.
+      return _secureConnectTask(ip, port, host);
+    }
+
+    if (ip != null) {
+      return Socket.startConnect(ip, port);
+    }
+
+    // Fallback: системный DNS.
+    if (isSecure) {
+      return SecureSocket.startConnect(host, port);
+    }
+    return Socket.startConnect(host, port);
   }
 
-  /// Запрашивает A-запись через DoH JSON API, подключаясь по IP.
-  ///
-  /// Использует RawSocket + ручной HTTP/1.1 запрос, чтобы полностью
-  /// обойти HttpOverrides и избежать рекурсии. TLS через SecureSocket.
+  /// TCP по [target] (IP или hostname), затем TLS с SNI = [sniHost].
+  Future<ConnectionTask<Socket>> _secureConnectTask(
+    String target,
+    int port,
+    String sniHost,
+  ) async {
+    // 1. Raw TCP по IP (без TLS).
+    final rawSocket = await RawSocket.connect(target, port,
+        timeout: const Duration(seconds: 10));
+
+    // 2. TLS поверх raw socket с явным SNI.
+    final secureSocket = await RawSecureSocket.secure(
+      rawSocket,
+      host: sniHost,
+    );
+
+    // 3. Оборачиваем в ConnectionTask.
+    return ConnectionTask.fromSocket(
+      Future.value(secureSocket as Socket),
+      () => secureSocket.close(),
+    );
+  }
+
+  /// DoH JSON API запрос через SecureSocket напрямую по IP DoH-сервера.
   Future<String?> _resolveViaDoh(String hostname) async {
-    // Подключаемся напрямую по IP DoH-сервера, минуя connectionFactory.
     final socket = await SecureSocket.connect(
       _dohIp,
       443,
@@ -99,11 +129,11 @@ class DohHttpOverrides extends HttpOverrides {
       socket.add(utf8.encode(request));
       await socket.flush();
 
-      final response = await utf8.decoder.bind(socket).join().timeout(
-            const Duration(seconds: 5),
-          );
+      final response = await utf8.decoder
+          .bind(socket)
+          .join()
+          .timeout(const Duration(seconds: 5));
 
-      // Парсим HTTP-ответ: отделяем заголовки от тела.
       final headerEnd = response.indexOf('\r\n\r\n');
       if (headerEnd < 0) return null;
 
