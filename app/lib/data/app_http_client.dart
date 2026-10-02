@@ -6,33 +6,32 @@ import 'package:flutter/material.dart';
 
 /// Глобальный HTTP-клиент с поддержкой DoH (DNS-over-HTTPS).
 ///
-/// Единая точка для всех сетевых запросов приложения. Используется:
-/// - Supabase (через custom HttpClientAdapter)
-/// - Загрузка картинок (DohNetworkImage)
-/// - Любые другие HTTP-запросы
-///
+/// Единая точка для всех сетевых запросов приложения.
 /// По умолчанию DoH включён (Comss DNS). Выключение через [useSystemDns]
-/// переключает на системный DNS без перезапуска приложения.
+/// переключает на системный DNS без перезапуска.
+///
+/// НЕ использует HttpOverrides.createHttpClient — тот вызывается Flutter'ом
+/// рекурсивно при TLS-handshake и вызывает StackOverflow. Вместо этого:
+/// - Один глобальный [_client] с connectionFactory
+/// - DohNetworkImage использует fetchBytes() через этот клиент
+/// - Supabase получает этот клиент через custom HttpClientAdapter
 class AppHttpClient {
   AppHttpClient._();
 
   static final AppHttpClient instance = AppHttpClient._();
 
-  /// URL DoH-сервера (JSON API).
   static const _dohHost = 'dns.comss.one';
   static const _dohPath = '/dns-query';
 
-  /// Заранее зарезолвленный IP DoH-сервера (системный DNS, до установки overrides).
   String? _dohIp;
-
-  /// Кэш DoH-резолвинга: hostname → IP.
   final Map<String, String> _cache = {};
-
-  /// Использовать ли системный DNS вместо DoH.
   bool _systemDns = false;
 
-  /// Инициализация: резолвит IP DoH-сервера через системный DNS.
-  /// Вызывается один раз при старте приложения, ДО установки HttpOverrides.
+  /// Глобальный HttpClient с DoH connectionFactory.
+  /// Создаётся один раз, переиспользуется везде.
+  late final HttpClient _client;
+
+  /// Инициализация. Вызывается один раз при старте.
   Future<void> init({bool systemDns = false}) async {
     _systemDns = systemDns;
     if (!systemDns) {
@@ -44,28 +43,34 @@ class AppHttpClient {
             .firstOrNull;
         _dohIp = ipv4?.address;
       } catch (_) {
-        // DoH-сервер недоступен через системный DNS — fallback на системный.
         _dohIp = null;
       }
     }
 
-    // Устанавливаем глобальные overrides.
-    HttpOverrides.global = _AppHttpOverrides(this);
+    // Создаём ОДИН клиент с connectionFactory.
+    _client = HttpClient();
+    _client.connectionFactory = _connectionFactory;
+
+    // HttpOverrides для Supabase и других библиотек, которые создают
+    // свои HttpClient. Переопределяем createHttpClient, но вызываем
+    // super.createHttpClient (не new HttpClient()) чтобы избежать рекурсии.
+    HttpOverrides.global = _DohOverrides(this);
   }
 
-  /// Переключить режим DNS. Не требует перезапуска.
   void setSystemDns(bool value) {
     _systemDns = value;
     if (value) {
       _dohIp = null;
       _cache.clear();
     } else if (_dohIp == null) {
-      // Пытаемся резолвить DoH-сервер заново.
       _initDohAsync();
     }
   }
 
   bool get isSystemDns => _systemDns || _dohIp == null;
+
+  /// Возвращает глобальный HttpClient для использования в Supabase adapter.
+  HttpClient get httpClient => _client;
 
   Future<void> _initDohAsync() async {
     try {
@@ -78,18 +83,13 @@ class AppHttpClient {
     } catch (_) {}
   }
 
-  /// Создаёт HttpClient с DoH connectionFactory.
-  HttpClient createClient() {
-    final client = HttpClient();
-    client.connectionFactory = _connectionFactory;
-    return client;
-  }
-
-  /// Загружает байты по URL через DoH-клиент.
-  Future<Uint8List?> fetchBytes(String url, {Duration timeout = const Duration(seconds: 15)}) async {
-    final client = createClient();
+  /// Загружает байты по URL через глобальный DoH-клиент.
+  Future<Uint8List?> fetchBytes(
+    String url, {
+    Duration timeout = const Duration(seconds: 15),
+  }) async {
     try {
-      final request = await client.getUrl(Uri.parse(url)).timeout(timeout);
+      final request = await _client.getUrl(Uri.parse(url)).timeout(timeout);
       final response = await request.close().timeout(timeout);
       if (response.statusCode != 200) return null;
       final chunks = <int>[];
@@ -99,8 +99,6 @@ class AppHttpClient {
       return Uint8List.fromList(chunks);
     } catch (_) {
       return null;
-    } finally {
-      client.close();
     }
   }
 
@@ -147,7 +145,7 @@ class AppHttpClient {
         : Socket.startConnect(host, port);
   }
 
-  /// TCP по [target] (IP), затем TLS с SNI = [sniHost].
+  /// TCP по IP + TLS с правильным SNI.
   Future<ConnectionTask<Socket>> _secureConnectTask(
     String target,
     int port,
@@ -165,7 +163,7 @@ class AppHttpClient {
     );
   }
 
-  /// DoH JSON API запрос через SecureSocket напрямую по IP.
+  /// DoH JSON API через SecureSocket напрямую по IP (без HttpClient).
   Future<String?> _resolveViaDoh(String hostname) async {
     final dohIp = _dohIp;
     if (dohIp == null) return null;
@@ -214,21 +212,7 @@ class AppHttpClient {
   }
 }
 
-/// HttpOverrides, делегирующий connectionFactory в AppHttpClient.
-class _AppHttpOverrides extends HttpOverrides {
-  final AppHttpClient _appClient;
-  _AppHttpOverrides(this._appClient);
-
-  @override
-  HttpClient createHttpClient(SecurityContext? context) {
-    return _appClient.createClient();
-  }
-}
-
 /// Виджет загрузки картинки через глобальный AppHttpClient.
-///
-/// Использует DoH-клиент вместо Image.network, который игнорирует
-/// HttpOverrides.global. При ошибке показывает errorWidget.
 class DohNetworkImage extends StatefulWidget {
   const DohNetworkImage({
     super.key,
@@ -304,5 +288,25 @@ class _DohNetworkImageState extends State<DohNetworkImage> {
       height: widget.height,
       gaplessPlayback: true,
     );
+  }
+}
+
+/// HttpOverrides для библиотек (Supabase), которые создают свои HttpClient.
+///
+/// ВАЖНО: createHttpClient вызывает super.createHttpClient(), а НЕ
+/// HttpClient(). Это критично: new HttpClient() снова триггерит overrides
+/// → бесконечная рекурсия → StackOverflow. super.createHttpClient() создаёт
+/// базовый клиент без overrides, на который мы безопасно ставим connectionFactory.
+class _DohOverrides extends HttpOverrides {
+  final AppHttpClient _app;
+  _DohOverrides(this._app);
+
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    // super.createHttpClient — базовый клиент БЕЗ overrides.
+    // НЕ использовать HttpClient() — это вызовет рекурсию.
+    final client = super.createHttpClient(context);
+    client.connectionFactory = _app._connectionFactory;
+    return client;
   }
 }
