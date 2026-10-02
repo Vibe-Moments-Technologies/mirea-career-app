@@ -90,6 +90,8 @@ class AppHttpClient {
   /// Загружает байты по URL через глобальный DoH-клиент.
   /// Результат кэшируется в памяти: повторные вызовы для того же URL
   /// возвращают байты мгновенно, без HTTP-запроса.
+  /// При ошибке делает одну повторную попытку (DoH может не ответить
+  /// с первого раза из-за таймаута или потери пакета).
   Future<Uint8List?> fetchBytes(
     String url, {
     Duration timeout = const Duration(seconds: 15),
@@ -98,20 +100,28 @@ class AppHttpClient {
     final cached = _imageCache[url];
     if (cached != null) return cached;
 
-    try {
-      final request = await _client.getUrl(Uri.parse(url)).timeout(timeout);
-      final response = await request.close().timeout(timeout);
-      if (response.statusCode != 200) return null;
-      final chunks = <int>[];
-      await for (final chunk in response.timeout(timeout)) {
-        chunks.addAll(chunk);
+    // Две попытки: DoH может не ответить с первого раза.
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        final request =
+            await _client.getUrl(Uri.parse(url)).timeout(timeout);
+        final response = await request.close().timeout(timeout);
+        if (response.statusCode != 200) continue;
+        final chunks = <int>[];
+        await for (final chunk in response.timeout(timeout)) {
+          chunks.addAll(chunk);
+        }
+        final bytes = Uint8List.fromList(chunks);
+        _imageCache[url] = bytes;
+        return bytes;
+      } catch (_) {
+        if (attempt == 0) {
+          // Первая попытка не удалась — ждём немного и пробуем снова.
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
       }
-      final bytes = Uint8List.fromList(chunks);
-      _imageCache[url] = bytes;
-      return bytes;
-    } catch (_) {
-      return null;
     }
+    return null;
   }
 
   Future<ConnectionTask<Socket>> _connectionFactory(
@@ -183,7 +193,7 @@ class AppHttpClient {
     final socket = await SecureSocket.connect(
       dohIp,
       443,
-      timeout: const Duration(seconds: 5),
+      timeout: const Duration(seconds: 8),
     );
 
     try {
@@ -199,7 +209,7 @@ class AppHttpClient {
       final response = await utf8.decoder
           .bind(socket)
           .join()
-          .timeout(const Duration(seconds: 5));
+          .timeout(const Duration(seconds: 8));
 
       final headerEnd = response.indexOf('\r\n\r\n');
       if (headerEnd < 0) return null;
