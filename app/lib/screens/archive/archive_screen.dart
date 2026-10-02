@@ -18,6 +18,9 @@ import '../post/post_detail_screen.dart';
 /// Дубликат ленты по времени, а не «второй каталог»: главная и каталог
 /// показывают только актуальное, сюда уходит всё, чьё событие уже прошло.
 /// Записи без даты события остаются в ленте — истёкшими они не считаются.
+///
+/// Сам раздел приглушён по насыщенности: истёкшее не должно спорить с
+/// актуальным за цветом.
 class ArchiveScreen extends ConsumerStatefulWidget {
   const ArchiveScreen({super.key});
 
@@ -45,58 +48,64 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
         // Свайп сверху вниз: архив отстаёт от ленты, когда модерация
         // публикует новые записи с прошедшей датой.
         onRefresh: () => ref.read(feedProvider.notifier).refresh(),
-        child: CustomScrollView(
-          physics: AppScroll.refreshable,
-          slivers: [
-            const SliverToBoxAdapter(
-              child: ScreenHeader(title: 'Архив', bottom: 10),
-            ),
-            // Первая загрузка: скелетоны, а не «ничего не нашлось».
-            if (loading)
-              SliverPadding(
-                padding: EdgeInsets.fromLTRB(pad, 8, pad, 0),
-                sliver: SliverList.separated(
-                  itemCount: 4,
-                  separatorBuilder: (_, _) => const SizedBox(height: 10),
-                  itemBuilder: (_, _) => const PostCardSkeleton(),
-                ),
-              )
-            else if (posts.isEmpty)
-              const SliverFillRemaining(
-                hasScrollBody: false,
-                child: _EmptyArchive(),
-              )
-            else ...[
-              SliverPadding(
-                padding: EdgeInsets.fromLTRB(pad, 8, pad, 0),
-                sliver: SliverList.separated(
-                  itemCount: shown.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 10),
-                  // Появление карточек внахлёст — как на главной.
-                  itemBuilder: (_, i) => RevealOnMount(
-                    child: _card(shown[i], favorites),
-                  ),
-                ),
+        child: ColorFiltered(
+          // Истёкшее — серое: гасим насыщенность всего архива, чтобы он не
+          // читался как вторая лента. Яркость матрица сохраняет, поэтому
+          // текст остаётся контрастным, а краски и фото уходят в серый.
+          colorFilter: const ColorFilter.matrix(expiredMatrix),
+          child: CustomScrollView(
+            physics: AppScroll.refreshable,
+            slivers: [
+              const SliverToBoxAdapter(
+                child: ScreenHeader(title: 'Архив', bottom: 10),
               ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    pad,
-                    16,
-                    pad,
-                    AppInsets.scrollBottom(context),
+              // Первая загрузка: скелетоны, а не «ничего не нашлось».
+              if (loading)
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(pad, 8, pad, 0),
+                  sliver: SliverList.separated(
+                    itemCount: 4,
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
+                    itemBuilder: (_, _) => const PostCardSkeleton(),
                   ),
-                  child: ListTail(
-                    hasMore: posts.length > shown.length,
-                    loaded: shown.length,
-                    total: posts.length,
-                    footer: 'Это всё — прошедшие записи закончились',
-                    onMore: () => setState(() => _visible += _pageSize),
+                )
+              else if (posts.isEmpty)
+                const SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: _EmptyArchive(),
+                )
+              else ...[
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(pad, 8, pad, 0),
+                  sliver: SliverList.separated(
+                    itemCount: shown.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
+                    // Появление карточек внахлёст — как на главной.
+                    itemBuilder: (_, i) => RevealOnMount(
+                      child: _card(shown[i], favorites),
+                    ),
                   ),
                 ),
-              ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      pad,
+                      16,
+                      pad,
+                      AppInsets.scrollBottom(context),
+                    ),
+                    child: ListTail(
+                      hasMore: posts.length > shown.length,
+                      loaded: shown.length,
+                      total: posts.length,
+                      footer: 'Это всё — прошедшие записи закончились',
+                      onMore: () => setState(() => _visible += _pageSize),
+                    ),
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

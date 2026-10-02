@@ -199,15 +199,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     // Пока грузится, хвост скрыт: он мигал поверх скелетонов.
                     child: loading
                         ? const SizedBox.shrink()
-                        : ListTail(
-                            hasMore: all.length > shown.length,
-                            isEmpty: all.isEmpty && !feed.loading,
-                            loaded: shown.length,
-                            total: all.length,
-                            // Кнопка не догружает, а уводит в каталог: там
-                            // полный список и фильтры, здесь — только витрина.
-                            onMore: _openCatalog,
-                          ),
+                        : all.isEmpty
+                            // Пустой ленте каталог тоже нечего показать:
+                            // объясняем пустоту, входа в каталог не будет.
+                            ? const ListTail(isEmpty: true)
+                            // Кнопка в каталог не зависит от количества
+                            // записей: главная — витрина из блока, каталог
+                            // нужен при любом числе, даже когда всё показано.
+                            : _CatalogButton(
+                                loaded: shown.length,
+                                total: all.length,
+                                onTap: _openCatalog,
+                              ),
                   ),
                 ),
               ],
@@ -335,6 +338,39 @@ class _QuickChip extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Вход в каталог с главной: стоит всегда, пока есть хоть одна запись.
+///
+/// Раньше кнопка появлялась только когда блок обрезал ленту, и при трёх
+/// записях вёрстка в каталог просто исчезала. Каталог нужен при любом
+/// количестве, поэтому подпись зависит от остатка, а сам факт кнопки — нет.
+class _CatalogButton extends StatelessWidget {
+  const _CatalogButton({
+    required this.loaded,
+    required this.total,
+    required this.onTap,
+  });
+
+  final int loaded;
+  final int total;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasMore = total > loaded;
+
+    return OutlinedButton(
+      onPressed: onTap,
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size.fromHeight(48),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+        ),
+      ),
+      child: Text(hasMore ? 'Показать ещё ($loaded из $total)' : 'В каталог'),
     );
   }
 }

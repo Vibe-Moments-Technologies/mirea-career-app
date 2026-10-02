@@ -12,6 +12,7 @@ import 'package:mirea_career/data/crash_reporting.dart';
 import 'package:mirea_career/data/local_store.dart';
 import 'package:mirea_career/data/metrics.dart';
 import 'package:mirea_career/data/posts_repo.dart';
+import 'package:mirea_career/screens/archive/archive_screen.dart';
 import 'package:mirea_career/screens/catalog/catalog_screen.dart';
 import 'package:mirea_career/screens/favorites/favorites_screen.dart';
 import 'package:mirea_career/screens/home/home_screen.dart';
@@ -66,6 +67,7 @@ Map<String, dynamic> samplePost({
   bool featured = false,
   List<String> tags = const ['карьера'],
   DateTime? publishedAt,
+  DateTime? eventDate,
   Map<String, dynamic>? organization,
   String organizationId = 'org1',
   String? externalLink,
@@ -93,6 +95,9 @@ Map<String, dynamic> samplePost({
       // одинаковых значениях (DateTime.now() в одном тике) порядок
       // недетерминирован — тест начинает падать случайным образом.
       'published_at': (publishedAt ?? DateTime.now()).toIso8601String(),
+      // Дата события решает судьбу записи: без неё пост навсегда остаётся
+      // актуальным, с прошедшей — уезжает в архив.
+      if (eventDate != null) 'event_date': eventDate.toIso8601String(),
     };
 
 Widget wrap(
@@ -507,8 +512,9 @@ void main() {
       expect(find.text('Карточка 24'), findsOneWidget);
     });
 
-    testWidgets('когда всё показано — видно подпись о конце ленты', (tester) async {
-      // 3 поста при блоке 10: подгрузка не нужна, должен быть явный финал
+    testWidgets('даже когда всё показано, кнопка в каталог остаётся', (tester) async {
+      // 3 поста при блоке 10: догружать нечего, но каталог всё равно нужен —
+      // вход не зависит от количества записей.
       final base = DateTime(2026, 1, 1);
       final cache = [
         for (var i = 0; i < 3; i++)
@@ -529,14 +535,15 @@ void main() {
       await tester.pump();
 
       await tester.scrollUntilVisible(
-        find.text('Это всё — новых записей больше нет'),
+        find.text('В каталог'),
         400,
         scrollable: find.byType(Scrollable).first,
       );
       await tester.pump();
 
-      expect(find.text('Это всё — новых записей больше нет'), findsOneWidget);
+      // Подписи обрезанного блока тут нет — всё показано целиком.
       expect(find.textContaining('Показать ещё'), findsNothing);
+      expect(find.text('В каталог'), findsOneWidget);
     });
 
     testWidgets('на главной нет ни «Для вас», ни заголовка «Новое»', (tester) async {
@@ -675,6 +682,58 @@ void main() {
             frameworkErrors.where((e) => e.contains('overflowed')).toList();
         expect(overflows, isEmpty, reason: 'переполнение дока на $icon: $overflows');
       }
+    });
+
+    testWidgets('архив приглушён — истёвшие записи серые', (tester) async {
+      // Прошедшая запись должна выглядеть истёкшей, а не второй лентой:
+      // насыщенность всего архива гасится одним фильтром.
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [
+          samplePost(
+            id: 'old',
+            title: 'Прошедшее',
+            eventDate: DateTime.now().subtract(const Duration(days: 3)),
+          ),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+
+      // Вкладки док собираются по мере выбора, поэтому архив сначала
+      // открываем — и уже в нём ищем фильтр, а не во всём дереве.
+      await tester.tap(find.byIcon(Icons.inventory_2_rounded).last);
+      await tester.pumpAndSettle();
+
+      // Док держит открытые вкладки в дереве, поэтому ищем фильтр строго
+      // внутри архива — иначе нашлось бы что угодно на других экранах.
+      expect(
+        find.descendant(
+          of: find.byType(ArchiveScreen),
+          matching: find.byType(ColorFiltered),
+        ),
+        findsOneWidget,
+        reason: 'архив ничем не приглушён: серых записей не отличить',
+      );
+    });
+
+    test('матрица истёкшего гасит цвет, сохраняя яркость', () {
+      // Серая запись не должна ни выцвести, ни потемнеть: сумма весов в
+      // каждой строке — единица, значит яркость проходит без изменений.
+      for (var row = 0; row < 3; row++) {
+        final sum = expiredMatrix[row * 5] +
+            expiredMatrix[row * 5 + 1] +
+            expiredMatrix[row * 5 + 2];
+        expect(sum, moreOrLessEquals(1.0, epsilon: 0.001),
+            reason: 'строка $row меняет яркость');
+      }
+
+      // Насыщенность упала, но не до нуля: полностью серый архив читался бы
+      // как отключённый, а не как истёкший.
+      expect(expiredMatrix[0], lessThan(1.0));
+      expect(expiredMatrix[0], greaterThan(0.35));
     });
     testWidgets('в доке только значки, без названий страниц', (tester) async {
       // Подписи раздували док и выталкивали соседние кнопки. Название
