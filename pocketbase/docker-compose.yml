@@ -1,0 +1,60 @@
+# PocketBase deployment for MIREA Career App
+# Domain: vmt-mireacareer.l1ratch.ru (wildcard cert)
+# VDS: 2GB RAM, 1 core — PocketBase uses ~50MB
+
+version: "3.8"
+
+services:
+  pocketbase:
+    image: ghcr.io/pocketbase/pocketbase:latest
+    container_name: mirea-pocketbase
+    restart: unless-stopped
+    # Не exposing порт наружу — только через nginx
+    expose:
+      - "8090"
+    volumes:
+      # Данные PocketBase (SQLite + uploaded files)
+      - pb_data:/pb/pb_data
+    # Ограничения ресурсов чтобы не убить VDS
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.8"
+    # Health check
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8090/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - mirea-net
+
+  nginx:
+    image: nginx:alpine
+    container_name: mirea-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # Wildcard сертификат для *.l1ratch.ru
+      # Путь может отличаться — проверь где лежит твой cert
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      # Или если cert в другом месте:
+      # - /path/to/certs:/etc/nginx/certs:ro
+    depends_on:
+      pocketbase:
+        condition: service_healthy
+    networks:
+      - mirea-net
+
+volumes:
+  pb_data:
+    driver: local
+
+networks:
+  mirea-net:
+    driver: bridge
