@@ -25,9 +25,9 @@ class PostsRepo {
     if (isOffline) return const [];
 
     final url = '$_baseUrl/api/collections/posts/records'
-        '?filter=status="published"&&publishedAt<="@now"'
+        '?filter=status="published"&&published_at<="@now"'
         '&expand=organization'
-        '&sort=-priorityWeight,-publishedAt'
+        '&sort=-priority_weight,-published_at'
         '&perPage=300';
 
     final bytes = await AppHttpClient.instance.fetchBytes(url);
