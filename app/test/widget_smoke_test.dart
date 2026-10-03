@@ -21,7 +21,6 @@ import 'package:mirea_career/screens/root_shell.dart';
 import 'package:mirea_career/state/feed_filters.dart';
 import 'package:mirea_career/state/providers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Тесты построения интерфейса.
 ///
@@ -29,13 +28,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// в состояние Riverpod во время построения провайдера. В release это даёт
 /// пустой экран вместо ленты, а узнаётся только на устройстве.
 /// Эти тесты проходят реальный путь построения дерева и падают сразу.
-
-/// Клиент-заглушка: сеть недоступна, приложение должно работать на кэше.
-SupabaseClient offlineClient() => SupabaseClient(
-      'http://localhost:1',
-      'offline',
-      authOptions: const AuthClientOptions(autoRefreshToken: false),
-    );
 
 Future<ProviderContainer> container({
   StudentProfile? profile,
@@ -52,7 +44,7 @@ Future<ProviderContainer> container({
       // именно офлайн-вариант: он не открывает realtime-соединение,
       // поэтому тест завершается без висящих таймеров
       metricsProvider.overrideWithValue(
-        Metrics(PostsRepo.offline(offlineClient()), store),
+        Metrics(PostsRepo.offline(), store),
       ),
       supabaseConfiguredProvider.overrideWithValue(true),
     ],
@@ -367,18 +359,14 @@ void main() {
   });
 
   group('Конфигурация', () {
-    test('без ключей приложение сообщает об этом, а не падает', () {
-      expect(SupabaseConfig.isConfigured, isFalse,
-          reason: 'в тестах ключи не передаются — так и должно быть');
+    test('без URL PocketBase приложение сообщает об этом, а не падает', () {
+      expect(PocketBaseConfig.isConfigured, isFalse,
+          reason: 'в тестах URL не передаётся — так и должно быть');
     });
 
     test('значения из окружения очищаются от BOM и пробелов', () {
-      // Реальная авария: секрет в CI записался с BOM (U+FEFF) в начале.
-      // URL выглядел непустым, но инициализация Supabase не завершалась —
-      // runApp не вызывался, и пользователь видел однотонный экран.
-      // Sentry при этом молчал по той же причине: DSN не разбирался.
-      const withBom = '\uFEFFhttps://example.supabase.co';
-      const withSpaces = '  https://example.supabase.co\n';
+      const withBom = '\uFEFFhttps://example.com';
+      const withSpaces = '  https://example.com\n';
 
       for (final raw in [withBom, withSpaces]) {
         final cleaned = raw.trim();

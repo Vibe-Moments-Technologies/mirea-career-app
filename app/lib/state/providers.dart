@@ -12,7 +12,7 @@ final localStoreProvider = Provider<LocalStore>((ref) => throw UnimplementedErro
 /// Отправка счётчиков интереса (main переопределяет готовым экземпляром).
 final metricsProvider = Provider<Metrics>((ref) => throw UnimplementedError());
 
-/// true, если Supabase сконфигурирован (иначе показываем подсказку).
+/// true, если PocketBase сконфигурирован (иначе показываем подсказку).
 final supabaseConfiguredProvider = Provider<bool>((ref) => true);
 
 /// Репозиторий карточек. Берётся из Metrics — тем самым исключается
@@ -154,18 +154,10 @@ class FeedNotifier extends Notifier<FeedState> {
     }
   }
 
-  /// Realtime: опубликованная в админке карточка появляется сама.
-  /// Поток отдаёт полный снимок — просто заменяем список.
+  /// Realtime убран: PocketBase SSE требует авторизации, а pull-to-refresh
+  /// достаточно для обновления ленты. Подписка оставлена как заглушка.
   void _subscribe() {
-    final sub = ref.read(postsRepoProvider).watchPublished().listen((posts) {
-      if (posts.isEmpty) return; // не затираем кэш пустотой от неудачной подписки
-      state = state.copyWith(posts: _applyDeltas(posts), offline: false);
-      ref.read(localStoreProvider).saveFeedCache(posts.map((p) => p.toJson()).toList());
-    }, onError: (_) {/* realtime не критичен — есть pull-to-refresh */});
-
-    // подписка живёт ровно столько же, сколько провайдер: иначе при его
-    // пересоздании старые потоки копятся и пишут в мёртвое состояние
-    ref.onDispose(sub.cancel);
+    // no-op: realtime не используется
   }
 
   /// Возвращает ленту с учётом локальных дельт счётчиков.

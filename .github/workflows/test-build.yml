@@ -106,8 +106,7 @@ jobs:
         run: |
           flutter build apk --release \
             --split-debug-info=build/symbols/apk \
-            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
-            --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
+            --dart-define=POCKETBASE_URL=https://vmt-mireacareer.l1ratch.ru \
             --dart-define=SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
             --dart-define=SENTRY_ENVIRONMENT=$SENTRY_ENV \
             --dart-define=SENTRY_RELEASE=$SENTRY_REL \
@@ -181,8 +180,7 @@ jobs:
         run: |
           flutter build ios --release --no-codesign \
             --split-debug-info=build/symbols/ios \
-            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
-            --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
+            --dart-define=POCKETBASE_URL=https://vmt-mireacareer.l1ratch.ru \
             --dart-define=SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
             --dart-define=SENTRY_ENVIRONMENT=$SENTRY_ENV \
             --dart-define=SENTRY_RELEASE=$SENTRY_REL \

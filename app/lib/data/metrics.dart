@@ -1,7 +1,6 @@
 import 'dart:async';
 
-import 'package:supabase_flutter/supabase_flutter.dart';
-
+import 'app_http_client.dart';
 import 'local_store.dart';
 import 'posts_repo.dart';
 
@@ -18,10 +17,6 @@ class Metrics {
   final LocalStore _store;
 
   /// Репозиторий, с которым работает приложение.
-  ///
-  /// Отдаём его наружу, чтобы провайдеры не обращались к Supabase.instance
-  /// напрямую: та создаётся только при успешной инициализации, а приложение
-  /// обязано работать и без неё (нет ключей, нет сети, тесты).
   PostsRepo get repo => _repo;
 
   /// Отмечает просмотр, если он первый для этого устройства.
@@ -74,15 +69,11 @@ class Bootstrap {
   final LocalStore store;
   final Metrics metrics;
 
-  /// false — ключи Supabase не переданы при сборке: приложение работает
+  /// false — PocketBase URL не передан при сборке: приложение работает
   /// на пустом кэше и показывает подсказку вместо падения.
   final bool configured;
 
   /// Выбранная тема, прочитанная ДО первого кадра.
-  ///
-  /// `LocalStore.open()` уже отработал к этому моменту, а провайдер темы
-  /// читает то же хранилище. Без этого первый кадр рисовался светлой темой
-  /// (значение по умолчанию), и на тёмной телефоне была белая вспышка.
   String get themeMode => store.themeMode;
 
   /// Тема из настроек, иначе — системная.
@@ -93,55 +84,45 @@ class Bootstrap {
       };
 }
 
-/// Инициализация Supabase и локального хранилища.
+/// Инициализация PocketBase и локального хранилища.
 ///
 /// Никогда не бросает исключение и НИКОГДА не висит: приложение обязано
-/// показать интерфейс даже при недоступной сети или неверных ключах.
-/// Любая проблема с Supabase означает лишь «работаем на кэше», а не
-/// пустой экран на старте.
-///
-/// Таймаут здесь принципиален. Если адрес невалиден, инициализация может
-/// просто не завершиться — и тогда runApp не вызовется, а пользователь
-/// увидит однотонный экран без каких-либо следов ошибки. Ровно так и
-/// произошло, когда секрет пришёл с BOM в начале URL.
+/// показать интерфейс даже при недоступной сети или неверном URL.
 Future<Bootstrap> bootstrap() async {
   final store = await LocalStore.open();
 
-  if (!SupabaseConfig.isConfigured) {
+  if (!PocketBaseConfig.isConfigured) {
     return Bootstrap(
       store: store,
-      metrics: Metrics(PostsRepo.offline(_offline), store),
+      metrics: Metrics(PostsRepo.offline(), store),
       configured: false,
     );
   }
 
-  SupabaseClient client;
+  final repo = PostsRepo(PocketBaseConfig.url);
+
+  // Проверяем доступность API health endpoint.
   try {
-    await Supabase.initialize(
-      url: SupabaseConfig.url,
-      publishableKey: SupabaseConfig.anonKey,
-    ).timeout(const Duration(seconds: 10));
-    client = Supabase.instance.client;
-  } catch (e) {
-    // Битый URL, ключ или зависшая инициализация: показываем интерфейс
-    // на кэше, а не пустой экран.
+    final bytes = await AppHttpClient.instance
+        .fetchBytes('${PocketBaseConfig.url}/api/health',
+            timeout: const Duration(seconds: 10));
+    if (bytes == null) {
+      return Bootstrap(
+        store: store,
+        metrics: Metrics(PostsRepo.offline(), store),
+        configured: false,
+      );
+    }
+  } catch (_) {
     return Bootstrap(
       store: store,
-      metrics: Metrics(PostsRepo.offline(_offline), store),
+      metrics: Metrics(PostsRepo.offline(), store),
       configured: false,
     );
   }
 
-  final metrics = Metrics(PostsRepo(client), store);
+  final metrics = Metrics(repo, store);
   // Досылаем накопленное офлайн — но не ждём: сеть может быть недоступна.
   unawaited(metrics.flush());
   return Bootstrap(store: store, metrics: metrics, configured: true);
 }
-
-/// Флаг «сети нет»: клиент-заглушка отвечает ошибкой на любой запрос,
-/// поэтому лента берётся из кэша, а счётчики копятся в очереди.
-final _offline = SupabaseClient(
-  'http://localhost:1',
-  'offline',
-  authOptions: const AuthClientOptions(autoRefreshToken: false),
-);

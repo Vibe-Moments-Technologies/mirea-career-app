@@ -4,6 +4,8 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import 'crash_reporting.dart';
+
 /// Глобальный HTTP-клиент с поддержкой DoH (DNS-over-HTTPS).
 ///
 /// Единая точка для всех сетевых запросов приложения.
@@ -185,51 +187,76 @@ class AppHttpClient {
     );
   }
 
-  /// DoH JSON API через SecureSocket напрямую по IP (без HttpClient).
+  /// DoH JSON API через Socket + SecureSocket.secure с правильным SNI.
+  ///
+  /// Не использует HttpClient вообще — только raw TCP + TLS, чтобы избежать
+  /// любого взаимодействия с HttpOverrides / connectionFactory.
   Future<String?> _resolveViaDoh(String hostname) async {
     final dohIp = _dohIp;
     if (dohIp == null) return null;
 
-    final socket = await SecureSocket.connect(
-      dohIp,
-      443,
-      timeout: const Duration(seconds: 8),
-    );
-
     try {
-      final path = '$_dohPath?name=$hostname&type=A';
-      final request = 'GET $path HTTP/1.1\r\n'
-          'Host: $_dohHost\r\n'
-          'Accept: application/dns-json\r\n'
-          'Connection: close\r\n'
-          '\r\n';
-      socket.add(utf8.encode(request));
-      await socket.flush();
+      // TCP по IP, затем TLS с SNI = dns.comss.one.
+      final socket = await Socket.connect(dohIp, 443,
+          timeout: const Duration(seconds: 8));
+      final secureSocket = await SecureSocket.secure(
+        socket,
+        host: _dohHost,
+      );
 
-      final response = await utf8.decoder
-          .bind(socket)
-          .join()
-          .timeout(const Duration(seconds: 8));
+      try {
+        final path = '$_dohPath?name=$hostname&type=A';
+        final request = 'GET $path HTTP/1.1\r\n'
+            'Host: $_dohHost\r\n'
+            'Accept: application/dns-json\r\n'
+            'Connection: close\r\n'
+            '\r\n';
+        secureSocket.add(utf8.encode(request));
+        await secureSocket.flush();
 
-      final headerEnd = response.indexOf('\r\n\r\n');
-      if (headerEnd < 0) return null;
+        final response = await utf8.decoder
+            .bind(secureSocket)
+            .join()
+            .timeout(const Duration(seconds: 8));
 
-      final statusLine = response.substring(0, response.indexOf('\r\n'));
-      if (!statusLine.contains('200')) return null;
-
-      final body = response.substring(headerEnd + 4);
-      final json = jsonDecode(body) as Map<String, dynamic>;
-      final answers = json['Answer'] as List<dynamic>?;
-      if (answers == null || answers.isEmpty) return null;
-
-      for (final a in answers) {
-        if (a is Map<String, dynamic> && a['type'] == 1) {
-          return a['data'] as String?;
+        final headerEnd = response.indexOf('\r\n\r\n');
+        if (headerEnd < 0) {
+          CrashReporting.report(
+            Exception('DoH: no header/body separator'),
+            StackTrace.current,
+            context: 'doh_resolve:$hostname',
+          );
+          return null;
         }
+
+        final statusLine = response.substring(0, response.indexOf('\r\n'));
+        if (!statusLine.contains('200')) {
+          CrashReporting.report(
+            Exception('DoH: $statusLine'),
+            StackTrace.current,
+            context: 'doh_resolve:$hostname',
+          );
+          return null;
+        }
+
+        final body = response.substring(headerEnd + 4);
+        final json = jsonDecode(body) as Map<String, dynamic>;
+        final answers = json['Answer'] as List<dynamic>?;
+        if (answers == null || answers.isEmpty) return null;
+
+        for (final a in answers) {
+          if (a is Map<String, dynamic> && a['type'] == 1) {
+            return a['data'] as String?;
+          }
+        }
+        return null;
+      } finally {
+        secureSocket.destroy();
       }
+    } catch (e, st) {
+      // Ошибка подключения к DoH-серверу (TLS fail, timeout, etc.)
+      CrashReporting.report(e, st, context: 'doh_connect:$hostname');
       return null;
-    } finally {
-      socket.destroy();
     }
   }
 }
