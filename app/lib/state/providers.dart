@@ -140,7 +140,13 @@ class FeedNotifier extends Notifier<FeedState> {
     state = state.copyWith(loading: true);
     try {
       final posts = await ref.read(postsRepoProvider).fetchPublished();
-      if (!ref.mounted) return; // провайдер уничтожен, пока шёл запрос
+      if (!ref.mounted) return;
+      // Не перезаписываем кэш пустым списком: если сервер вернул пусто
+      // (офлайн, ошибка), оставляем старые данные и показываем offline-баннер.
+      if (posts.isEmpty && state.posts.isNotEmpty) {
+        state = state.copyWith(loading: false, offline: true);
+        return;
+      }
       state = state.copyWith(
         posts: _applyDeltas(posts),
         loading: false,
