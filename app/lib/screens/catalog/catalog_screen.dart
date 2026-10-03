@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_route.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/collapsible_section.dart';
+import '../../core/widgets/glass_back_button.dart';
 import '../../core/widgets/list_tail.dart';
 import '../../core/widgets/post_card.dart';
 import '../../core/widgets/reveal_on_mount.dart';
@@ -103,6 +104,9 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                 SliverToBoxAdapter(
                   child: ScreenHeader(
                     title: 'Каталог',
+                    // Каталог выталкивается с главной и своего AppBar не
+                    // имеет: без стрелки назад на экране нечего нажать.
+                    leading: const GlassBackButton(),
                     actions: [
                       HeaderAction(
                         icon: Icons.tune_rounded,

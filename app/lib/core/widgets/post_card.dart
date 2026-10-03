@@ -17,12 +17,17 @@ class PostCard extends StatelessWidget {
     required this.isFavorite,
     required this.onTap,
     required this.onToggleFavorite,
+    this.expired = false,
   });
 
   final Post post;
   final bool isFavorite;
   final VoidCallback onTap;
   final VoidCallback onToggleFavorite;
+
+  /// Запись истекла: дата события в карточке красная. Ставит архив — он
+  /// знает, что запись прошла, а лента и каталог показывают только живое.
+  final bool expired;
 
   @override
   Widget build(BuildContext context) {
@@ -59,7 +64,7 @@ class PostCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 5),
-                    _MetaLine(post: post),
+                    _MetaLine(post: post, expired: expired),
                     if (post.tags.isNotEmpty) ...[
                       const SizedBox(height: 7),
                       _TagsRow(tags: post.tags),
@@ -213,23 +218,34 @@ class _TagsRow extends StatelessWidget {
 }
 
 class _MetaLine extends StatelessWidget {
-  const _MetaLine({required this.post});
+  const _MetaLine({required this.post, required this.expired});
+
   final Post post;
+  final bool expired;
 
   @override
   Widget build(BuildContext context) {
     // Организация и дата в одну строку: две отдельные серые строки опускали
     // заголовок и выглядели как дублирование метаданных.
     final organization = post.organizationName?.trim();
-    final details = [
-      if (organization?.isNotEmpty ?? false) organization!,
-      if (post.eventDate != null) _formatDate(post.eventDate!),
-    ].join(' · ');
-    if (details.isEmpty) return const SizedBox.shrink();
+    final eventDate = post.eventDate;
+    final muted = AppText.footnote.copyWith(color: AppColors.secondaryLight);
+    final hasOrg = organization?.isNotEmpty ?? false;
+    if (!hasOrg && eventDate == null) return const SizedBox.shrink();
 
-    return Text(
-      details,
-      style: AppText.footnote.copyWith(color: AppColors.secondaryLight),
+    // Дата идёт своим стилем: у истёкшей записи она красная, и иначе
+    // «прошло» читается только по тому, что запись оказалась в архиве.
+    final spans = <InlineSpan>[
+      if (hasOrg) TextSpan(text: organization, style: muted),
+      if (eventDate != null)
+        TextSpan(
+          text: '${hasOrg ? ' · ' : ''}${_formatDate(eventDate)}',
+          style: expired ? muted.copyWith(color: AppColors.danger) : muted,
+        ),
+    ];
+
+    return Text.rich(
+      TextSpan(children: spans),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
     );

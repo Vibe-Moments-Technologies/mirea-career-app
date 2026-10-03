@@ -6,6 +6,7 @@ import 'package:mirea_career/core/theme/app_theme.dart';
 import 'package:mirea_career/core/app_route.dart';
 import 'package:mirea_career/core/widgets/glass_back_button.dart';
 import 'package:mirea_career/core/widgets/glass_dock.dart';
+import 'package:mirea_career/core/widgets/post_card.dart';
 import 'package:mirea_career/core/widgets/screen_header.dart';
 import 'package:mirea_career/data/catalogs.dart';
 import 'package:mirea_career/data/crash_reporting.dart';
@@ -512,6 +513,37 @@ void main() {
       expect(find.text('Карточка 24'), findsOneWidget);
     });
 
+    testWidgets('в каталоге стрелка назад возвращает на главную', (tester) async {
+      // Каталог вытолкнут с главной и AppBar у него нет: без стрелки назад
+      // на экране нечем вернуться, кроме системного жеста. Отдельно от
+      // теста выше, потому что при прокрутке шапка уходит из дерева.
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [samplePost()],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+
+      // Одна запись — блок её не обрезает, но кнопка в каталог всё равно есть.
+      await tester.tap(find.text('В каталог'));
+      await tester.pumpAndSettle();
+      expect(find.byType(CatalogScreen), findsOneWidget);
+
+      final back = find.descendant(
+        of: find.byType(CatalogScreen),
+        matching: find.byType(GlassBackButton),
+      );
+      expect(back, findsOneWidget);
+
+      await tester.tap(back);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CatalogScreen), findsNothing);
+      expect(find.text('В каталог'), findsOneWidget);
+    });
+
     testWidgets('даже когда всё показано, кнопка в каталог остаётся', (tester) async {
       // 3 поста при блоке 10: догружать нечего, но каталог всё равно нужен —
       // вход не зависит от количества записей.
@@ -730,11 +762,60 @@ void main() {
             reason: 'строка $row меняет яркость');
       }
 
-      // Насыщенность упала, но не до нуля: полностью серый архив читался бы
-      // как отключённый, а не как истёкший.
-      expect(expiredMatrix[0], lessThan(1.0));
-      expect(expiredMatrix[0], greaterThan(0.35));
+      // Насыщенность падает почти в ноль: архив должен резко отличаться от
+      // ленты, но не превращаться в нечитаемую пустоту.
+      expect(expiredMatrix[0], lessThan(0.35));
+      expect(expiredMatrix[0], greaterThan(0.0));
     });
+
+    testWidgets('в архиве дата события красная', (tester) async {
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [
+          samplePost(
+            id: 'old',
+            title: 'Прошедшее',
+            eventDate: DateTime.now().subtract(const Duration(days: 3)),
+          ),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.inventory_2_rounded).last);
+      await tester.pumpAndSettle();
+
+      // Мета-строка собрана из span'ов: организация остаётся серой, а
+      // красным помечен ровно один — дата события. Text.rich добавляет
+      // свою обёртку, поэтому дерево обходим в глубину.
+      List<TextSpan> spansOf(InlineSpan span) => [
+            if (span is TextSpan) ...[
+              span,
+              ...?span.children?.expand(spansOf),
+            ],
+          ];
+
+      final red = tester
+          .widgetList<RichText>(
+            find.descendant(
+              of: find.byType(PostCard),
+              matching: find.byType(RichText),
+            ),
+          )
+          .expand((t) => spansOf(t.text))
+          .where((s) => s.style?.color == AppColors.danger)
+          .toList();
+
+      expect(red, hasLength(1), reason: 'красной должна быть только дата');
+      expect(
+        // Месяц кириллицей, поэтому \w из Dart (ASCII-only) не подходит.
+        RegExp(r'\d{1,2}\s[а-я]+').hasMatch(red.single.text ?? ''),
+        isTrue,
+        reason: 'красным помечено не дата: ${red.single.text}',
+      );
+    });
+
     testWidgets('в доке только значки, без названий страниц', (tester) async {
       // Подписи раздували док и выталкивали соседние кнопки. Название
       // остаётся в Semantics для а11ы, но на экране его нет.

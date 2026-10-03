@@ -12,11 +12,16 @@ class ScreenHeader extends StatelessWidget {
   const ScreenHeader({
     super.key,
     required this.title,
+    this.leading,
     this.actions = const [],
     this.bottom = 4,
   });
 
   final String title;
+
+  /// Слева от названия: обычно кнопка «назад» — на выталкиваемых экранах
+  /// своего AppBar у них нет, а вернуться нужно не только жестом.
+  final Widget? leading;
 
   /// Иконки справа от названия.
   final List<Widget> actions;
@@ -35,6 +40,7 @@ class ScreenHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
+          ?leading,
           Expanded(child: ScreenTitle(title)),
           for (final a in actions) a,
         ],

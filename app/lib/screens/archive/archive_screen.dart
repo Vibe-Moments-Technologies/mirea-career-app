@@ -114,6 +114,8 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
   Widget _card(Post post, List<String> favorites) => PostCard(
         post: post,
         isFavorite: favorites.contains(post.id),
+        // Всё в архиве истекло — помечаем карточку, чтобы дата стала красной.
+        expired: true,
         onTap: () {
           // Запрос остаётся: возврат показывает ту же ленту.
           FocusManager.instance.primaryFocus?.unfocus();
