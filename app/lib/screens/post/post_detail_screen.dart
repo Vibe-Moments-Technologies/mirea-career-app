@@ -167,7 +167,7 @@ class _MetaChips extends StatelessWidget {
     final items = <String>[
       Catalogs.postTypes[post.type] ?? post.type,
       Catalogs.formats[post.format] ?? post.format,
-      if (post.eventDate != null) _fullDate(post.eventDate!),
+      if (post.startDate != null) _fullDate(post.startDate!),
       if (post.campuses.isNotEmpty) Catalogs.campusTitle(post.campuses.first),
       if (post.institutes.isNotEmpty) Catalogs.instituteTitle(post.institutes.first),
     ];

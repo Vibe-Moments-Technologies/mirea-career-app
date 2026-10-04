@@ -112,7 +112,7 @@ List<Post> applyFilters(List<Post> posts, FeedFilters f, {DateTime? now}) {
     if (f.institute != null && !p.matchesInstitute(f.institute)) return false;
     if (f.tags.isNotEmpty && !f.tags.any(p.tags.contains)) return false;
     if (f.onlyUpcoming) {
-      final d = p.eventDate;
+      final d = p.startDate;
       if (d != null && d.isBefore(DateTime(today.year, today.month, today.day))) return false;
     }
     if (q.isNotEmpty) {
@@ -127,8 +127,8 @@ List<Post> applyFilters(List<Post> posts, FeedFilters f, {DateTime? now}) {
       final c = b.viewsCount.compareTo(a.viewsCount);
       if (c != 0) return c;
     }
-    // по дате события (бездатные — в конец), затем по весу приоритета
-    final ad = a.eventDate, bd = b.eventDate;
+    // по дате начала (бездатные — в конец), затем по весу приоритета
+    final ad = a.startDate, bd = b.startDate;
     if (ad != null && bd != null) {
       final c = ad.compareTo(bd);
       if (c != 0) return c;

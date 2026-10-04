@@ -223,7 +223,7 @@ class _MetaLine extends StatelessWidget {
     final organization = post.organizationName?.trim();
     final details = [
       if (organization?.isNotEmpty ?? false) organization!,
-      if (post.eventDate != null) _formatDate(post.eventDate!),
+      if (post.startDate != null) _formatDate(post.startDate!),
     ].join(' · ');
     if (details.isEmpty) return const SizedBox.shrink();
 

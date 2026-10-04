@@ -113,7 +113,8 @@ class Post {
     this.organizationContactName,
     this.externalLink,
     this.imageUrl,
-    this.eventDate,
+    this.startDate,
+    this.endDate,
     this.publishedAt,
     this.campuses = const [],
     this.institutes = const [],
@@ -142,7 +143,8 @@ class Post {
   final String? organizationContactName;
   final String? externalLink;
   final String? imageUrl;
-  final DateTime? eventDate;
+  final DateTime? startDate;
+  final DateTime? endDate;
   final DateTime? publishedAt;
   final List<String> campuses;
   final List<String> institutes;
@@ -154,6 +156,12 @@ class Post {
   final int favoritesCount;
 
   bool get isPartner => organizationType == 'partner';
+
+  /// Пост актуален если end_date ещё не наступил (или не указан).
+  bool get isActual => endDate == null || endDate!.isAfter(DateTime.now());
+
+  /// Пост в архиве если end_date прошёл.
+  bool get isArchived => endDate != null && endDate!.isBefore(DateTime.now());
 
   /// Организация, собранная из вложенных полей поста.
   ///
@@ -184,16 +192,25 @@ class Post {
 
   static DateTime? _date(Object? v) => v is String ? DateTime.tryParse(v) : null;
 
-  /// Парсит строку PostgREST с вложенным `organizations(...)`.
+  /// Парсит запись PocketBase (snake_case, expand.organization).
   static Post? tryParse(Object? json) {
     if (json is! Map) return null;
     final id = json['id'];
     final title = json['title'];
     if (id is! String || title is! String) return null;
-    final org = Organization.tryParse(json['organizations']);
+    final expand = json['expand'] as Map<String, dynamic>?;
+    final orgJson = expand?['organization'];
+    final org = orgJson is Map ? Organization.tryParse(orgJson) : null;
+
+    String? imageUrl;
+    final imageField = json['image'];
+    if (imageField is String && imageField.isNotEmpty) {
+      imageUrl = imageField;
+    }
+
     return Post(
       id: id,
-      organizationId: json['organization_id'] as String? ?? '',
+      organizationId: json['organization'] as String? ?? org?.id ?? '',
       title: title,
       description: json['description'] as String? ?? '',
       type: json['type'] as String? ?? 'event',
@@ -208,8 +225,9 @@ class Post {
       organizationContactPhone: org?.contactPhone,
       organizationContactName: org?.contactName,
       externalLink: json['external_link'] as String?,
-      imageUrl: json['image_url'] as String?,
-      eventDate: _date(json['event_date']),
+      imageUrl: imageUrl,
+      startDate: _date(json['start_date']),
+      endDate: _date(json['end_date']),
       publishedAt: _date(json['published_at']),
       campuses: _strList(json['campuses']),
       institutes: _strList(json['institutes']),
@@ -243,8 +261,9 @@ class Post {
           'contact_name': organizationContactName,
         },
         'external_link': externalLink,
-        'image_url': imageUrl,
-        'event_date': eventDate?.toIso8601String(),
+        'image': imageUrl,
+        'start_date': startDate?.toIso8601String(),
+        'end_date': endDate?.toIso8601String(),
         'published_at': publishedAt?.toIso8601String(),
         'campuses': campuses,
         'institutes': institutes,
@@ -274,7 +293,8 @@ class Post {
         organizationContactName: organizationContactName,
         externalLink: externalLink,
         imageUrl: imageUrl,
-        eventDate: eventDate,
+        startDate: startDate,
+        endDate: endDate,
         publishedAt: publishedAt,
         campuses: campuses,
         institutes: institutes,

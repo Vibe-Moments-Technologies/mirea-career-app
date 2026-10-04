@@ -139,7 +139,7 @@ class FeedNotifier extends Notifier<FeedState> {
   Future<void> refresh() async {
     state = state.copyWith(loading: true);
     try {
-      final posts = await ref.read(postsRepoProvider).fetchPublished();
+      final posts = await ref.read(postsRepoProvider).fetchPosts();
       if (!ref.mounted) return;
       // Не перезаписываем кэш пустым списком: если сервер вернул пусто
       // (офлайн, ошибка), оставляем старые данные и показываем offline-баннер.

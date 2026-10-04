@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'app_http_client.dart';
+import 'local_store.dart';
 import 'models.dart';
 
 /// Доступ к данным через PocketBase REST API.
@@ -17,18 +18,44 @@ class PostsRepo {
 
   bool get isOffline => _baseUrl.isEmpty;
 
-  /// Опубликованные посты с расширенной организацией.
+  /// Запрос постов с фильтрами.
   ///
-  /// PocketBase expand: `?expand=organization` подтягивает связанную
-  /// коллекцию organizations в поле `expand.organization`.
-  Future<List<Post>> fetchPublished() async {
+  /// [tab] — вкладка: 'foryou' | 'all' | 'university' | 'partner'
+  /// [archive] — если true, возвращает только протухшие посты
+  /// [profile] — профиль для персонализации (foryou)
+  Future<List<Post>> fetchPosts({
+    String tab = 'all',
+    bool archive = false,
+    StudentProfile? profile,
+    int page = 1,
+    int perPage = 20,
+  }) async {
     if (isOffline) return const [];
 
+    final filters = <String>[];
+    filters.add('status="published"');
+    filters.add('published_at<="@now"');
+
+    // Архив: end_date < now, иначе актуальные: end_date >= now или null
+    if (archive) {
+      filters.add('end_date<"@now"');
+    } else {
+      filters.add('(end_date>="@now"||end_date="")');
+    }
+
+    // Вкладки по типу организации
+    if (tab == 'university') {
+      filters.add('organization.type="university_dept"');
+    } else if (tab == 'partner') {
+      filters.add('organization.type="partner"');
+    }
+
+    final filterStr = filters.join('&&');
     final url = '$_baseUrl/api/collections/posts/records'
-        '?filter=status="published"&&published_at<="@now"'
+        '?filter=${Uri.encodeComponent(filterStr)}'
         '&expand=organization'
-        '&sort=-priority_weight,-published_at'
-        '&perPage=300';
+        '&sort=-published_at'
+        '&page=$page&perPage=$perPage';
 
     final bytes = await AppHttpClient.instance.fetchBytes(url);
     if (bytes == null) return const [];
@@ -36,10 +63,52 @@ class PostsRepo {
     try {
       final json = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
       final items = json['items'] as List<dynamic>? ?? [];
-      return items.map((e) => _parsePost(e)).whereType<Post>().toList();
+      var posts = items.map(_parsePost).whereType<Post>().toList();
+
+      // Для вас: персональная сортировка
+      if (tab == 'foryou' && profile != null) {
+        posts = _sortForYou(posts, profile);
+      }
+
+      // Приоритетные сверху (кроме архива)
+      if (!archive) {
+        posts = _priorityFirst(posts);
+      }
+
+      return posts;
     } catch (_) {
       return const [];
     }
+  }
+
+  /// Персональная сортировка: релевантность профилю.
+  List<Post> _sortForYou(List<Post> posts, StudentProfile profile) {
+    final scored = posts.map((p) => (p, _scoreFor(p, profile))).toList();
+    scored.sort((a, b) => b.$2.compareTo(a.$2));
+    return scored.map((e) => e.$1).toList();
+  }
+
+  /// Скоринг поста под профиль.
+  int _scoreFor(Post p, StudentProfile profile) {
+    var score = 0;
+    if (profile.institute != null && p.institutes.contains(profile.institute)) {
+      score += 10;
+    }
+    if (profile.tags.isNotEmpty) {
+      final overlap = p.tags.where(profile.tags.contains).length;
+      score += overlap * 5;
+    }
+    if (p.institutes.isEmpty && p.campuses.isEmpty) {
+      score += 3; // для всех
+    }
+    return score;
+  }
+
+  /// Приоритетные посты — вверх списка.
+  List<Post> _priorityFirst(List<Post> posts) {
+    final featured = posts.where((p) => p.isFeatured).toList();
+    final normal = posts.where((p) => !p.isFeatured).toList();
+    return [...featured, ...normal];
   }
 
   /// Слайды витрины главной.
@@ -57,50 +126,39 @@ class PostsRepo {
     try {
       final json = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
       final items = json['items'] as List<dynamic>? ?? [];
-      return items.map((e) => _parseBanner(e)).whereType<SpotlightBanner>().toList();
+      return items.map(_parseBanner).whereType<SpotlightBanner>().toList();
     } catch (_) {
       return const [];
     }
   }
 
   /// Инкремент счётчика просмотров.
-  ///
-  /// PocketBase поддерживает атомарные операции: `views_count+1`.
-  /// Но для анонимного доступа нужен custom endpoint или API rule.
-  /// Пока используем PATCH с auth token (или уберём счётчики).
   Future<void> incrementViews(String postId) async {
     if (isOffline) return;
-    // TODO: реализовать через custom API endpoint или auth token
-    // Patch: PATCH /api/collections/posts/records/{id} {"views_count+": 1}
+    // TODO: PATCH views_count+1 через API
   }
 
   Future<void> modifyFavorites(String postId, int delta) async {
     if (isOffline) return;
-    // TODO: реализовать через custom API endpoint или auth token
+    // TODO: PATCH favorites_count+delta через API
   }
 
   // ---------- Парсинг ----------
 
-  /// Парсит пост из PocketBase JSON (snake_case поля).
   Post? _parsePost(Object? json) {
     if (json is! Map) return null;
     final id = json['id'];
     final title = json['title'];
     if (id is! String || title is! String) return null;
 
-    // Expand: organization — вложенный объект в expand.organization
     final expand = json['expand'] as Map<String, dynamic>?;
     final orgJson = expand?['organization'];
     final org = orgJson is Map ? Organization.tryParse(orgJson) : null;
 
-    // Image URL: PocketBase file field = имя файла
-    // Полный URL: {baseUrl}/api/files/{collectionName}/{recordId}/{filename}
     String? imageUrl;
     final imageField = json['image'];
     if (imageField is String && imageField.isNotEmpty) {
       imageUrl = '$_baseUrl/api/files/posts/$id/$imageField';
-    } else if (imageField is List && imageField.isNotEmpty && imageField[0] is String) {
-      imageUrl = '$_baseUrl/api/files/posts/$id/${imageField[0]}';
     }
 
     return Post(
@@ -121,7 +179,8 @@ class PostsRepo {
       organizationContactName: org?.contactName,
       externalLink: json['external_link'] as String?,
       imageUrl: imageUrl,
-      eventDate: _date(json['event_date']),
+      startDate: _date(json['start_date']),
+      endDate: _date(json['end_date']),
       publishedAt: _date(json['published_at']),
       campuses: _strList(json['campuses']),
       institutes: _strList(json['institutes']),
@@ -134,20 +193,16 @@ class PostsRepo {
     );
   }
 
-  /// Парсит баннер витрины из PocketBase JSON.
   SpotlightBanner? _parseBanner(Object? json) {
     if (json is! Map) return null;
     final id = json['id'];
     final title = json['title'];
     if (id is! String || title is! String) return null;
 
-    // Image URL: file field → полный URL
     String? imageUrl;
     final imageField = json['image'];
     if (imageField is String && imageField.isNotEmpty) {
       imageUrl = '$_baseUrl/api/files/spotlight_banners/$id/$imageField';
-    } else if (imageField is List && imageField.isNotEmpty && imageField[0] is String) {
-      imageUrl = '$_baseUrl/api/files/spotlight_banners/$id/${imageField[0]}';
     }
 
     return SpotlightBanner(
@@ -168,14 +223,10 @@ class PostsRepo {
 }
 
 /// Конфигурация PocketBase.
-///
-/// URL передаётся через --dart-define при сборке:
-///   flutter build apk --dart-define=POCKETBASE_URL=https://vmt-mireacareer.l1ratch.ru
 class PocketBaseConfig {
   const PocketBaseConfig._();
 
-  static final url =
-      const String.fromEnvironment('POCKETBASE_URL').trim();
+  static final url = const String.fromEnvironment('POCKETBASE_URL').trim();
 
   static bool get isConfigured =>
       url.isNotEmpty && Uri.tryParse(url)?.hasScheme == true;

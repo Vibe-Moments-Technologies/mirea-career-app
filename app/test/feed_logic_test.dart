@@ -32,7 +32,7 @@ Post post({
       tags: tags,
       campuses: campuses,
       institutes: institutes,
-      eventDate: DateTime.now().add(Duration(days: daysAhead)),
+      startDate: DateTime.now().add(Duration(days: daysAhead)),
       publishedAt: DateTime.now().subtract(Duration(days: publishedDaysAgo)),
       viewsCount: views,
       priorityWeight: weight,
