@@ -10,11 +10,25 @@ import '../../state/providers.dart';
 import '../post/post_detail_screen.dart';
 
 /// Избранное: локальный список, работает офлайн.
-class FavoritesScreen extends ConsumerWidget {
+class FavoritesScreen extends ConsumerStatefulWidget {
   const FavoritesScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<FavoritesScreen> createState() => _FavoritesScreenState();
+}
+
+class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Данные для карточек подтягиваются при открытии экрана, а не на старте.
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => ref.read(feedProvider.notifier).ensureLoaded(),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final ids = ref.watch(favoritesProvider);
     final feed = ref.watch(feedProvider);
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);

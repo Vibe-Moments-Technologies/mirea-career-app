@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_scroll.dart';
 import '../../core/widgets/settings_list.dart';
 import '../../state/providers.dart';
+import '../archive/archive_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart';
 
@@ -48,6 +49,14 @@ class MoreScreen extends ConsumerWidget {
                 subtitle: 'Оформление, данные, о приложении',
                 onTap: () => Navigator.of(context).push(
                   appRoute(context, const SettingsScreen())
+                ),
+              ),
+              SettingsTile(
+                icon: Icons.history_rounded,
+                title: 'Архив',
+                subtitle: 'Завершённые вакансии, события и стажировки',
+                onTap: () => Navigator.of(context).push(
+                  appRoute(context, const ArchiveScreen())
                 ),
               ),
             ],

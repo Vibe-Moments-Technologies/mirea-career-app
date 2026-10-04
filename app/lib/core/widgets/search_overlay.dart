@@ -15,11 +15,15 @@ void closeSearch() {
   });
 }
 
-/// Поиск поверх экрана: затемняет фон и «выплывает» сверху из значка.
+/// Поиск поверх экрана: поле «выплывает» сверху из значка.
+///
+/// Затемнение закрывает ТОЛЬКО область под полем (контент, а не весь
+/// экран), после сабмита затемнение уходит, остаётся плавающее поле.
+/// Закрыть можно только крестиком.
 ///
 /// Живёт в дереве всегда и прячется через `IgnorePointer` + анимацию: так
 /// поле уезжает и обратно, а не исчезает по щелчку.
-class SearchOverlay extends StatelessWidget {
+class SearchOverlay extends StatefulWidget {
   const SearchOverlay({
     super.key,
     required this.open,
@@ -34,29 +38,57 @@ class SearchOverlay extends StatelessWidget {
   final VoidCallback onClose;
 
   @override
-  Widget build(BuildContext context) {
-    // Закрытый оверлей ничего не строит, поэтому скрытое поле не может
-    // держать фокус и подтягивать клавиатуру.
-    if (!open) return const SizedBox.shrink();
+  State<SearchOverlay> createState() => _SearchOverlayState();
+}
 
-    // Фон — только визуальный слой: он не перехватывает касания, и карточки
-    // под ним остаются живыми. Касание фона лишь прячет клавиатуру через
-    // TextField.onTapOutside; очищает запрос только закрытие.
+class _SearchOverlayState extends State<SearchOverlay> {
+  bool _focused = true;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onTextChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onTextChanged);
+    super.dispose();
+  }
+
+  void _onTextChanged() {
+    // Если поле в фокусе (клавиатура открыта) — скрим виден. После сабмита
+    // фокус снимается и затемнение уходит, остаётся плавающее поле.
+    if (mounted) {
+      final hasFocus = Focus.of(context).hasFocus;
+      setState(() => _focused = hasFocus);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.open) return const SizedBox.shrink();
+
+    // После сабмита и ухода клавиатуры скрим убирается: остаётся только
+    // плавающее поле с крестиком. Контент под ним снова виден.
+    final dim = _focused;
+
     return Positioned.fill(
       child: Stack(
         children: [
-          Positioned.fill(
-            child: IgnorePointer(
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 180),
-                opacity: 1,
-                child: Container(
-                  constraints: const BoxConstraints.expand(),
-                  color: Colors.black.withValues(alpha: 0.34),
+          if (dim)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 180),
+                  opacity: dim ? 1 : 0,
+                  child: Container(
+                    constraints: const BoxConstraints.expand(),
+                    color: Colors.black.withValues(alpha: 0.34),
+                  ),
                 ),
               ),
             ),
-          ),
           Positioned(
             top: 0,
             left: 0,
@@ -70,11 +102,14 @@ class SearchOverlay extends StatelessWidget {
               child: AnimatedSlide(
                 duration: const Duration(milliseconds: 220),
                 curve: Curves.easeOutCubic,
-                offset: open ? Offset.zero : const Offset(0, -1),
+                offset: widget.open ? Offset.zero : const Offset(0, -1),
                 child: _Field(
-                  controller: controller,
-                  onChanged: onChanged,
-                  onClose: onClose,
+                  controller: widget.controller,
+                  onChanged: widget.onChanged,
+                  onClose: widget.onClose,
+                  onFocused: (f) {
+                    if (mounted) setState(() => _focused = f);
+                  },
                 ),
               ),
             ),
@@ -90,11 +125,13 @@ class _Field extends StatelessWidget {
     required this.controller,
     required this.onChanged,
     required this.onClose,
+    this.onFocused,
   });
 
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
   final VoidCallback onClose;
+  final ValueChanged<bool>? onFocused;
 
   @override
   Widget build(BuildContext context) {
@@ -115,21 +152,28 @@ class _Field extends StatelessWidget {
             const Icon(Icons.search_rounded, size: 20),
             const SizedBox(width: 8),
             Expanded(
-              child: TextField(
-                controller: controller,
-                // Поле монтируется только открытым, поэтому фокус безопасен.
-                autofocus: true,
-                onChanged: onChanged,
-                onTapOutside: (_) =>
-                    FocusManager.instance.primaryFocus?.unfocus(),
-                textInputAction: TextInputAction.search,
-                style: AppText.body,
-                decoration: InputDecoration(
-                  isDense: true,
-                  border: InputBorder.none,
-                  hintText: 'Поиск по заголовку, тегам, организациям',
-                  hintStyle:
-                      AppText.body.copyWith(color: AppColors.secondaryLight),
+              child: Focus(
+                canRequestFocus: true,
+                onFocusChange: onFocused,
+                child: TextField(
+                  controller: controller,
+                  // Поле монтируется только открытым, поэтому фокус безопасен.
+                  autofocus: true,
+                  onChanged: onChanged,
+                  onTapOutside: (_) {
+                    // Клавиатура уходит — затемнение скрывается,
+                    // поле остаётся плавать поверх контента.
+                    FocusManager.instance.primaryFocus?.unfocus();
+                  },
+                  textInputAction: TextInputAction.search,
+                  style: AppText.body,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    border: InputBorder.none,
+                    hintText: 'Поиск по заголовку, тегам, организациям',
+                    hintStyle:
+                        AppText.body.copyWith(color: AppColors.secondaryLight),
+                  ),
                 ),
               ),
             ),

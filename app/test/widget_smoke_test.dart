@@ -4,13 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mirea_career/core/theme/app_theme.dart';
 import 'package:mirea_career/core/app_route.dart';
-import 'package:mirea_career/core/widgets/glass_back_button.dart';
 import 'package:mirea_career/core/widgets/glass_dock.dart';
+import 'package:mirea_career/core/widgets/pinned_header_screen.dart';
 import 'package:mirea_career/core/widgets/screen_header.dart';
 import 'package:mirea_career/data/catalogs.dart';
 import 'package:mirea_career/data/crash_reporting.dart';
 import 'package:mirea_career/data/local_store.dart';
 import 'package:mirea_career/data/metrics.dart';
+import 'package:mirea_career/data/models.dart';
 import 'package:mirea_career/data/posts_repo.dart';
 import 'package:mirea_career/screens/favorites/favorites_screen.dart';
 import 'package:mirea_career/screens/home/home_screen.dart';
@@ -18,7 +19,7 @@ import 'package:mirea_career/screens/more/profile_screen.dart';
 import 'package:mirea_career/screens/org/organizations_screen.dart';
 import 'package:mirea_career/screens/onboarding/onboarding_screen.dart';
 import 'package:mirea_career/screens/root_shell.dart';
-import 'package:mirea_career/state/feed_filters.dart';
+import 'package:mirea_career/state/feed_query.dart';
 import 'package:mirea_career/state/providers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -38,17 +39,44 @@ Future<ProviderContainer> container({
   if (profile != null) await store.saveProfile(profile);
   if (cache != null) await store.saveFeedCache(cache);
 
+  final cachedRepo = _CachedRepo(cache ?? const []);
   return ProviderContainer(
     overrides: [
       localStoreProvider.overrideWithValue(store),
-      // именно офлайн-вариант: он не открывает realtime-соединение,
-      // поэтому тест завершается без висящих таймеров
-      metricsProvider.overrideWithValue(
-        Metrics(PostsRepo.offline(), store),
-      ),
+      // Репозиторий с данными из кэша: главная запрашивает ленту по
+      // действию, и в тестах сервером становится сам кэш.
+      postsRepoProvider.overrideWithValue(cachedRepo),
+      metricsProvider.overrideWithValue(Metrics(cachedRepo, store)),
       supabaseConfiguredProvider.overrideWithValue(true),
     ],
   );
+}
+
+/// Тестовый «сервер»: отдаёт содержимое кэша на любой запрос ленты.
+class _CachedRepo extends PostsRepo {
+  _CachedRepo(this.posts) : super('');
+
+  final List<Map<String, dynamic>> posts;
+
+  @override
+  Future<List<Post>> fetchFeed({
+    String tab = 'foryou',
+    String query = '',
+    Set<String> types = const {},
+    bool showArchived = false,
+    StudentProfile? profile,
+  }) async =>
+      posts.map(Post.tryParse).whereType<Post>().toList();
+
+  @override
+  Future<List<Post>> fetchPosts({
+    String tab = 'all',
+    bool archive = false,
+    StudentProfile? profile,
+    int page = 1,
+    int perPage = 20,
+  }) async =>
+      posts.map(Post.tryParse).whereType<Post>().toList();
 }
 
 Map<String, dynamic> samplePost({
@@ -63,14 +91,17 @@ Map<String, dynamic> samplePost({
 }) =>
     {
       'id': id,
-      'organization_id': organizationId,
+      'organization': organizationId,
       'title': title,
       'description': 'Описание',
       'type': 'event',
       'format': 'offline',
       'status': 'published',
-      'organizations': organization ??
-          {'id': 'org1', 'name': 'Карьерный центр', 'type': 'university_dept'},
+      // PocketBase-формат: организация приезжает в expand.organization.
+      'expand': {
+        'organization': organization ??
+            {'id': 'org1', 'name': 'Карьерный центр', 'type': 'university_dept'},
+      },
       'external_link': externalLink,
       'tags': tags,
       'campuses': <String>[],
@@ -139,7 +170,7 @@ void main() {
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
 
-    testWidgets('лента строится из кэша без сети', (tester) async {
+    testWidgets('лента запрашивается при открытии главной', (tester) async {
       final c = await container(
         profile: const StudentProfile(completed: true),
         cache: [samplePost()],
@@ -147,9 +178,14 @@ void main() {
       addTearDown(c.dispose);
 
       await tester.pumpWidget(wrap(c, const RootShell()));
-      await tester.pump(); // микрозадача инициализации
+      // postFrameCallback срабатывает в этом кадре, запрос стартует.
+      await tester.pump();
+      // Запрос выполняется мгновенно (тестовый репозиторий без сети) —
+      // после settle карточка из «сервера» появилась на главной.
+      await tester.pumpAndSettle();
 
       expect(find.text('Осенняя ярмарка вакансий'), findsOneWidget);
+      expect(c.read(feedNotifierProvider).loading, isFalse);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
 
@@ -414,95 +450,8 @@ void main() {
   });
 
   group('Лента', () {
-    testWidgets('главная показывает не больше блока карточек', (tester) async {
-      // 25 постов, но за раз показывается блок (10). Даты задаём явно и по
-      // убыванию: иначе порядок недетерминирован и понять, какая карточка
-      // попала в первый блок, невозможно.
-      final base = DateTime(2026, 1, 1);
-      final cache = [
-        for (var i = 0; i < 25; i++)
-          samplePost(
-            id: 'p$i',
-            title: 'Карточка $i',
-            publishedAt: base.subtract(Duration(minutes: i)),
-          ),
-      ];
-
-      final c = await container(
-        profile: const StudentProfile(completed: true),
-        cache: cache,
-      );
-      addTearDown(c.dispose);
-
-      await tester.pumpWidget(wrap(c, const RootShell()));
-      await tester.pump();
-
-      // самая свежая карточка видна
-      expect(find.text('Карточка 0'), findsOneWidget);
-
-      // Кнопка подгрузки ниже видимой области, а SliverList ленив —
-      // прокручиваем до неё, как это сделал бы пользователь.
-      await tester.scrollUntilVisible(
-        find.textContaining('Показать ещё'),
-        400,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.pump();
-
-      // Кнопка прямо называет размер блока: «10 из 25» доказывает, что
-      // за раз отдаётся ровно блок, а не весь список целиком.
-      expect(find.text('Показать ещё (10 из 25)'), findsOneWidget);
-
-      // нажатие докладывает следующий блок
-      await tester.tap(find.text('Показать ещё (10 из 25)'));
-      await tester.pump();
-
-      // после тапа список стал длиннее, и кнопка снова уехала вниз —
-      // прокручиваем к ней, как это сделал бы пользователь
-      await tester.scrollUntilVisible(
-        find.textContaining('Показать ещё'),
-        400,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.pump();
-      expect(find.text('Показать ещё (20 из 25)'), findsOneWidget);
-    });
-
-    testWidgets('когда всё показано — видно подпись о конце ленты', (tester) async {
-      // 3 поста при блоке 10: подгрузка не нужна, должен быть явный финал
-      final base = DateTime(2026, 1, 1);
-      final cache = [
-        for (var i = 0; i < 3; i++)
-          samplePost(
-            id: 'p$i',
-            title: 'Карточка $i',
-            publishedAt: base.subtract(Duration(minutes: i)),
-          ),
-      ];
-
-      final c = await container(
-        profile: const StudentProfile(completed: true),
-        cache: cache,
-      );
-      addTearDown(c.dispose);
-
-      await tester.pumpWidget(wrap(c, const RootShell()));
-      await tester.pump();
-
-      await tester.scrollUntilVisible(
-        find.text('Это всё — новых записей больше нет'),
-        400,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.pump();
-
-      expect(find.text('Это всё — новых записей больше нет'), findsOneWidget);
-      expect(find.textContaining('Показать ещё'), findsNothing);
-    });
-
-    testWidgets('на главной нет ни «Для вас», ни заголовка «Новое»', (tester) async {
-      // Персональный подбор — в каталоге; на главной единая лента без
-      // разделов. Заголовка страницы на главной тоже нет (по правкам).
+    testWidgets('вкладки главной: Для вас / Все / От вуза / Партнёры',
+        (tester) async {
       final c = await container(
         profile: const StudentProfile(completed: true, tags: ['it']),
         cache: [samplePost()],
@@ -512,10 +461,47 @@ void main() {
       await tester.pumpWidget(wrap(c, const RootShell()));
       await tester.pump();
 
-      expect(find.text('Новое'), findsNothing);
-      expect(find.text('Для вас'), findsNothing);
-      // лента на месте
-      expect(find.text('Осенняя ярмарка вакансий'), findsOneWidget);
+      // Сегменты-вкладки встроены в закреплённую шапку главной.
+      expect(find.text('Для вас'), findsOneWidget);
+      expect(find.text('Все'), findsOneWidget);
+      expect(find.text('От вуза'), findsOneWidget);
+      expect(find.text('Партнёры'), findsOneWidget);
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
+
+    testWidgets('шапка главной закреплена: контент уезжает под неё',
+        (tester) async {
+      final base = DateTime(2026, 1, 1);
+      final cache = [
+        for (var i = 0; i < 20; i++)
+          samplePost(
+            id: 'p$i',
+            title: 'Карточка $i',
+            publishedAt: base.subtract(Duration(minutes: i)),
+          ),
+      ];
+
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: cache,
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+
+      // Заголовок и вкладки в закреплённом PersistentHeader: при скролле
+      // их верхняя граница не уходит вверх.
+      final header = find.byType(PinnedHeaderScreen);
+      expect(header, findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Карточка 15'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pump();
+      expect(tester.getTopLeft(find.text('Для вас')).dy, lessThan(200));
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
 
     testWidgets('на узком экране ничего не вылезает за границы', (tester) async {
@@ -625,7 +611,7 @@ void main() {
       await tester.pump();
 
       for (final icon in [
-        Icons.grid_view_rounded,
+        Icons.apartment_rounded,
         Icons.bookmark_rounded,
         Icons.person_rounded,
         Icons.home_rounded,
@@ -938,11 +924,13 @@ void main() {
       expect(tester.testTextInput.isVisible, isTrue,
           reason: 'поле открылось, но клавиатура не поднялась');
 
-      // Поле стартует на уровне строки шапки, а не проваливается под неё.
+      // Поле живёт под закреплённой шапкой (заголовок + safe area),
+      // поэтому чуть ниже строки кнопок — но в пределах высоты шапки.
       final fieldTop = tester.getTopLeft(find.byType(TextField)).dy;
       final actionTop =
           tester.getTopLeft(find.byType(HeaderAction).first).dy;
-      expect(fieldTop, lessThanOrEqualTo(actionTop + 2));
+      expect(fieldTop, greaterThanOrEqualTo(actionTop));
+      expect(fieldTop, lessThanOrEqualTo(actionTop + 60));
 
       await tester.tap(find.byIcon(Icons.close_rounded));
       await tester.pumpAndSettle();
@@ -1013,8 +1001,9 @@ void main() {
     });
   });
 
-  group('Каталог', () {
-    testWidgets('вкладки только «От вуза» и «От партнёров»', (tester) async {
+  group('Фильтры', () {
+    testWidgets('фильтр-шторка открывается кнопкой в шапке главной',
+        (tester) async {
       final c = await container(
         profile: const StudentProfile(completed: true),
         cache: [samplePost()],
@@ -1024,83 +1013,41 @@ void main() {
       await tester.pumpWidget(wrap(c, const RootShell()));
       await tester.pump();
 
-      await tester.tap(find.byIcon(Icons.grid_view_rounded));
+      await tester.tap(find.byIcon(Icons.tune_rounded));
       await tester.pumpAndSettle();
 
-      expect(find.text('От вуза'), findsOneWidget);
-      expect(find.text('От партнёров'), findsOneWidget);
-      expect(find.text('Для вас'), findsNothing);
+      // Шторка: сегмент актуальности и типы. Заголовок секции —
+      // в верхнем регистре (CollapsibleSection делает toUpperCase).
+      expect(find.text('АКТУАЛЬНОСТЬ'), findsOneWidget);
+      expect(find.text('Актуальное'), findsOneWidget);
+      expect(find.text('Архивное'), findsOneWidget);
+      expect(find.text('ТИП'), findsOneWidget);
+      expect(find.text('Показать'), findsOneWidget);
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
-    testWidgets('поиск фильтрует ленту и переживает перезапуск', (tester) async {
-      final base = DateTime(2026, 1, 1);
+  });
+
+  group('Архив', () {
+    testWidgets('открывается из «Ещё» отдельной страницей', (tester) async {
       final c = await container(
         profile: const StudentProfile(completed: true),
-        cache: [
-          samplePost(
-            id: 'a',
-            title: 'Хакатон МИРЭА',
-            tags: const ['хакатон'],
-            publishedAt: base,
-          ),
-          samplePost(id: 'b', title: 'Обычная вакансия', publishedAt: base),
-        ],
+        cache: [samplePost()],
       );
       addTearDown(c.dispose);
 
       await tester.pumpWidget(wrap(c, const RootShell()));
       await tester.pump();
 
-      await tester.tap(find.byIcon(Icons.grid_view_rounded));
+      await tester.tap(find.byIcon(Icons.person_rounded).last);
       await tester.pumpAndSettle();
 
-      expect(find.text('Обычная вакансия'), findsOneWidget);
-
-      // поле поиска появляется только по иконке в шапке
-      expect(find.byType(TextField), findsNothing);
-      await tester.tap(find.byIcon(Icons.search_rounded));
+      await tester.tap(find.text('Архив'));
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.byType(TextField), 'хакатон');
-      await tester.pumpAndSettle();
-
-      expect(find.text('Хакатон МИРЭА'), findsOneWidget);
-      expect(find.text('Обычная вакансия'), findsNothing);
-
-      // Затемнение не перехватывает карточку: тап открывает детали, а запрос
-      // остаётся и после возврата.
-      await tester.tap(find.text('Хакатон МИРЭА'));
-      await tester.pumpAndSettle();
-      expect(find.byType(TextField), findsNothing);
-      // pageBack() ищет системную кнопку, а у деталей своя — жмём её
-      await tester.tap(find.byType(GlassBackButton));
-      await tester.pumpAndSettle();
-      expect(find.text('Хакатон МИРЭА'), findsOneWidget);
-      expect(find.text('Обычная вакансия'), findsNothing);
-      expect(
-        tester.widget<TextField>(find.byType(TextField)).controller?.text,
-        'хакатон',
-      );
+      expect(find.text('Архив'), findsWidgets);
+      // На архиве нет переключателя актуальности: архив принудителен.
+      expect(find.text('АКТУАЛЬНОСТЬ'), findsNothing);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
-    });
-
-    testWidgets('состояние каталога сохраняется на устройстве', (tester) async {
-      SharedPreferences.setMockInitialValues({});
-      final store = await LocalStore.open();
-      addTearDown(store.reset);
-
-      await store.saveCatalogState({
-        'source': 'partner',
-        'sortByPopularity': true,
-        'filters': const FeedFilters(query: 'стажировка', types: {'internship'}).toJson(),
-      });
-
-      final reloaded = await LocalStore.open();
-      final saved = reloaded.catalogState!;
-      expect(saved['source'], 'partner');
-      expect(saved['sortByPopularity'], isTrue);
-      final f = FeedFilters.fromJson((saved['filters'] as Map).cast<String, dynamic>());
-      expect(f.query, 'стажировка');
-      expect(f.types, {'internship'});
     });
   });
 

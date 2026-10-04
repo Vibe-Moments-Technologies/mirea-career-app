@@ -57,6 +57,15 @@ class _OrganizationsScreenState extends ConsumerState<OrganizationsScreen> {
       });
 
   @override
+  void initState() {
+    super.initState();
+    // Организации запрашиваются при открытии экрана, а не на старте.
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => ref.read(feedProvider.notifier).ensureLoaded(),
+    );
+  }
+
+  @override
   void dispose() {
     _search.dispose();
     super.dispose();

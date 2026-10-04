@@ -34,16 +34,18 @@ class PostsRepo {
 
     final filters = <String>[];
     filters.add('status="published"');
-    filters.add('published_at<="@now"');
+    filters.add('published_at<=@now');
 
-    // Архив: end_date < now, иначе актуальные: end_date >= now или null
+    // Архив: end_date < now, иначе актуальные: end_date >= now или пусто.
+    // ВАЖНО: @now пишется БЕЗ кавычек — PocketBase сравнивает даты только
+    // с незакавыченным @now (с кавычками это строка и фильтр ломается).
     if (archive) {
-      filters.add('end_date<"@now"');
+      filters.add('end_date<@now');
     } else {
-      filters.add('(end_date>="@now"||end_date="")');
+      filters.add('(end_date>@now||end_date="")');
     }
 
-    // Вкладки по типу организации
+    // Вкладки по типу организации (relation-фильтр PocketBase)
     if (tab == 'university') {
       filters.add('organization.type="university_dept"');
     } else if (tab == 'partner') {
@@ -76,6 +78,120 @@ class PostsRepo {
       }
 
       return posts;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Лента главной: вкладка + поиск + типы, всё фильтруется на сервере.
+  ///
+  /// Вызывается ПО ДЕЙСТВИЮ пользователя (смена вкладки, поиск, фильтр),
+  /// а не при старте. perPage=200 — вся выборка вуза одним запросом;
+  /// постраничную пагинацию добавим при росте каталога.
+  Future<List<Post>> fetchFeed({
+    String tab = 'foryou',
+    String query = '',
+    Set<String> types = const {},
+    bool showArchived = false,
+    StudentProfile? profile,
+  }) async {
+    if (isOffline) return const [];
+
+    final filters = <String>['status="published"', 'published_at<=@now'];
+
+    // Архив: end_date < now, иначе: end_date >= now или пусто.
+    // @now БЕЗ кавычек — иначе PocketBase сравнивает как строку.
+    if (showArchived) {
+      filters.add('end_date<@now');
+    } else {
+      filters.add('(end_date>@now||end_date="")');
+    }
+
+    if (tab == 'university') {
+      filters.add('organization.type="university_dept"');
+    } else if (tab == 'partner') {
+      filters.add('organization.type="partner"');
+    }
+
+    if (types.isNotEmpty) {
+      // Проверено на живом API: multiple ?= с запятой НЕ работает,
+      // работает только OR из отдельных условий.
+      filters.add('(${types.map((t) => 'type="${t.replaceAll('"', '')}"').join(' || ')})');
+    }
+
+    final q = query.trim();
+    if (q.isNotEmpty) {
+      final e = q.replaceAll('"', '');
+      filters.add('(title~"$e" || description~"$e" || organization.name~"$e")');
+    }
+
+    final filterStr = filters.join('&&');
+    final url = '$_baseUrl/api/collections/posts/records'
+        '?filter=${Uri.encodeComponent(filterStr)}'
+        '&expand=organization'
+        '&sort=-published_at'
+        '&perPage=200';
+
+    final bytes = await AppHttpClient.instance.fetchBytes(url);
+    if (bytes == null) return const [];
+
+    try {
+      final json = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+      final items = json['items'] as List<dynamic>? ?? [];
+      var posts = items.map(_parsePost).whereType<Post>().toList();
+
+      if (tab == 'foryou' && profile != null) {
+        posts = _sortForYou(posts, profile);
+      }
+      // Приоритетные — вверх списка везде, КРОМЕ архива.
+      if (!showArchived) {
+        posts = _priorityFirst(posts);
+      }
+      return posts;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Список организаций: отдельный запрос, а не сборка из ленты.
+  Future<List<Organization>> fetchOrganizations() async {
+    if (isOffline) return const [];
+
+    final url = '$_baseUrl/api/collections/organizations/records'
+        '?filter=type!="hidden"'
+        '&sort=name'
+        '&perPage=100';
+
+    final bytes = await AppHttpClient.instance.fetchBytes(url);
+    if (bytes == null) return const [];
+
+    try {
+      final json = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+      final items = json['items'] as List<dynamic>? ?? [];
+      return items
+          .map((e) {
+            if (e is! Map) return null;
+            final org = Organization.tryParse(e);
+            if (org == null) return null;
+            // logo_url из прямой выборки — имя файла, не полный URL
+            final logo = e['logo_url'];
+            if (org.logoUrl != null && logo is String && logo.isNotEmpty) {
+              return Organization(
+                id: org.id,
+                name: org.name,
+                type: org.type,
+                description: org.description,
+                logoUrl: '$_baseUrl/api/files/organizations/${org.id}/$logo',
+                website: org.website,
+                contactEmail: org.contactEmail,
+                contactPhone: org.contactPhone,
+                contactName: org.contactName,
+              );
+            }
+            return org;
+          })
+          .whereType<Organization>()
+          .toList();
     } catch (_) {
       return const [];
     }

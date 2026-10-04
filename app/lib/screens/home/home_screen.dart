@@ -3,25 +3,30 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_route.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/app_scroll.dart';
+import '../../core/widgets/collapsible_section.dart';
+import '../../core/widgets/filter_sheet.dart';
 import '../../core/widgets/list_tail.dart';
+import '../../core/widgets/pinned_header_screen.dart';
 import '../../core/widgets/post_card.dart';
 import '../../core/widgets/reveal_on_mount.dart';
 import '../../core/widgets/screen_header.dart';
 import '../../core/widgets/search_overlay.dart';
 import '../../core/widgets/spotlight_gallery.dart';
+import '../../data/catalogs.dart';
 import '../../data/local_store.dart';
 import '../../data/models.dart';
 import '../../state/feed_filters.dart';
+import '../../state/feed_query.dart';
 import '../../state/providers.dart';
 import '../onboarding/onboarding_screen.dart';
 import '../post/post_detail_screen.dart';
 
-/// Главная: шапка → витрина важного → персональная лента.
+/// Главная — шаблон для остальных страниц:
+/// закреплённая шапка + вкладки, контент прокручивается под ними.
 ///
-/// Ленту подбирает система под профиль (институт, уровень, интересы). Если
-/// профиль не заполнен, показываем всё: пустой главный экран хуже, чем
-/// общий список.
+/// Вкладки: «Для вас» (персональная подборка) / «Все» / «От вуза» /
+/// «Партнёры». Лента запрашивается по действию: смена вкладки, поиск,
+/// фильтры — а не выкачивается целиком на старте.
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -30,31 +35,32 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  String _quick = 'all';
-
-  /// Блочная подгрузка: сколько карточек показываем и докладываем за раз.
-  static const _pageSize = 10;
-  int _visible = _pageSize;
+  String _tab = 'foryou';
+  FeedFilters _filters = const FeedFilters();
 
   bool _searchOpen = false;
   String _query = '';
   final _search = TextEditingController();
 
-  static const _quickChips = <({String id, String label})>[
-    (id: 'all', label: 'Все'),
-    (id: 'upcoming', label: 'Ближайшие'),
-    (id: 'internship', label: 'Стажировки'),
-    (id: 'event', label: 'События'),
+  static const _tabs = <(String, String)>[
+    ('foryou', 'Для вас'),
+    ('all', 'Все'),
+    ('university', 'От вуза'),
+    ('partner', 'Партнёры'),
   ];
 
-  FeedFilters _applyQuick(FeedFilters f) {
-    final withQuery = f.copyWith(query: _query);
-    return switch (_quick) {
-      'upcoming' => withQuery.copyWith(onlyUpcoming: true),
-      'internship' => withQuery.copyWith(types: {'internship'}),
-      'event' => withQuery.copyWith(types: {'event'}),
-      _ => withQuery,
-    };
+  /// Запрос по действию: параметры изменились — идём на сервер.
+  void _reload() {
+    ref.read(feedQueryProvider.notifier).set(
+          FeedQuery(
+            tab: _tab,
+            filters: FeedFiltersLite(
+              query: _query,
+              types: _filters.types,
+              showArchived: _filters.showArchived,
+            ),
+          ),
+        );
   }
 
   void _closeSearch() {
@@ -65,6 +71,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _query = '';
       _search.clear();
     });
+    _reload();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Первый запрос — открытие главной. Дальше только по действию.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _reload());
   }
 
   @override
@@ -75,114 +89,106 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final feed = ref.watch(feedProvider);
+    final feed = ref.watch(feedNotifierProvider);
     final profile = ref.watch(profileProvider);
     final favorites = ref.watch(favoritesProvider);
+    final banners = ref.watch(spotlightProvider);
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
 
-    final filtered = applyFilters(feed.posts, _applyQuick(const FeedFilters()));
-    final picked = forYou(filtered, profile, limit: 60);
-    final all = homeFeed(picked.isNotEmpty ? picked : filtered, profile);
-    final shown = all.take(_visible).toList();
-    final loading = feed.loading && feed.posts.isEmpty;
-    // Витрина — самостоятельные баннеры из консоли, к постам отношения не
-    // имеют: в ленту не попадают, приоритет не трогают.
-    final banners = ref.watch(spotlightProvider);
+    // «Для вас»: рекомендации закончились — CTA открывает «Все».
+    final posts = feed.posts;
+    final showCta = _tab == 'foryou' &&
+        posts.isNotEmpty &&
+        feed.exhausted &&
+        forYou(posts, profile).length < posts.length;
 
     return Scaffold(
       // Поиск лежит поверх ленты, поэтому экран — Stack: поле затемняет
-      // контент целиком, а не торчит из-под дока.
+      // контент под собой, а не весь экран целиком.
       body: Stack(
         children: [
           RefreshIndicator(
-            // свайп сверху вниз: срабатывает только у самого верха ленты,
-            // ниже тянет уже сам скролл
-            onRefresh: () async {
-              // витрина — отдельная сущность, обновляем вместе с лентой
-              await Future.wait([
-                ref.read(feedProvider.notifier).refresh(),
-                ref.read(spotlightProvider.notifier).refresh(),
-              ]);
-            },
-            child: CustomScrollView(
-              physics: AppScroll.refreshable,
+            onRefresh: () => ref.read(feedNotifierProvider.notifier).refresh(),
+            child: PinnedHeaderScreen(
+              title: 'Карьера МИРЭА',
+              actions: [
+                HeaderAction(
+                  icon: Icons.tune_rounded,
+                  tooltip: 'Фильтры',
+                  active: _filters.activeCount > 0,
+                  onTap: _openFilters,
+                ),
+                HeaderAction(
+                  icon: Icons.search_rounded,
+                  tooltip: 'Поиск',
+                  onTap: () => setState(() => _searchOpen = true),
+                ),
+              ],
+              tabs: PinnedTabStrip(
+                segments: _tabs,
+                selected: _tab,
+                onSelected: (id) {
+                  setState(() => _tab = id);
+                  _reload();
+                },
+              ),
+              onRefresh: () =>
+                  ref.read(feedNotifierProvider.notifier).refresh(),
               slivers: [
                 if (feed.offline)
                   const SliverToBoxAdapter(child: _OfflineBanner()),
-                // Верхний отступ берёт сама шапка: отдельный отступ давал
-                // пустое поле над названием страницы.
-                SliverToBoxAdapter(
-                  child: ScreenHeader(
-                    title: 'Карьера МИРЭА',
-                    actions: [
-                      HeaderAction(
-                        icon: Icons.search_rounded,
-                        tooltip: 'Поиск',
-                        onTap: () => setState(() => _searchOpen = true),
-                      ),
-                    ],
-                  ),
-                ),
                 if (!profile.hasAnswers)
                   SliverToBoxAdapter(
                     child: _PromptProfile(profile: profile),
                   ),
-                if (banners.isNotEmpty)
+                if (banners.isNotEmpty && _tab == 'foryou')
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.fromLTRB(0, 8, 0, 12),
                       child: SpotlightGallery(banners: banners),
                     ),
                   ),
-                SliverToBoxAdapter(
-                  child: SizedBox(
-                    height: 48,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      padding: EdgeInsets.fromLTRB(pad, 10, pad, 0),
-                      children: [
-                        for (final c in _quickChips)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: _QuickChip(
-                              label: c.label,
-                              selected: _quick == c.id,
-                              onTap: () => setState(() {
-                                _quick = c.id;
-                                _visible = _pageSize; // смена фильтра — с начала
-                              }),
-                            ),
-                          ),
-                      ],
+                if (_filters.activeCount > 0)
+                  SliverToBoxAdapter(
+                    child: _ActiveFiltersBar(
+                      filters: _filters,
+                      onClear: () {
+                        setState(() => _filters = const FeedFilters());
+                        _reload();
+                      },
                     ),
                   ),
-                ),
                 SliverPadding(
                   padding: EdgeInsets.fromLTRB(pad, 8, pad, 0),
-                  // Первая загрузка: показываем форму карточек, а не
-                  // «Пока ничего нет» — контент уже едет, просто не дошёл.
-                  sliver: loading
+                  sliver: feed.loading
                       ? SliverList.separated(
                           itemCount: 4,
                           separatorBuilder: (_, _) => const SizedBox(height: 10),
                           itemBuilder: (_, _) => const PostCardSkeleton(),
                         )
                       : SliverList.separated(
-                          itemCount: shown.length,
+                          itemCount: posts.length,
                           separatorBuilder: (_, _) => const SizedBox(height: 10),
-                          // Появление карточек внахлёст: список проявляется,
-                          // а не «выпрыгивает» целиком после скелетонов.
                           itemBuilder: (_, i) => RevealOnMount(
                             child: PostCard(
-                              post: shown[i],
-                              isFavorite: favorites.contains(shown[i].id),
-                              onTap: () => _open(shown[i]),
+                              post: posts[i],
+                              isFavorite: favorites.contains(posts[i].id),
+                              onTap: () => _open(posts[i]),
                               onToggleFavorite: () =>
-                                  _toggleFavorite(shown[i].id),
+                                  _toggleFavorite(posts[i].id),
                             ),
                           ),
                         ),
                 ),
+                if (showCta)
+                  SliverToBoxAdapter(
+                    child: _AllPostsCta(
+                      onTap: () {
+                        setState(() => _tab = 'all');
+                        _reload();
+                      },
+                    ),
+                  ),
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(
@@ -191,15 +197,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       pad,
                       AppInsets.scrollBottom(context),
                     ),
-                    // Пока грузится, хвост скрыт: он мигал поверх скелетонов.
-                    child: loading
+                    child: feed.loading
                         ? const SizedBox.shrink()
                         : ListTail(
-                            hasMore: all.length > shown.length,
-                            isEmpty: all.isEmpty && !feed.loading,
-                            loaded: shown.length,
-                            total: all.length,
-                            onMore: () => setState(() => _visible += _pageSize),
+                            isEmpty: posts.isEmpty && !feed.loading,
+                            loaded: posts.length,
+                            total: posts.length,
                           ),
                   ),
                 ),
@@ -209,10 +212,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           SearchOverlay(
             open: _searchOpen,
             controller: _search,
-            onChanged: (v) => setState(() {
-              _query = v;
-              _visible = _pageSize;
-            }),
+            onChanged: (v) {
+              setState(() => _query = v);
+            },
             onClose: _closeSearch,
           ),
         ],
@@ -220,8 +222,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
+  /// Смена фильтров открывает шторку; применяются по кнопке.
+  Future<void> _openFilters() async {
+    var draft = _filters;
+    await showFilterSheet(
+      context: context,
+      title: 'Фильтры',
+      onReset: () {
+        draft = const FeedFilters();
+      },
+      applyLabel: 'Показать',
+      onApply: () {
+        setState(() => _filters = draft);
+        _reload();
+      },
+      builder: (context) => _HomeFilters(
+        filters: draft,
+        onChanged: (f) => draft = f,
+      ),
+    );
+  }
+
   void _open(Post post) {
-    // Поиск остаётся открытым за деталями, но клавиатура обязана уйти.
     FocusManager.instance.primaryFocus?.unfocus();
     Navigator.of(context).push(
       appRoute(context, PostDetailScreen(post: post)),
@@ -229,10 +251,137 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<void> _toggleFavorite(String id) async {
-    // delta считаем ПО РЕЗУЛЬТАТУ переключения: +1 добавлено, -1 убрано
     final added = await ref.read(favoritesProvider.notifier).toggle(id);
     await ref.read(metricsProvider).registerFavorite(id, added ? 1 : -1);
   }
+}
+
+/// Полоса активных фильтров под вкладками: показывает, что лента
+/// отфильтрована, и даёт быстрый сброс.
+class _ActiveFiltersBar extends StatelessWidget {
+  const _ActiveFiltersBar({required this.filters, required this.onClear});
+
+  final FeedFilters filters;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Material(
+        color: scheme.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onClear,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            child: Row(
+              children: [
+                Icon(Icons.filter_alt_rounded, size: 16, color: scheme.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    filters.showArchived
+                        ? 'Архивные записи · фильтр активен'
+                        : 'Фильтры: ${filters.activeCount}',
+                    style: AppText.footnote,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Icon(Icons.close_rounded, size: 16, color: scheme.primary),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// CTA в конце рекомендаций «Для вас»: открывает вкладку «Все».
+class _AllPostsCta extends StatelessWidget {
+  const _AllPostsCta({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 12, 0, 4),
+      child: Material(
+        color: scheme.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            child: Row(
+              children: [
+                Icon(Icons.grid_view_rounded, color: scheme.primary),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Это всё, что подходит вам.\nОткройте все предложения →',
+                    style: AppText.body,
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, color: scheme.primary),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Содержимое фильтр-панели главной.
+class _HomeFilters extends StatelessWidget {
+  const _HomeFilters({required this.filters, required this.onChanged});
+
+  final FeedFilters filters;
+  final ValueChanged<FeedFilters> onChanged;
+
+  void _apply(FeedFilters f) => onChanged(f);
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ActualitySegment(
+          showArchived: filters.showArchived,
+          onChanged: (v) => _apply(filters.copyWith(showArchived: v)),
+        ),
+        CollapsibleSection(
+          title: 'Тип',
+          open: filters.types.isNotEmpty,
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final e in Catalogs.postTypes.entries)
+                ChoiceChip(
+                  label: Text(e.value),
+                  selected: filters.types.contains(e.key),
+                  onSelected: (on) => _apply(filters.copyWith(
+                    types: _toggle(filters.types, e.key, on),
+                  )),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  static Set<String> _toggle(Set<String> current, String id, bool on) =>
+      on ? {...current, id} : ({...current}..remove(id));
 }
 
 /// Приглашение заполнить профиль: без него подбор не работает.
@@ -286,48 +435,6 @@ class _PromptProfile extends ConsumerWidget {
   }
 }
 
-/// Чип быстрого фильтра: капсула с мягкой анимацией выбора.
-class _QuickChip extends StatelessWidget {
-  const _QuickChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOut,
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-        decoration: BoxDecoration(
-          color: selected ? scheme.primary : scheme.surface,
-          borderRadius: BorderRadius.circular(AppRadius.pill),
-          border: Border.all(
-            color: selected ? scheme.primary : AppColors.separator(context),
-          ),
-        ),
-        child: Text(
-          label,
-          style: AppText.footnote.copyWith(
-            fontWeight: FontWeight.w600,
-            color: selected ? Colors.white : null,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _OfflineBanner extends StatelessWidget {
   const _OfflineBanner();
 
@@ -342,7 +449,7 @@ class _OfflineBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'Нет сети — показаны сохранённые данные',
+              'Нет сети — попробуйте обновить',
               style: AppText.footnote,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -353,4 +460,3 @@ class _OfflineBanner extends StatelessWidget {
     );
   }
 }
-

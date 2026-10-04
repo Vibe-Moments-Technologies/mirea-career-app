@@ -355,12 +355,14 @@ void main() {
   });
 
   group('Модель поста', () {
-    test('парсит вложенную организацию из PostgREST', () {
+    test('парсит запись PocketBase с expand.organization', () {
       final p = Post.tryParse({
         'id': 'x',
         'title': 'Тест',
         'type': 'vacancy',
-        'organizations': {'id': 'o1', 'name': 'Сбер', 'type': 'partner'},
+        'expand': {
+          'organization': {'id': 'o1', 'name': 'Сбер', 'type': 'partner'},
+        },
         'tags': ['it'],
         'views_count': 7,
       })!;
@@ -376,7 +378,7 @@ void main() {
       expect(Post.tryParse({'id': 'x'}), isNull); // нет обязательного title
     });
 
-    test('отсутствие organizations не ломает карточку', () {
+    test('отсутствие expand не ломает карточку', () {
       final p = Post.tryParse({'id': 'x', 'title': 'Т', 'type': 'event'})!;
       expect(p.organizationName, isNull);
       expect(p.tags, isEmpty);

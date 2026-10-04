@@ -110,30 +110,23 @@ class FeedNotifier extends Notifier<FeedState> {
 
   @override
   FeedState build() {
-    // Инициализацию запускаем ПОСЛЕ того, как build() вернёт состояние:
-    // запись в state прямо во время построения провайдера Riverpod запрещает
-    // (и в release это роняет построение дерева — приложение показывает
-    // пустой экран вместо ленты).
-    Future.microtask(_init);
+    // Главная теперь запрашивает ленту ПО ДЕЙСТВИЮ (feedQueryProvider) —
+    // этот провайдер остаётся как «полный список» для избранного и
+    // профилей организаций. Мгновенно отдаём кэш с диска; сеть трогаем
+    // только при первом обращении экрана (ensureLoaded).
+    final cached = ref.watch(localStoreProvider).feedCache;
+    if (cached != null) {
+      final posts = cached.map(Post.tryParse).whereType<Post>().toList();
+      if (posts.isNotEmpty) return FeedState(posts: posts);
+    }
     return const FeedState();
   }
 
-  Future<void> _init() async {
-    final store = ref.read(localStoreProvider);
-
-    // 1) мгновенно — кэш с диска
-    final cached = store.feedCache;
-    if (cached != null) {
-      final posts = cached.map(Post.tryParse).whereType<Post>().toList();
-      if (posts.isNotEmpty) state = state.copyWith(posts: posts);
-    }
+  /// Загрузка при первом обращении (избранное, профиль организации).
+  /// Повторные вызовы не ходят в сеть, пока её не попросили явно.
+  Future<void> ensureLoaded() async {
+    if (state.posts.isNotEmpty || state.loading) return;
     await refresh();
-
-    // Между await и этой строкой провайдер мог быть уничтожен (например,
-    // экран закрыли или тест завершился). Обращение к ref после dispose
-    // бросает исключение — поэтому проверяем, что мы ещё живы.
-    if (!ref.mounted) return;
-    _subscribe();
   }
 
   Future<void> refresh() async {
@@ -161,10 +154,7 @@ class FeedNotifier extends Notifier<FeedState> {
   }
 
   /// Realtime убран: PocketBase SSE требует авторизации, а pull-to-refresh
-  /// достаточно для обновления ленты. Подписка оставлена как заглушка.
-  void _subscribe() {
-    // no-op: realtime не используется
-  }
+  /// достаточно для обновления ленты.
 
   /// Возвращает ленту с учётом локальных дельт счётчиков.
   List<Post> _applyDeltas(List<Post> posts) => [

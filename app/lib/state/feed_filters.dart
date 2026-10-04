@@ -16,6 +16,7 @@ class FeedFilters {
     this.tags = const {},
     this.source, // null = все, 'university_dept' | 'partner'
     this.onlyUpcoming = false,
+    this.showArchived = false,
     this.sortByPopularity = false,
   });
 
@@ -28,6 +29,7 @@ class FeedFilters {
   final Set<String> tags;
   final String? source;
   final bool onlyUpcoming;
+  final bool showArchived;
   final bool sortByPopularity;
 
   int get activeCount =>
@@ -37,7 +39,8 @@ class FeedFilters {
       (campus != null ? 1 : 0) +
       (institute != null ? 1 : 0) +
       (format != null ? 1 : 0) +
-      (organizationId != null ? 1 : 0);
+      (organizationId != null ? 1 : 0) +
+      (showArchived ? 1 : 0);
 
   FeedFilters copyWith({
     String? query,
@@ -49,6 +52,7 @@ class FeedFilters {
     Set<String>? tags,
     Object? source = _unset,
     bool? onlyUpcoming,
+    bool? showArchived,
     bool? sortByPopularity,
   }) =>
       FeedFilters(
@@ -62,6 +66,7 @@ class FeedFilters {
         tags: tags ?? this.tags,
         source: source == _unset ? this.source : source as String?,
         onlyUpcoming: onlyUpcoming ?? this.onlyUpcoming,
+        showArchived: showArchived ?? this.showArchived,
         sortByPopularity: sortByPopularity ?? this.sortByPopularity,
       );
 
@@ -81,6 +86,7 @@ class FeedFilters {
         'tags': tags.toList(),
         'source': source,
         'onlyUpcoming': onlyUpcoming,
+        'showArchived': showArchived,
         'sortByPopularity': sortByPopularity,
       };
 
@@ -94,6 +100,7 @@ class FeedFilters {
         tags: {...?(j['tags'] as List?)?.cast<String>()},
         source: j['source'] as String?,
         onlyUpcoming: j['onlyUpcoming'] as bool? ?? false,
+        showArchived: j['showArchived'] as bool? ?? false,
         sortByPopularity: j['sortByPopularity'] as bool? ?? false,
       );
 }
@@ -111,6 +118,11 @@ List<Post> applyFilters(List<Post> posts, FeedFilters f, {DateTime? now}) {
     if (f.campus != null && !p.matchesCampus(f.campus)) return false;
     if (f.institute != null && !p.matchesInstitute(f.institute)) return false;
     if (f.tags.isNotEmpty && !f.tags.any(p.tags.contains)) return false;
+    if (f.showArchived) {
+      if (!p.isArchived) return false;
+    } else if (p.isArchived) {
+      return false;
+    }
     if (f.onlyUpcoming) {
       final d = p.startDate;
       if (d != null && d.isBefore(DateTime(today.year, today.month, today.day))) return false;
