@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/app_route.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_scroll.dart';
 import '../../core/widgets/glass_back_button.dart';
 import '../../core/widgets/settings_list.dart';
 import '../../state/providers.dart';
-import 'about_screen.dart';
 
 /// Настройки: оформление, данные, вход в «О приложении».
 ///
@@ -53,22 +51,9 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 24),
-          const _GroupTitle('Приложение'),
-          SettingsGroup(
-            children: [
-              SettingsTile(
-                icon: Icons.info_outline_rounded,
-                title: 'О приложении',
-                subtitle: 'Версия, назначение, контакты',
-                onTap: () => Navigator.of(context).push(
-                  appRoute(context, const AboutScreen())
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
           // Сброс — последним пунктом: действие необратимое, не должно
-          // попадаться под палец раньше остальных.
+          // попадаться под палец раньше остальных. «О приложении»
+          // переехал в «Ещё» — редкое действие не место в настройках.
           const _GroupTitle('Данные'),
           SettingsGroup(
             footer: 'Удаляются только данные на этом устройстве. '

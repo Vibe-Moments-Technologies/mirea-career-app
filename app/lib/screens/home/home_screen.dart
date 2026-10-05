@@ -102,12 +102,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final banners = ref.watch(spotlightProvider);
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
 
-    // «Для вас»: рекомендации закончились — CTA открывает «Все».
+    // Посты ленты с клиентскими фильтрами поверх серверного ответа.
     final posts = _clientFiltered(feed.posts);
-    final showCta = _tab == 'foryou' &&
-        posts.isNotEmpty &&
-        feed.exhausted &&
-        forYou(posts, profile).length < posts.length;
 
     return Scaffold(
       // Поиск лежит поверх ленты, поэтому экран — Stack: поле затемняет
@@ -187,15 +183,33 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           ),
                         ),
                 ),
-                if (showCta)
-                  SliverToBoxAdapter(
-                    child: _AllPostsCta(
-                      onTap: () {
-                        setState(() => _tab = 'all');
-                        _reload();
-                      },
+                // Хвост ленты: в «Для вас»/«От вуза»/«Партнёры» — карточка-CTA
+                // «Это всё» размером с обычную карточку; во «Все» — только
+                // строка-подпись о конце списка.
+                if (!feed.loading && posts.isNotEmpty) ...[
+                  if (_tab != 'all')
+                    SliverPadding(
+                      padding: EdgeInsets.fromLTRB(pad, 10, pad, 0),
+                      sliver: SliverToBoxAdapter(
+                        child: _AllPostsCta(
+                          onTap: () {
+                            setState(() => _tab = 'all');
+                            _reload();
+                          },
+                        ),
+                      ),
+                    )
+                  else
+                    SliverPadding(
+                      padding: EdgeInsets.fromLTRB(pad, 16, pad, 0),
+                      sliver: SliverToBoxAdapter(
+                        child: const ListTail(
+                          isEmpty: false,
+                          footer: 'Это всё — новых записей больше нет',
+                        ),
+                      ),
                     ),
-                  ),
+                ],
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(
@@ -206,11 +220,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                     child: feed.loading
                         ? const SizedBox.shrink()
-                        : ListTail(
-                            isEmpty: posts.isEmpty && !feed.loading,
-                            loaded: posts.length,
-                            total: posts.length,
-                          ),
+                        : (posts.isEmpty
+                            ? const ListTail(isEmpty: true)
+                            : const SizedBox.shrink()),
                   ),
                 ),
               ],
@@ -223,6 +235,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               setState(() => _query = v);
             },
             onClose: _closeSearch,
+            onSubmitted: (v) {
+              setState(() => _query = v);
+              _reload();
+            },
           ),
         ],
       ),
@@ -313,7 +329,10 @@ class _ActiveFiltersBar extends StatelessWidget {
   }
 }
 
-/// CTA в конце рекомендаций «Для вас»: открывает вкладку «Все».
+/// CTA в конце ленты: «Для вас»/«От вуза»/«Партнёры» → открыть «Все».
+///
+/// Размер — как у обычной карточки поста (та же сетка: превью-заглушка,
+/// заголовок, метка), чтобы не выглядела чужеродной узкой полоской.
 class _AllPostsCta extends StatelessWidget {
   const _AllPostsCta({required this.onTap});
 
@@ -322,29 +341,83 @@ class _AllPostsCta extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(0, 12, 0, 4),
-      child: Material(
-        color: scheme.primary.withValues(alpha: 0.08),
+    return Material(
+      color: scheme.surface,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppRadius.card),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            child: Row(
-              children: [
-                Icon(Icons.grid_view_rounded, color: scheme.primary),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Это всё, что подходит вам.\nОткройте все предложения →',
-                    style: AppText.body,
-                  ),
+        side: BorderSide(color: scheme.primary.withValues(alpha: 0.35)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Превью того же размера, что у карточек поста (72×72).
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: scheme.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(AppRadius.thumb),
                 ),
-                Icon(Icons.chevron_right_rounded, color: scheme.primary),
-              ],
-            ),
+                child: Icon(
+                  Icons.grid_view_rounded,
+                  size: 30,
+                  color: scheme.primary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Это всё, что подходит вам',
+                      style: AppText.cardTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      'Откройте полный каталог — там есть и другое',
+                      style: AppText.footnote.copyWith(
+                        color: AppColors.secondaryLight,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 7),
+                    // Кнопка-чип: текст сжимается, а не выталкивает строку.
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Container(
+                        constraints: const BoxConstraints(
+                          maxWidth: double.infinity,
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: scheme.primary,
+                          borderRadius: BorderRadius.circular(AppRadius.pill),
+                        ),
+                        child: Text(
+                          'Все предложения →',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.caption.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),

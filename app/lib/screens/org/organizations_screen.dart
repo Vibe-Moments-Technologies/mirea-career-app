@@ -384,7 +384,7 @@ class _OrgCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => Navigator.of(context).push(
-          appRoute(context, OrgScreen(organizationId: org.id)),
+          appRoute(context, OrgScreen(organization: org)),
         ),
         child: Padding(
           padding: const EdgeInsets.all(12),

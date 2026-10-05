@@ -7,10 +7,11 @@ import '../../core/widgets/app_scroll.dart';
 import '../../core/widgets/settings_list.dart';
 import '../../state/providers.dart';
 import '../archive/archive_screen.dart';
+import 'about_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart';
 
-/// «Ещё»: вход в профиль и настройки.
+/// «Ещё»: вход в профиль, настройки, архив и информацию о приложении.
 class MoreScreen extends ConsumerWidget {
   const MoreScreen({super.key});
 
@@ -46,7 +47,7 @@ class MoreScreen extends ConsumerWidget {
               SettingsTile(
                 icon: Icons.tune_rounded,
                 title: 'Настройки',
-                subtitle: 'Оформление, данные, о приложении',
+                subtitle: 'Оформление и данные',
                 onTap: () => Navigator.of(context).push(
                   appRoute(context, const SettingsScreen())
                 ),
@@ -57,6 +58,19 @@ class MoreScreen extends ConsumerWidget {
                 subtitle: 'Завершённые вакансии, события и стажировки',
                 onTap: () => Navigator.of(context).push(
                   appRoute(context, const ArchiveScreen())
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          SettingsGroup(
+            children: [
+              SettingsTile(
+                icon: Icons.info_outline_rounded,
+                title: 'О приложении',
+                subtitle: 'Версия, назначение, контакты',
+                onTap: () => Navigator.of(context).push(
+                  appRoute(context, const AboutScreen())
                 ),
               ),
             ],

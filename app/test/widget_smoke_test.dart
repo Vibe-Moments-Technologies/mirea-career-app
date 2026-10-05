@@ -69,14 +69,11 @@ class _CachedRepo extends PostsRepo {
       posts.map(Post.tryParse).whereType<Post>().toList();
 
   @override
-  Future<List<Post>> fetchPosts({
-    String tab = 'all',
-    bool archive = false,
-    StudentProfile? profile,
-    int page = 1,
-    int perPage = 20,
-  }) async =>
-      posts.map(Post.tryParse).whereType<Post>().toList();
+  Future<List<Post>> fetchPosts({String? organizationId}) async => posts
+      .map(Post.tryParse)
+      .whereType<Post>()
+      .where((p) => organizationId == null || p.organizationId == organizationId)
+      .toList();
 
   /// Организации собираются из expand постов — как отдельный запрос.
   @override
@@ -948,6 +945,65 @@ void main() {
       expect(find.byType(TextField), findsNothing);
       expect(tester.testTextInput.isVisible, isFalse,
           reason: 'клавиатура осталась висеть после закрытия поиска');
+    });
+
+    testWidgets('сабмит гасит клавиатуру, поле остаётся плавать',
+        (tester) async {
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [samplePost()],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.search_rounded));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'хакатон');
+      await tester.pumpAndSettle();
+
+      // Сабмит (кнопка «Поиск» на клавиатуре): клавиатура уходит…
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+
+      // …затемнение исчезло, а ПОЛЕ ОСТАЛОСЬ с текстом: из этого режима
+      // выход только крестиком или возврат к вводу.
+      expect(tester.testTextInput.isVisible, isFalse,
+          reason: 'после сабмита клавиатура обязана уйти и не вернуться');
+      expect(find.byType(TextField), findsOneWidget,
+          reason: 'поле должно остаться плавать поверх ленты');
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller?.text,
+        'хакатон',
+      );
+    });
+
+    testWidgets('сабмит не поднимает клавиатуру обратно (мигание)',
+        (tester) async {
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [samplePost()],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.search_rounded));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'стаж');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pump();
+
+      // Несколько кадров подряд: клавиатура не должна «мигнуть» обратно
+      // (прежний баг: затемнение убиралось из Stack → поле пересоздавалось
+      // → autofocus снова поднимал клавиатуру).
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(tester.testTextInput.isVisible, isFalse,
+            reason: 'клавиатура мигнула обратно на кадре $i');
+      }
     });
   });
 

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_route.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_scroll.dart';
+import '../../core/widgets/glass_back_button.dart';
 import '../../core/widgets/post_card.dart';
 import '../../data/models.dart';
 import '../../state/feed_filters.dart';
@@ -13,60 +13,108 @@ import '../post/post_detail_screen.dart';
 
 /// Профиль организатора: кто публикует, как связаться, что он предлагает.
 ///
-/// Данные берутся из уже загруженной ленты — организация приходит вложенно
-/// в каждом посте (`_select` в posts_repo), отдельного запроса к БД не нужно.
-/// Если постов организации в текущей ленте нет (например, всё отфильтровано
-/// на сервере), показываем то, что знаем, без пустого экрана.
-class OrgScreen extends ConsumerWidget {
-  const OrgScreen({super.key, required this.organizationId});
+/// Организация передаётся объектом (её уже знает страница организаций),
+/// а «Предложения» запрашиваются отдельно по `organization` — лента тут
+/// не причём: пользователь мог не открывать вкладок, где она грузится.
+class OrgScreen extends ConsumerStatefulWidget {
+  const OrgScreen({super.key, required this.organization});
 
-  final String organizationId;
+  final Organization organization;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final posts = ref.watch(feedProvider).posts;
+  ConsumerState<OrgScreen> createState() => _OrgScreenState();
+}
+
+class _OrgScreenState extends ConsumerState<OrgScreen> {
+  List<Post>? _posts;
+  bool _loading = true;
+  bool _offline = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _offline = false;
+    });
+    try {
+      final posts = await ref
+          .read(postsRepoProvider)
+          .fetchPosts(organizationId: widget.organization.id);
+      if (!mounted) return;
+      setState(() {
+        _posts = posts;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _offline = true;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final org = widget.organization;
     final favorites = ref.watch(favoritesProvider);
-    // Приоритетные (is_featured) — вверху, как на главной и в каталоге.
-    final own = priorityFirst(
-      posts.where((p) => p.organizationId == organizationId).toList(),
-    );
-    final org = own.isNotEmpty ? own.first.organization : null;
+    final own = priorityFirst(_posts ?? const <Post>[]);
 
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Организация')),
-      body: org == null
-          ? const Center(
-              child: Padding(
-                padding: EdgeInsets.all(32),
-                child: Text(
-                  'Организация недоступна',
-                  style: AppText.headline,
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            )
+      appBar: AppBar(
+        title: const Text('Организация'),
+        titleTextStyle: AppText.headline,
+        leading: const GlassBackButton(),
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
           : ListView(
               physics: AppScroll.plain,
-              padding: EdgeInsets.fromLTRB(pad, 8, pad, AppInsets.screenBottom(context)),
+              padding: EdgeInsets.fromLTRB(
+                  pad, 8, pad, AppInsets.screenBottom(context)),
               children: [
                 _Header(org: org, postCount: own.length),
                 if ((org.description ?? '').isNotEmpty) ...[
                   const SizedBox(height: 20),
-                  Text(org.description!, style: AppText.body.copyWith(height: 1.45)),
+                  Text(org.description!,
+                      style: AppText.body.copyWith(height: 1.45)),
                 ],
                 const SizedBox(height: 24),
                 _Contacts(org: org),
                 const SizedBox(height: 28),
                 Text('Предложения', style: AppText.title),
                 const SizedBox(height: 12),
+                if (_offline)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      'Не удалось загрузить предложения — проверьте сеть',
+                      style: AppText.footnote
+                          .copyWith(color: AppColors.secondaryLight),
+                    ),
+                  ),
+                if (own.isEmpty && !_offline)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      'Пока нет опубликованных предложений',
+                      style: AppText.footnote
+                          .copyWith(color: AppColors.secondaryLight),
+                    ),
+                  ),
                 for (final p in own) ...[
                   PostCard(
                     post: p,
                     isFavorite: favorites.contains(p.id),
                     onTap: () => Navigator.of(context).push(
-                      appRoute(context, PostDetailScreen(post: p))
+                      appRoute(context, PostDetailScreen(post: p)),
                     ),
                     onToggleFavorite: () async {
                       final added =
@@ -92,7 +140,9 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
-    final initial = org.name.trim().isEmpty ? '—' : org.name.trim().substring(0, 1).toUpperCase();
+    final initial = org.name.trim().isEmpty
+        ? '—'
+        : org.name.trim().substring(0, 1).toUpperCase();
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -104,13 +154,12 @@ class _Header extends StatelessWidget {
           height: 64,
           decoration: BoxDecoration(
             color: AppColors.placeholder(brightness),
-            borderRadius: BorderRadius.circular(AppRadius.thumb),
+            borderRadius: BorderRadius.circular(14),
           ),
           alignment: Alignment.center,
-          child: Text(
-            initial,
-            style: AppText.largeTitle.copyWith(color: AppColors.secondaryLight),
-          ),
+          child: Text(initial,
+              style: AppText.title
+                  .copyWith(color: AppColors.secondaryLight, fontSize: 24)),
         ),
         const SizedBox(width: 14),
         Expanded(
@@ -120,12 +169,12 @@ class _Header extends StatelessWidget {
               Text(org.name, style: AppText.title),
               const SizedBox(height: 4),
               Text(
-                org.isPartner ? 'Компания-партнёр' : 'Подразделение вуза',
+                org.isPartner ? 'Партнёр' : 'Подразделение вуза',
                 style: AppText.footnote.copyWith(color: AppColors.secondaryLight),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
               Text(
-                '$postCount ${_plural(postCount)} в приложении',
+                '$postCount ${_plural(postCount)}',
                 style: AppText.caption.copyWith(color: AppColors.secondaryLight),
               ),
             ],
@@ -135,132 +184,59 @@ class _Header extends StatelessWidget {
     );
   }
 
-  static String _plural(int n) {
-    final mod10 = n % 10;
-    final mod100 = n % 100;
-    if (mod10 == 1 && mod100 != 11) return 'предложение';
-    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'предложения';
-    return 'предложений';
-  }
+  static String _plural(int n) => switch (n) {
+        1 => 'предложение',
+        2 || 3 || 4 => 'предложения',
+        _ => 'предложений',
+      };
 }
 
-/// Контакты организатора. Показываем только то, что реально заполнено —
-/// пустых строк «Телефон: —» быть не должно.
 class _Contacts extends StatelessWidget {
   const _Contacts({required this.org});
   final Organization org;
 
   @override
   Widget build(BuildContext context) {
-    final rows = <Widget>[
-      if ((org.contactName ?? '').isNotEmpty)
-        _row(context, Icons.badge_outlined, 'Контактное лицо', org.contactName!),
-      if ((org.contactEmail ?? '').isNotEmpty)
-        _row(
-          context,
-          Icons.mail_outline_rounded,
-          'Почта',
-          org.contactEmail!,
-          onTap: () => _launch(context, 'mailto:${org.contactEmail}'),
-        ),
-      if ((org.contactPhone ?? '').isNotEmpty)
-        _row(
-          context,
-          Icons.call_outlined,
-          'Телефон',
-          org.contactPhone!,
-          onTap: () => _launch(context, 'tel:${_digits(org.contactPhone!)}'),
-        ),
+    final rows = <(IconData, String, String?)>[
       if ((org.website ?? '').isNotEmpty)
-        _row(
-          context,
-          Icons.language_rounded,
-          'Сайт',
-          _prettyUrl(org.website!),
-          onTap: () => _launch(context, org.website!),
-        ),
+        (Icons.language_rounded, 'Сайт', org.website),
+      if ((org.contactEmail ?? '').isNotEmpty)
+        (Icons.mail_outline_rounded, 'Почта', org.contactEmail),
+      if ((org.contactPhone ?? '').isNotEmpty)
+        (Icons.phone_rounded, 'Телефон', org.contactPhone),
+      if ((org.contactName ?? '').isNotEmpty)
+        (Icons.person_outline_rounded, 'Контакт', org.contactName),
     ];
-
-    if (rows.isEmpty) {
-      return Text(
-        'Контакты не указаны',
-        style: AppText.footnote.copyWith(color: AppColors.secondaryLight),
-      );
-    }
+    if (rows.isEmpty) return const SizedBox.shrink();
 
     final scheme = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-      ),
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Column(
-        children: [
-          for (var i = 0; i < rows.length; i++) ...[
-            rows[i],
-            if (i != rows.length - 1)
-              Divider(height: 1, indent: 52, color: AppColors.separator(context)),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _row(
-    BuildContext context,
-    IconData icon,
-    String label,
-    String value, {
-    VoidCallback? onTap,
-  }) {
-    final scheme = Theme.of(context).colorScheme;
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Row(
-          children: [
-            Icon(icon, size: 22, color: onTap != null ? scheme.primary : AppColors.secondaryLight),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: AppText.caption.copyWith(color: AppColors.secondaryLight),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Контакты', style: AppText.title),
+        const SizedBox(height: 12),
+        for (final (icon, label, value) in rows)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              children: [
+                Icon(icon, size: 18, color: scheme.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(label,
+                          style: AppText.caption
+                              .copyWith(color: AppColors.secondaryLight)),
+                      Text(value!, style: AppText.body),
+                    ],
                   ),
-                  Text(
-                    value,
-                    style: AppText.body,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-            if (onTap != null)
-              Icon(Icons.open_in_new_rounded, size: 16, color: AppColors.secondaryLight),
-          ],
-        ),
-      ),
+          ),
+      ],
     );
   }
-
-  /// Внешний браузер / почта / звонилка — как и кнопка регистрации (UI.md §7).
-  static Future<void> _launch(BuildContext context, String url) async {
-    final uri = Uri.tryParse(url);
-    if (uri == null) return;
-    try {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (_) {
-      // нет приложения для tel:/mailto: — молча ничего, экран не ломается
-    }
-  }
-
-  static String _digits(String s) => s.replaceAll(RegExp(r'[^0-9+]'), '');
-
-  static String _prettyUrl(String url) =>
-      url.replaceFirst(RegExp(r'^https?://'), '').replaceFirst(RegExp(r'/$'), '');
 }

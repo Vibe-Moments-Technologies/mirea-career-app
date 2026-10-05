@@ -18,71 +18,6 @@ class PostsRepo {
 
   bool get isOffline => _baseUrl.isEmpty;
 
-  /// Запрос постов с фильтрами.
-  ///
-  /// [tab] — вкладка: 'foryou' | 'all' | 'university' | 'partner'
-  /// [archive] — если true, возвращает только протухшие посты
-  /// [profile] — профиль для персонализации (foryou)
-  Future<List<Post>> fetchPosts({
-    String tab = 'all',
-    bool archive = false,
-    StudentProfile? profile,
-    int page = 1,
-    int perPage = 20,
-  }) async {
-    if (isOffline) return const [];
-
-    final filters = <String>[];
-    filters.add('status="published"');
-    filters.add('published_at<=@now');
-
-    // Архив: end_date < now, иначе актуальные: end_date >= now или пусто.
-    // ВАЖНО: @now пишется БЕЗ кавычек — PocketBase сравнивает даты только
-    // с незакавыченным @now (с кавычками это строка и фильтр ломается).
-    if (archive) {
-      filters.add('end_date<@now');
-    } else {
-      filters.add('(end_date>@now||end_date="")');
-    }
-
-    // Вкладки по типу организации (relation-фильтр PocketBase)
-    if (tab == 'university') {
-      filters.add('organization.type="university_dept"');
-    } else if (tab == 'partner') {
-      filters.add('organization.type="partner"');
-    }
-
-    final filterStr = filters.join('&&');
-    final url = '$_baseUrl/api/collections/posts/records'
-        '?filter=${Uri.encodeComponent(filterStr)}'
-        '&expand=organization'
-        '&sort=-published_at'
-        '&page=$page&perPage=$perPage';
-
-    final bytes = await AppHttpClient.instance.fetchBytes(url);
-    if (bytes == null) return const [];
-
-    try {
-      final json = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
-      final items = json['items'] as List<dynamic>? ?? [];
-      var posts = items.map(_parsePost).whereType<Post>().toList();
-
-      // Для вас: персональная сортировка
-      if (tab == 'foryou' && profile != null) {
-        posts = _sortForYou(posts, profile);
-      }
-
-      // Приоритетные сверху (кроме архива)
-      if (!archive) {
-        posts = _priorityFirst(posts);
-      }
-
-      return posts;
-    } catch (_) {
-      return const [];
-    }
-  }
-
   /// Лента главной: вкладка + поиск + типы, всё фильтруется на сервере.
   ///
   /// Вызывается ПО ДЕЙСТВИЮ пользователя (смена вкладки, поиск, фильтр),
@@ -148,6 +83,39 @@ class PostsRepo {
         posts = _priorityFirst(posts);
       }
       return posts;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Посты одной организации: для её страницы профиля.
+  ///
+  /// Актуальные и приоритетные сверху — как в ленте.
+  Future<List<Post>> fetchPosts({String? organizationId}) async {
+    if (isOffline) return const [];
+
+    final filters = <String>[
+      'status="published"',
+      'published_at<=@now',
+      // только актуальные: страница организации — не архив
+      '(end_date>@now||end_date="")',
+      if (organizationId != null) 'organization="$organizationId"',
+    ];
+
+    final filterStr = filters.join('&&');
+    final url = '$_baseUrl/api/collections/posts/records'
+        '?filter=${Uri.encodeComponent(filterStr)}'
+        '&expand=organization'
+        '&sort=-published_at'
+        '&perPage=100';
+
+    final bytes = await AppHttpClient.instance.fetchBytes(url);
+    if (bytes == null) return const [];
+
+    try {
+      final json = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+      final items = json['items'] as List<dynamic>? ?? [];
+      return _priorityFirst(items.map(_parsePost).whereType<Post>().toList());
     } catch (_) {
       return const [];
     }

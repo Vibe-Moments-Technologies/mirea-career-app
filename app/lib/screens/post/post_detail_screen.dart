@@ -215,9 +215,16 @@ class _Organizer extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         // Ведёт на профиль организатора: там контакты и все его предложения.
-        onTap: () => Navigator.of(context).push(
-          appRoute(context, OrgScreen(organizationId: post.organizationId))
-        ),
+        // Организация собирается из вложенных полей поста — она уже
+        // известна, отдельный запрос не нужен.
+        onTap: () {
+          final org = post.organization;
+          if (org != null) {
+            Navigator.of(context).push(
+              appRoute(context, OrgScreen(organization: org)),
+            );
+          }
+        },
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(

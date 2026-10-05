@@ -3,9 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_route.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/screen_header.dart';
+import '../../core/widgets/glass_back_button.dart';
 import '../../core/widgets/list_tail.dart';
-import '../../core/widgets/pinned_header_screen.dart';
 import '../../core/widgets/post_card.dart';
 import '../../core/widgets/reveal_on_mount.dart';
 import '../../core/widgets/search_overlay.dart';
@@ -16,9 +15,10 @@ import '../post/post_detail_screen.dart';
 
 /// Архив: лента протухших постов (end_date < now).
 ///
-/// Это «Все» с принудительно применённым фильтром «Архивные»: переключатель
-/// актуальности здесь отсутствует. Поиск и типы работают как на главной.
-/// Открывается из раздела «Ещё».
+/// Подстраница «Ещё» (как «Настройки»): AppBar со стеклянной кнопкой
+/// «назад» — закрыть можно и жестом, и кнопкой. Это «Все» с принудительно
+/// применённым фильтром «Архивные»: переключателя актуальности здесь нет.
+/// Поиск работает как на главной.
 class ArchiveScreen extends ConsumerStatefulWidget {
   const ArchiveScreen({super.key});
 
@@ -80,68 +80,70 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
     final hasMore = feed.posts.length > _visible;
 
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('Архив'),
+        titleTextStyle: AppText.headline,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.search_rounded),
+            tooltip: 'Поиск',
+            onPressed: () => setState(() => _searchOpen = true),
+          ),
+          const SizedBox(width: 4),
+        ],
+        leading: const GlassBackButton(),
+      ),
       body: Stack(
         children: [
           RefreshIndicator(
             onRefresh: () => ref.read(feedNotifierProvider.notifier).refresh(),
-            child: PinnedHeaderScreen(
-              title: 'Архив',
-              actions: [
-                HeaderAction(
-                  icon: Icons.search_rounded,
-                  tooltip: 'Поиск',
-                  onTap: () => setState(() => _searchOpen = true),
-                ),
-              ],
-              onRefresh: () =>
-                  ref.read(feedNotifierProvider.notifier).refresh(),
-              slivers: [
+            child: ListView(
+              padding:
+                  EdgeInsets.fromLTRB(pad, 8, pad, AppInsets.screenBottom(context)),
+              children: [
                 if (feed.offline)
-                  const SliverToBoxAdapter(
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
                     child: _ArchiveOfflineBanner(),
                   ),
-                SliverPadding(
-                  padding: EdgeInsets.fromLTRB(pad, 8, pad, 0),
-                  sliver: feed.loading
-                      ? SliverList.separated(
-                          itemCount: 4,
-                          separatorBuilder: (_, _) => const SizedBox(height: 10),
-                          itemBuilder: (_, _) => const PostCardSkeleton(),
-                        )
-                      : SliverList.separated(
-                          itemCount: posts.length,
-                          separatorBuilder: (_, _) => const SizedBox(height: 10),
-                          itemBuilder: (_, i) => RevealOnMount(
-                            child: PostCard(
-                              post: posts[i],
-                              isFavorite: favorites.contains(posts[i].id),
-                              onTap: () => _open(posts[i]),
-                              onToggleFavorite: () =>
-                                  _toggleFavorite(posts[i].id),
-                            ),
-                          ),
-                        ),
-                ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      pad,
-                      16,
-                      pad,
-                      AppInsets.screenBottom(context),
+                if (feed.loading)
+                  const Column(
+                    children: [
+                      PostCardSkeleton(),
+                      SizedBox(height: 10),
+                      PostCardSkeleton(),
+                      SizedBox(height: 10),
+                      PostCardSkeleton(),
+                    ],
+                  )
+                else if (posts.isEmpty)
+                  ListTail(
+                    isEmpty: true,
+                    emptyTitle: 'Архив пуст',
+                    emptyBody: 'Завершённые записи появятся здесь '
+                        'после окончания их срока',
+                  )
+                else ...[
+                  for (var i = 0; i < posts.length; i++) ...[
+                    RevealOnMount(
+                      child: PostCard(
+                        post: posts[i],
+                        isFavorite: favorites.contains(posts[i].id),
+                        onTap: () => _open(posts[i]),
+                        onToggleFavorite: () => _toggleFavorite(posts[i].id),
+                      ),
                     ),
-                    child: feed.loading
-                        ? const SizedBox.shrink()
-                        : ListTail(
-                            hasMore: hasMore,
-                            isEmpty: posts.isEmpty && !feed.loading,
-                            loaded: posts.length,
-                            total: feed.posts.length,
-                            onMore: () =>
-                                setState(() => _visible += _pageSize),
-                          ),
+                    if (i < posts.length - 1) const SizedBox(height: 10),
+                  ],
+                  const SizedBox(height: 16),
+                  ListTail(
+                    hasMore: hasMore,
+                    isEmpty: false,
+                    loaded: posts.length,
+                    total: feed.posts.length,
+                    onMore: () => setState(() => _visible += _pageSize),
                   ),
-                ),
+                ],
               ],
             ),
           ),
@@ -150,6 +152,10 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
             controller: _search,
             onChanged: (v) => setState(() => _query = v),
             onClose: _closeSearch,
+            onSubmitted: (v) {
+              setState(() => _query = v);
+              _reload();
+            },
           ),
         ],
       ),
@@ -179,7 +185,8 @@ class _ArchiveOfflineBanner extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
       child: Row(
         children: [
-          const Icon(Icons.cloud_off_rounded, size: 16, color: AppColors.warning),
+          const Icon(Icons.cloud_off_rounded,
+              size: 16, color: AppColors.warning),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
