@@ -77,6 +77,16 @@ class _CachedRepo extends PostsRepo {
     int perPage = 20,
   }) async =>
       posts.map(Post.tryParse).whereType<Post>().toList();
+
+  /// Организации собираются из expand постов — как отдельный запрос.
+  @override
+  Future<List<Organization>> fetchOrganizations() async => [
+        for (final p in posts.map(Post.tryParse).whereType<Post>())
+          if (p.organization != null) p.organization!
+      ].fold<List<Organization>>(
+        [],
+        (acc, org) => acc.any((o) => o.id == org.id) ? acc : [...acc, org],
+      );
 }
 
 Map<String, dynamic> samplePost({
@@ -977,24 +987,26 @@ void main() {
       await tester.tap(find.byIcon(Icons.apartment_rounded));
       await tester.pumpAndSettle();
 
-      // сколько организаций насчитал экран — сразу видно, если список
-      // собрался не из всех постов
-      expect(find.text('Все · 2'), findsOneWidget);
-      expect(find.text('От вуза · 1'), findsOneWidget);
-      expect(find.text('Партнёры · 1'), findsOneWidget);
+      // Организации приходят прямым запросом (не из ленты) — обе на месте.
+      expect(find.text('Яндекс'), findsOneWidget);
+      expect(find.text('Карьерный центр'), findsOneWidget);
+      expect(find.text('Найдено организаций: 2'), findsOneWidget);
 
-      // findsWidgets, а не findsOneWidget: IndexedStack держит в дереве все
-      // вкладки, и имя организации дублируется в карточке поста на главной
-      expect(find.text('Яндекс'), findsWidgets);
-      expect(find.text('Карьерный центр'), findsWidgets);
+      // Фильтры — в bottom sheet: открываем кнопкой в шапке.
+      await tester.tap(find.byIcon(Icons.tune_rounded));
+      await tester.pumpAndSettle();
+      expect(find.text('ИСТОЧНИК'), findsOneWidget);
 
       // фильтр по партнёрам убирает подразделение вуза
-      await tester.tap(find.text('Партнёры · 1'));
+      await tester.tap(find.text('Партнёры'));
+      await tester.pump();
+      await tester.tap(find.text('Показать'));
       await tester.pumpAndSettle();
       expect(find.text('Карьерный центр'), findsNothing);
+      expect(find.text('Яндекс'), findsOneWidget);
 
       // тап ведёт в профиль организации
-      await tester.tap(find.text('Яндекс').last);
+      await tester.tap(find.text('Яндекс'));
       await tester.pumpAndSettle();
       expect(find.text('Предложения'), findsOneWidget);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');

@@ -94,7 +94,6 @@ class LocalStore {
   static const _kTheme = 'theme_mode';
   static const _kCatalog = 'catalog_state';
   static const _kSpotlight = 'spotlight_cache';
-  static const _kDoh = 'system_dns';
 
   // ---------- Профиль ----------
   StudentProfile get profile {
@@ -109,15 +108,6 @@ class LocalStore {
   /// 'system' | 'light' | 'dark'
   String get themeMode => _prefs.getString(_kTheme) ?? 'system';
   Future<void> saveThemeMode(String mode) => _prefs.setString(_kTheme, mode);
-
-  // ---------- DNS ----------
-  /// Использовать ли системный DNS вместо DoH (Comss).
-  ///
-  /// По умолчанию false = DoH включён. В РФ провайдеры блокируют DNS для
-  /// некоторых доменов (*.supabase.co), DoH обходит эту блокировку.
-  /// Переключатель в настройках: «Системный DNS» = true выключает DoH.
-  bool get systemDns => _prefs.getBool(_kDoh) ?? false;
-  Future<void> saveSystemDns(bool value) => _prefs.setBool(_kDoh, value);
 
   // ---------- Состояние каталога (фильтры, вкладка, сортировка) ----------
 

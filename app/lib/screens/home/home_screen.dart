@@ -50,6 +50,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   ];
 
   /// Запрос по действию: параметры изменились — идём на сервер.
+  ///
+  /// Типы/поиск/архив фильтрует PocketBase; теги, институт, кампус и
+  /// формат применяются поверх ответа на клиенте (applyFilters).
   void _reload() {
     ref.read(feedQueryProvider.notifier).set(
           FeedQuery(
@@ -62,6 +65,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         );
   }
+
+  /// Посты ленты с клиентскими фильтрами поверх серверного ответа.
+  List<Post> _clientFiltered(List<Post> posts) =>
+      applyFilters(posts, _filters);
 
   void _closeSearch() {
     // снять фокус: иначе клавиатура остаётся висеть поверх закрытого поля
@@ -96,7 +103,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
 
     // «Для вас»: рекомендации закончились — CTA открывает «Все».
-    final posts = feed.posts;
+    final posts = _clientFiltered(feed.posts);
     final showCta = _tab == 'foryou' &&
         posts.isNotEmpty &&
         feed.exhausted &&
@@ -223,6 +230,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   /// Смена фильтров открывает шторку; применяются по кнопке.
+  ///
+  /// Черновик фильтров живёт в StatefulBuilder шторки: каждый чип сразу
+  /// перестраивает панель, а на сервер уходит только «Показать».
   Future<void> _openFilters() async {
     var draft = _filters;
     await showFilterSheet(
@@ -236,9 +246,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         setState(() => _filters = draft);
         _reload();
       },
-      builder: (context) => _HomeFilters(
-        filters: draft,
-        onChanged: (f) => draft = f,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheet) => _HomeFilters(
+          filters: draft,
+          onChanged: (f) => setSheet(() => draft = f),
+        ),
       ),
     );
   }
@@ -340,7 +352,10 @@ class _AllPostsCta extends StatelessWidget {
   }
 }
 
-/// Содержимое фильтр-панели главной.
+/// Содержимое фильтр-панели главной: полный набор, как был в каталоге.
+///
+/// Типы и поиск уходят на сервер; теги/институт/кампус/формат
+/// применяются поверх полученной страницы на клиенте.
 class _HomeFilters extends StatelessWidget {
   const _HomeFilters({required this.filters, required this.onChanged});
 
@@ -372,6 +387,76 @@ class _HomeFilters extends StatelessWidget {
                   onSelected: (on) => _apply(filters.copyWith(
                     types: _toggle(filters.types, e.key, on),
                   )),
+                ),
+            ],
+          ),
+        ),
+        CollapsibleSection(
+          title: 'Интересы',
+          open: filters.tags.isNotEmpty,
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final t in Catalogs.interests)
+                FilterChip(
+                  label: Text(t.title),
+                  selected: filters.tags.contains(t.id),
+                  onSelected: (on) => _apply(filters.copyWith(
+                    tags: _toggle(filters.tags, t.id, on),
+                  )),
+                ),
+            ],
+          ),
+        ),
+        CollapsibleSection(
+          title: 'Институт',
+          open: filters.institute != null,
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final i in Catalogs.institutes)
+                ChoiceChip(
+                  label: Text(i.short),
+                  selected: filters.institute == i.id,
+                  onSelected: (sel) => _apply(
+                    filters.copyWith(institute: sel ? i.id : null),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        CollapsibleSection(
+          title: 'Кампус',
+          open: filters.campus != null,
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final c in Catalogs.campuses)
+                ChoiceChip(
+                  label: Text(c.title),
+                  selected: filters.campus == c.id,
+                  onSelected: (sel) =>
+                      _apply(filters.copyWith(campus: sel ? c.id : null)),
+                ),
+            ],
+          ),
+        ),
+        CollapsibleSection(
+          title: 'Формат',
+          open: filters.format != null,
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final e in Catalogs.formats.entries)
+                ChoiceChip(
+                  label: Text(e.value),
+                  selected: filters.format == e.key,
+                  onSelected: (sel) =>
+                      _apply(filters.copyWith(format: sel ? e.key : null)),
                 ),
             ],
           ),

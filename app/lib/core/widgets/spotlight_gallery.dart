@@ -285,7 +285,7 @@ class _Cover extends StatelessWidget {
     final url = banner.imageUrl;
     if (url == null || url.isEmpty) return place;
 
-    return DohNetworkImage(
+    return AppNetworkImage(
       url: url,
       fit: BoxFit.cover,
       placeholder: place,

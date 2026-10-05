@@ -53,15 +53,6 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 24),
-          const _GroupTitle('Сеть'),
-          SettingsGroup(
-            footer: 'DNS-over-HTTPS обходит блокировки провайдеров. '
-                'Используйте, если картинки или данные не загружаются.',
-            children: [
-              _DohTile(),
-            ],
-          ),
-          const SizedBox(height: 24),
           const _GroupTitle('Приложение'),
           SettingsGroup(
             children: [
@@ -160,46 +151,5 @@ class _GroupTitle extends StatelessWidget {
           text.toUpperCase(),
           style: AppText.section.copyWith(color: AppColors.secondaryLight),
         ),
-      );
-}
-
-/// Переключатель «Системный DNS».
-///
-/// По умолчанию выключен = DoH (Comss) активен. Включение переключает на
-/// системный DNS. Требует перезапуска: HttpOverrides.global ставится при старте.
-class _DohTile extends ConsumerStatefulWidget {
-  @override
-  ConsumerState<_DohTile> createState() => _DohTileState();
-}
-
-class _DohTileState extends ConsumerState<_DohTile> {
-  late bool _systemDns;
-
-  @override
-  void initState() {
-    super.initState();
-    _systemDns = ref.read(localStoreProvider).systemDns;
-  }
-
-  @override
-  Widget build(BuildContext context) => SwitchListTile(
-        title: const Text('Системный DNS', style: AppText.headline),
-        subtitle: Text(
-          _systemDns ? 'Системный DNS' : 'DoH Comss (рекомендуется в РФ)',
-          style: AppText.caption,
-        ),
-        secondary: const Icon(Icons.dns_rounded),
-        value: _systemDns,
-        onChanged: (v) async {
-          await ref.read(localStoreProvider).saveSystemDns(v);
-          setState(() => _systemDns = v);
-          if (!context.mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Перезапустите приложение для применения'),
-              duration: Duration(seconds: 3),
-            ),
-          );
-        },
       );
 }

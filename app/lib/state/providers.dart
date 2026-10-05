@@ -182,6 +182,57 @@ class FeedNotifier extends Notifier<FeedState> {
 
 final feedProvider = NotifierProvider<FeedNotifier, FeedState>(FeedNotifier.new);
 
+// ---------------- Организации ----------------
+
+/// Список организаций: прямой запрос к коллекции, БЕЗ ленты.
+///
+/// Раньше собирался из постов (тяжёлый запрос с expand), из-за чего
+/// страница организаций открывалась медленно. Теперь — лёгкий список
+/// организаций одним запросом.
+class OrgsState {
+  const OrgsState({this.orgs = const [], this.loading = false, this.offline = false});
+  final List<Organization> orgs;
+  final bool loading;
+  final bool offline;
+
+  OrgsState copyWith({List<Organization>? orgs, bool? loading, bool? offline}) =>
+      OrgsState(
+        orgs: orgs ?? this.orgs,
+        loading: loading ?? this.loading,
+        offline: offline ?? this.offline,
+      );
+}
+
+class OrganizationsNotifier extends Notifier<OrgsState> {
+  @override
+  OrgsState build() => const OrgsState();
+
+  /// Загрузка при первом обращении (открытие вкладки организаций).
+  Future<void> ensureLoaded() async {
+    if (state.orgs.isNotEmpty || state.loading) return;
+    await refresh();
+  }
+
+  Future<void> refresh() async {
+    state = state.copyWith(loading: true);
+    try {
+      final orgs = await ref.read(postsRepoProvider).fetchOrganizations();
+      if (!ref.mounted) return;
+      if (orgs.isEmpty && state.orgs.isNotEmpty) {
+        state = state.copyWith(loading: false, offline: true);
+        return;
+      }
+      state = state.copyWith(orgs: orgs, loading: false, offline: false);
+    } catch (_) {
+      if (!ref.mounted) return;
+      state = state.copyWith(loading: false, offline: true);
+    }
+  }
+}
+
+final organizationsProvider = NotifierProvider<OrganizationsNotifier, OrgsState>(
+    OrganizationsNotifier.new);
+
 // ---------------- Витрина главной ----------------
 
 /// Слайды витрины: отдельная сущность, которую наполняет администратор.

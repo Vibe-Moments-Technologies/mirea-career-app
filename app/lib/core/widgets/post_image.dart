@@ -8,8 +8,8 @@ import '../theme/app_theme.dart';
 /// Единая обложка поста: картинка, буквенная заглушка или нейтральная
 /// поверхность — и больше ничего.
 ///
-/// Использует [DohNetworkImage] вместо Image.network, потому что последний
-/// игнорирует HttpOverrides.global и не работает с DoH.
+/// Использует [AppNetworkImage] (общий клиент с кэшем), а не Image.network:
+/// у нас единая точка сети и повтор при обрыве.
 class PostCover extends StatelessWidget {
   const PostCover({
     super.key,
@@ -39,7 +39,7 @@ class PostCover extends StatelessWidget {
         height: size,
         child: url == null || url.isEmpty
             ? placeholder
-            : DohNetworkImage(
+            : AppNetworkImage(
                 url: url,
                 fit: BoxFit.cover,
                 width: size,
