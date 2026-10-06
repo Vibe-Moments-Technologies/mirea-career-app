@@ -9,16 +9,18 @@ import '../../core/widgets/post_card.dart';
 import '../../core/widgets/reveal_on_mount.dart';
 import '../../core/widgets/search_overlay.dart';
 import '../../data/models.dart';
-import '../../state/feed_query.dart';
 import '../../state/providers.dart';
 import '../post/post_detail_screen.dart';
 
 /// Архив: лента протухших постов (end_date < now).
 ///
 /// Подстраница «Ещё» (как «Настройки»): AppBar со стеклянной кнопкой
-/// «назад» — закрыть можно и жестом, и кнопкой. Это «Все» с принудительно
-/// применённым фильтром «Архивные»: переключателя актуальности здесь нет.
-/// Поиск работает как на главной.
+/// «назад» — закрыть можно и жестом, и кнопкой.
+///
+/// ВАЖНО: архив держит СВОЁ локальное состояние (не общий feedNotifier):
+/// раньше он перезаписывал общий запрос ленты архивным фильтром, и при
+/// возврате на главную она показывала пустоту — архивные посты мгновенно
+/// отсеивались фильтром актуальности. Локальный state не трогает главную.
 class ArchiveScreen extends ConsumerStatefulWidget {
   const ArchiveScreen({super.key});
 
@@ -31,27 +33,44 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
   String _query = '';
   final _search = TextEditingController();
 
+  List<Post> _posts = const [];
+  bool _loading = false;
+  bool _offline = false;
+
   static const _pageSize = 10;
   int _visible = _pageSize;
 
   @override
   void initState() {
     super.initState();
-    // Принудительный архивный запрос: то же «Все», но end_date < @now.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _reload());
+    // Архивный запрос: то же «Все», но end_date < @now.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
-  void _reload() {
-    ref.read(feedQueryProvider.notifier).set(
-          FeedQuery(
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _offline = false;
+    });
+    try {
+      final posts = await ref.read(postsRepoProvider).fetchFeed(
             tab: 'all',
-            filters: FeedFiltersLite(
-              query: _query,
-              showArchived: true,
-            ),
-          ),
-        );
-    setState(() => _visible = _pageSize);
+            query: _query,
+            showArchived: true,
+          );
+      if (!mounted) return;
+      setState(() {
+        _posts = posts;
+        _loading = false;
+        _visible = _pageSize;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _offline = true;
+      });
+    }
   }
 
   void _closeSearch() {
@@ -61,7 +80,7 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
       _query = '';
       _search.clear();
     });
-    _reload();
+    _load();
   }
 
   @override
@@ -72,12 +91,11 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final feed = ref.watch(feedNotifierProvider);
     final favorites = ref.watch(favoritesProvider);
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
 
-    final posts = feed.posts.take(_visible).toList();
-    final hasMore = feed.posts.length > _visible;
+    final posts = _posts.take(_visible).toList();
+    final hasMore = _posts.length > _visible;
 
     return Scaffold(
       appBar: AppBar(
@@ -96,17 +114,17 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
       body: Stack(
         children: [
           RefreshIndicator(
-            onRefresh: () => ref.read(feedNotifierProvider.notifier).refresh(),
+            onRefresh: _load,
             child: ListView(
               padding:
                   EdgeInsets.fromLTRB(pad, 8, pad, AppInsets.screenBottom(context)),
               children: [
-                if (feed.offline)
+                if (_offline)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: _ArchiveOfflineBanner(),
                   ),
-                if (feed.loading)
+                if (_loading)
                   const Column(
                     children: [
                       PostCardSkeleton(),
@@ -140,7 +158,7 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
                     hasMore: hasMore,
                     isEmpty: false,
                     loaded: posts.length,
-                    total: feed.posts.length,
+                    total: _posts.length,
                     onMore: () => setState(() => _visible += _pageSize),
                   ),
                 ],
@@ -154,7 +172,7 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
             onClose: _closeSearch,
             onSubmitted: (v) {
               setState(() => _query = v);
-              _reload();
+              _load();
             },
           ),
         ],

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mirea_career/core/theme/app_theme.dart';
 import 'package:mirea_career/core/app_route.dart';
+import 'package:mirea_career/core/widgets/glass_back_button.dart';
 import 'package:mirea_career/core/widgets/glass_dock.dart';
 import 'package:mirea_career/core/widgets/pinned_header_screen.dart';
 import 'package:mirea_career/core/widgets/screen_header.dart';
@@ -1115,6 +1116,42 @@ void main() {
       expect(find.text('Архив'), findsWidgets);
       // На архиве нет переключателя актуальности: архив принудителен.
       expect(find.text('АКТУАЛЬНОСТЬ'), findsNothing);
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
+
+    testWidgets('архив не ломает ленту главной при возврате', (tester) async {
+      // Реальный баг: архив писал в общий feedNotifier архивный фильтр —
+      // вернувшись на главную, пользователь видел пустой раздел (архивные
+      // посты отсеивались фильтром актуальности) до переключения вкладки.
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [samplePost()],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // На главной лента построилась.
+      expect(find.text('Осенняя ярмарка вакансий'), findsOneWidget);
+
+      // Уходим в «Ещё» → Архив.
+      await tester.tap(find.byIcon(Icons.person_rounded).last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Архив'));
+      await tester.pumpAndSettle();
+
+      // Возвращаемся на главную (стеклянная кнопка «назад»).
+      await tester.tap(find.byType(GlassBackButton));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.home_rounded).last);
+      await tester.pumpAndSettle();
+
+      // Лента главной НЕ пострадала: карточка на месте без переключения
+      // вкладок.
+      expect(find.text('Осенняя ярмарка вакансий'), findsOneWidget,
+          reason: 'архив затёр общее состояние ленты');
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
   });
