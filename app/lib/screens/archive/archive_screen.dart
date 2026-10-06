@@ -37,9 +37,6 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
   bool _loading = false;
   bool _offline = false;
 
-  static const _pageSize = 10;
-  int _visible = _pageSize;
-
   @override
   void initState() {
     super.initState();
@@ -62,7 +59,6 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
       setState(() {
         _posts = posts;
         _loading = false;
-        _visible = _pageSize;
       });
     } catch (_) {
       if (!mounted) return;
@@ -94,8 +90,7 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
     final favorites = ref.watch(favoritesProvider);
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
 
-    final posts = _posts.take(_visible).toList();
-    final hasMore = _posts.length > _visible;
+    final posts = _posts;
 
     return Scaffold(
       appBar: AppBar(
@@ -155,11 +150,9 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
                   ],
                   const SizedBox(height: 16),
                   ListTail(
-                    hasMore: hasMore,
                     isEmpty: false,
                     loaded: posts.length,
-                    total: _posts.length,
-                    onMore: () => setState(() => _visible += _pageSize),
+                    total: posts.length,
                   ),
                 ],
               ],

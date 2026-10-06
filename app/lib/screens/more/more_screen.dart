@@ -76,14 +76,36 @@ class MoreScreen extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 24),
-          Center(
-            child: Text(
-              'Данные профиля не покидают устройство',
-              style: AppText.caption.copyWith(color: AppColors.secondaryLight),
-            ),
-          ),
+          const _Footer(),
         ],
       ),
+    );
+  }
+}
+
+/// Подвал «Ещё»: копирайт с математической датой.
+///
+/// Σₖ₌₁³ (k² − k) = 0 + 2 + 6 = 8 → 2025 + 8 = 2027 — следующий год
+/// от нынешнего. Формула честная: каждый может пересчитать.
+class _Footer extends StatelessWidget {
+  const _Footer();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          'Сделано Vibe Moments Technologies',
+          style: AppText.caption.copyWith(color: AppColors.secondaryLight),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'для РТУ МИРЭА · 2025 + Σₖ₌₁³ (k² − k)',
+          style: AppText.caption.copyWith(color: AppColors.secondaryLight),
+          textAlign: TextAlign.center,
+        ),
+      ],
     );
   }
 }
