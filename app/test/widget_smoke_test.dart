@@ -48,7 +48,7 @@ Future<ProviderContainer> container({
       // действию, и в тестах сервером становится сам кэш.
       postsRepoProvider.overrideWithValue(cachedRepo),
       metricsProvider.overrideWithValue(Metrics(cachedRepo, store)),
-      supabaseConfiguredProvider.overrideWithValue(true),
+      backendConfiguredProvider.overrideWithValue(true),
     ],
   );
 }

@@ -12,13 +12,15 @@ final localStoreProvider = Provider<LocalStore>((ref) => throw UnimplementedErro
 /// Отправка счётчиков интереса (main переопределяет готовым экземпляром).
 final metricsProvider = Provider<Metrics>((ref) => throw UnimplementedError());
 
-/// true, если PocketBase сконфигурирован (иначе показываем подсказку).
-final supabaseConfiguredProvider = Provider<bool>((ref) => true);
+/// true, если URL PocketBase передан при сборке (иначе показываем подсказку).
+///
+/// Это проверка КОНФИГУРАЦИИ СБОРКИ, а не сети: доступность API проверяется
+/// в каждом запросе отдельно, и её сбой не должен мешать старту.
+final backendConfiguredProvider = Provider<bool>((ref) => true);
 
-/// Репозиторий карточек. Берётся из Metrics — тем самым исключается
-/// обращение к Supabase.instance напрямую: она существует только при
-/// успешной инициализации, а лента должна открываться и без неё
-/// (офлайн, тестовая сборка без ключей, недоступная сеть).
+/// Репозиторий карточек. Берётся из Metrics — единая точка доступа к данным:
+/// лента открывается и без сети (кэш + офлайн-баннер), поэтому репозиторий
+/// существует всегда, а не только при успешном старте.
 final postsRepoProvider = Provider<PostsRepo>(
   (ref) => ref.watch(metricsProvider).repo,
 );

@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'app_http_client.dart';
 import 'local_store.dart';
 import 'posts_repo.dart';
 
@@ -69,8 +68,8 @@ class Bootstrap {
   final LocalStore store;
   final Metrics metrics;
 
-  /// false — PocketBase URL не передан при сборке: приложение работает
-  /// на пустом кэше и показывает подсказку вместо падения.
+  /// false — PocketBase URL не передан при сборке: это ошибка конфигурации
+  /// сборки, показываем подсказку разработчику вместо пустого приложения.
   final bool configured;
 
   /// Выбранная тема, прочитанная ДО первого кадра.
@@ -88,6 +87,13 @@ class Bootstrap {
 ///
 /// Никогда не бросает исключение и НИКОГДА не висит: приложение обязано
 /// показать интерфейс даже при недоступной сети или неверном URL.
+///
+/// Health-запроса на старте НЕТ. Раньше он был, и его таймаут переводил
+/// приложение в офлайн-репозиторий на всю сессию и ронял пользователя
+/// в экран-заглушку: при холодном старте под VPN или на слабой сети первый
+/// запрос легко не успевал за 10 секунд, хотя дальше сеть работала.
+/// Доступность API теперь проверяется в каждом запросе отдельно, а сбой
+/// показывает офлайн-баннер поверх кэша — приложение остаётся живым.
 Future<Bootstrap> bootstrap() async {
   final store = await LocalStore.open();
 
@@ -99,29 +105,7 @@ Future<Bootstrap> bootstrap() async {
     );
   }
 
-  final repo = PostsRepo(PocketBaseConfig.url);
-
-  // Проверяем доступность API health endpoint.
-  try {
-    final bytes = await AppHttpClient.instance
-        .fetchBytes('${PocketBaseConfig.url}/api/health',
-            timeout: const Duration(seconds: 10));
-    if (bytes == null) {
-      return Bootstrap(
-        store: store,
-        metrics: Metrics(PostsRepo.offline(), store),
-        configured: false,
-      );
-    }
-  } catch (_) {
-    return Bootstrap(
-      store: store,
-      metrics: Metrics(PostsRepo.offline(), store),
-      configured: false,
-    );
-  }
-
-  final metrics = Metrics(repo, store);
+  final metrics = Metrics(PostsRepo(PocketBaseConfig.url), store);
   // Досылаем накопленное офлайн — но не ждём: сеть может быть недоступна.
   unawaited(metrics.flush());
   return Bootstrap(store: store, metrics: metrics, configured: true);

@@ -46,7 +46,7 @@ Future<void> _start() async {
       overrides: [
         localStoreProvider.overrideWithValue(boot.store),
         metricsProvider.overrideWithValue(boot.metrics),
-        supabaseConfiguredProvider.overrideWithValue(boot.configured),
+        backendConfiguredProvider.overrideWithValue(boot.configured),
         // Тема из хранилища — до первого кадра: иначе стартовала светлая
         // по умолчанию, и на тёмном устройстве вспыхивал белый экран.
         initialThemeModeProvider.overrideWithValue(
@@ -112,14 +112,17 @@ class MireaCareerApp extends ConsumerWidget {
   }
 }
 
-/// Если сборка сделана без ключей Supabase — показываем инструкцию,
+/// Если сборка сделана БЕЗ URL PocketBase — показываем инструкцию,
 /// а не роняем приложение на старте.
+///
+/// Важно: сюда попадаем только при ошибке конфигурации сборки. Недоступная
+/// сеть сюда не приводит — приложение стартует на кэше с офлайн-баннером.
 class _Gate extends ConsumerWidget {
   const _Gate();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final configured = ref.watch(supabaseConfiguredProvider);
+    final configured = ref.watch(backendConfiguredProvider);
     return configured ? const RootShell() : const _NotConfiguredScreen();
   }
 }
@@ -145,11 +148,10 @@ class _NotConfiguredScreen extends StatelessWidget {
               Text('Нужна настройка', style: AppText.title, textAlign: TextAlign.center),
               const SizedBox(height: 12),
               Text(
-                'Сборка выполнена без ключей Supabase.\n'
+                'Сборка выполнена без адреса PocketBase.\n'
                 'Запустите приложение так:\n\n'
                 'flutter run \\\n'
-                '  --dart-define=SUPABASE_URL=… \\\n'
-                '  --dart-define=SUPABASE_ANON_KEY=…',
+                '  --dart-define=POCKETBASE_URL=https://…',
                 textAlign: TextAlign.center,
                 style: AppText.footnote.copyWith(height: 1.5),
               ),
