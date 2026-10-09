@@ -2,14 +2,27 @@ import 'package:flutter/material.dart';
 
 import '../../data/catalogs.dart';
 import '../../data/models.dart';
+import '../format.dart';
 import '../theme/app_theme.dart';
 import 'post_image.dart';
 
+/// Размер превью в карточке ленты.
+///
+/// Карточка намеренно крупная (превью 104, воздух 14): лента — главный экран
+/// приложения, и событие должно читаться с одного взгляда, а не выцарапываться
+/// из плотного списка. При превью 72 правая колонка получалась выше картинки
+/// и карточка выглядела «прижатой».
+const double _kThumb = 104;
+
 /// Карточка поста в ленте.
 ///
+/// Структура: превью слева, справа — тип, заголовок, организатор и короткая
+/// строка фактов (дата · формат · кампус). Если дедлайн близко, добавляется
+/// плашка срочности: это единственное, что в ленте окрашено предупреждающим.
+///
 /// Приоритет (is_featured) на карточке никак не рисуется: он влияет только
-/// на порядок в списке (`priorityFirst`). Метка, обводка и подпись делали из
-/// карточки «особый тип», которого на самом деле нет.
+/// на порядок в списке (`priorityFirst`). Метка и обводка делали из карточки
+/// «особый тип», которого на самом деле нет.
 class PostCard extends StatelessWidget {
   const PostCard({
     super.key,
@@ -40,44 +53,49 @@ class PostCard extends StatelessWidget {
         highlightColor: scheme.primary.withValues(alpha: 0.06),
         splashColor: scheme.primary.withValues(alpha: 0.08),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 6, 12),
+          padding: const EdgeInsets.all(14),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _Thumb(post: post),
-              const SizedBox(width: 12),
+              PostCover(
+                post: post,
+                size: _kThumb,
+                radius: AppRadius.thumb,
+                letter: true,
+              ),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _TypeBadge(type: post.type),
-                    const SizedBox(height: 5),
+                    _TypeLabel(type: post.type),
+                    const SizedBox(height: 7),
                     Text(
                       post.title,
-                      style: AppText.cardTitle,
+                      style: AppText.headline,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 5),
-                    _MetaLine(post: post),
-                    if (post.tags.isNotEmpty) ...[
-                      const SizedBox(height: 7),
-                      _TagsRow(tags: post.tags),
+                    if ((post.organizationName ?? '').trim().isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        post.organizationName!.trim(),
+                        style: AppText.footnote
+                            .copyWith(color: AppColors.secondaryLight),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ],
+                    _Facts(post: post),
+                    _Urgency(end: post.endDate),
                   ],
                 ),
               ),
-              IconButton(
-                onPressed: onToggleFavorite,
-                icon: Icon(
-                  isFavorite
-                      ? Icons.bookmark_rounded
-                      : Icons.bookmark_border_rounded,
-                  color:
-                      isFavorite ? scheme.primary : AppColors.secondaryLight,
-                ),
-                tooltip:
-                    isFavorite ? 'Убрать из избранного' : 'В избранное',
+              // Избранное — вне текстовой колонки: кнопка не сжимает заголовок
+              // и остаётся на одном месте у всех карточек.
+              _FavoriteButton(
+                isFavorite: isFavorite,
+                onTap: onToggleFavorite,
               ),
             ],
           ),
@@ -91,6 +109,7 @@ class PostCard extends StatelessWidget {
 ///
 /// Без неё экран показывал «Пока ничего нет», пока посты ещё ехали из сети —
 /// выглядело как пустой каталог, а потом контент появлялся скачком.
+/// Повторяет геометрию настоящей карточки, чтобы список не «прыгал».
 class PostCardSkeleton extends StatelessWidget {
   const PostCardSkeleton({super.key});
 
@@ -98,7 +117,7 @@ class PostCardSkeleton extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = AppColors.placeholder(Theme.of(context).brightness);
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
@@ -107,17 +126,21 @@ class PostCardSkeleton extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _block(color, 72, 72, AppRadius.thumb),
-          const SizedBox(width: 12),
+          _block(color, _kThumb, _kThumb, AppRadius.thumb),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _block(color, 70, 10, AppRadius.pill),
-                const SizedBox(height: 10),
-                _block(color, double.infinity, 16, 6),
+                const SizedBox(height: 12),
+                _block(color, double.infinity, 15, 6),
                 const SizedBox(height: 8),
-                _block(color, 140, 12, 6),
+                _block(color, 180, 15, 6),
+                const SizedBox(height: 10),
+                _block(color, 120, 11, 6),
+                const SizedBox(height: 12),
+                _block(color, 150, 11, 6),
               ],
             ),
           ),
@@ -137,108 +160,163 @@ class PostCardSkeleton extends StatelessWidget {
       );
 }
 
-class _Thumb extends StatelessWidget {
-  const _Thumb({required this.post});
-  final Post post;
-
-  @override
-  Widget build(BuildContext context) =>
-      PostCover(post: post, size: 72, radius: AppRadius.thumb, letter: true);
-}
-
-/// Тип поста нейтральным текстом.
+/// Тип поста: цветная точка + нейтральная подпись.
 ///
-/// Бейдж не цветной по типу: пять разных цветов на карточках превращали ленту
-/// в пёстрое поле, а разницу между «вакансией» и «стажировкой» несёт подпись.
-class _TypeBadge extends StatelessWidget {
-  const _TypeBadge({required this.type});
+/// Точка, а не цветной бейдж: пять ярких подложек на каждой карточке
+/// превращали ленту в пёстрое поле. Разницу между «вакансией» и «стажировкой»
+/// несёт подпись, а точка лишь помогает быстрее сканировать список.
+class _TypeLabel extends StatelessWidget {
+  const _TypeLabel({required this.type});
   final String type;
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      (Catalogs.postTypes[type] ?? type).toUpperCase(),
-      style: AppText.caption.copyWith(
-        color: AppColors.secondaryLight,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0.4,
-      ),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-    );
-  }
-}
-
-/// Теги: один чип и счётчик остальных.
-///
-/// Раньше это была строка текста `#карьера  #it  #дизайн` — при длинных
-/// тегах она занимала две строки и выглядела шумом. Один чип читается
-/// быстрее, а «+N» сразу показывает, что список не закончился.
-class _TagsRow extends StatelessWidget {
-  const _TagsRow({required this.tags});
-  final List<String> tags;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final extra = tags.length - 1;
+    final brightness = Theme.of(context).brightness;
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Flexible(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: scheme.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(AppRadius.pill),
-            ),
-            child: Text(
-              '#${tags.first}',
-              style: AppText.caption.copyWith(color: scheme.primary),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+        Container(
+          width: 7,
+          height: 7,
+          decoration: BoxDecoration(
+            color: AppColors.forPostType(type, brightness),
+            shape: BoxShape.circle,
           ),
         ),
-        if (extra > 0) ...[
-          const SizedBox(width: 6),
-          Text(
-            '+$extra',
-            style:
-                AppText.caption.copyWith(color: AppColors.secondaryLight),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(
+            (Catalogs.postTypes[type] ?? type).toUpperCase(),
+            style: AppText.caption.copyWith(
+              color: AppColors.secondaryLight,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.4,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-        ],
+        ),
       ],
     );
   }
 }
 
-class _MetaLine extends StatelessWidget {
-  const _MetaLine({required this.post});
+/// Короткие факты: дата, формат, кампус.
+///
+/// [Wrap], а не [Row]: на узком экране пара «дата + кампус» не влезает
+/// в одну строку и обрезалась бы — здесь второй факт просто переносится.
+class _Facts extends StatelessWidget {
+  const _Facts({required this.post});
   final Post post;
 
   @override
   Widget build(BuildContext context) {
-    // Организация и дата в одну строку: две отдельные серые строки опускали
-    // заголовок и выглядели как дублирование метаданных.
-    final organization = post.organizationName?.trim();
-    final details = [
-      if (organization?.isNotEmpty ?? false) organization!,
-      if (post.startDate != null) _formatDate(post.startDate!),
-    ].join(' · ');
-    if (details.isEmpty) return const SizedBox.shrink();
+    final p = post;
 
-    return Text(
-      details,
-      style: AppText.footnote.copyWith(color: AppColors.secondaryLight),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
+    final facts = <Widget>[
+      if (p.startDate != null)
+        _fact(context, Icons.schedule_rounded, dateShort(p.startDate!)),
+      if (Catalogs.formats[p.format] != null)
+        _fact(context, _formatIcon(p.format), Catalogs.formats[p.format]!),
+      if (p.campuses.isNotEmpty)
+        _fact(
+          context,
+          Icons.place_rounded,
+          Catalogs.campusTitle(p.campuses.first),
+        ),
+    ];
+    if (facts.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Wrap(spacing: 12, runSpacing: 5, children: facts),
+    );
+  }
+
+  IconData _formatIcon(String format) => switch (format) {
+        'online' => Icons.videocam_rounded,
+        'hybrid' => Icons.sync_alt_rounded,
+        _ => Icons.location_city_rounded,
+      };
+
+  Widget _fact(BuildContext context, IconData icon, String text) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: AppColors.secondaryLight),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              text,
+              style:
+                  AppText.caption.copyWith(color: AppColors.secondaryLight),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      );
+}
+
+/// Плашка срочности: видна только когда дедлайн близко.
+class _Urgency extends StatelessWidget {
+  const _Urgency({required this.end});
+  final DateTime? end;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = urgencyLabel(end);
+    if (label == null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 9),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: AppColors.warning.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.bolt_rounded, size: 13, color: AppColors.warning),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                label,
+                style: AppText.caption.copyWith(
+                  color: AppColors.warning,
+                  fontWeight: FontWeight.w600,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
 
-String _formatDate(DateTime d) {
-  const months = [
-    'янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
-  ];
-  return '${d.day} ${months[d.month - 1]}';
+class _FavoriteButton extends StatelessWidget {
+  const _FavoriteButton({required this.isFavorite, required this.onTap});
+  final bool isFavorite;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return IconButton(
+      onPressed: onTap,
+      visualDensity: VisualDensity.compact,
+      padding: const EdgeInsets.all(6),
+      constraints: const BoxConstraints(),
+      icon: Icon(
+        isFavorite ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+        size: 22,
+        color: isFavorite ? scheme.primary : AppColors.secondaryLight,
+      ),
+      tooltip: isFavorite ? 'Убрать из избранного' : 'В избранное',
+    );
+  }
 }

@@ -96,12 +96,17 @@ Map<String, dynamic> samplePost({
   Map<String, dynamic>? organization,
   String organizationId = 'org1',
   String? externalLink,
+  String description = 'Описание',
+  DateTime? startDate,
+  DateTime? endDate,
+  List<String> campuses = const [],
+  List<String> institutes = const [],
 }) =>
     {
       'id': id,
       'organization': organizationId,
       'title': title,
-      'description': 'Описание',
+      'description': description,
       'type': 'event',
       'format': 'offline',
       'status': 'published',
@@ -112,9 +117,11 @@ Map<String, dynamic> samplePost({
       },
       'external_link': externalLink,
       'tags': tags,
-      'campuses': <String>[],
-      'institutes': <String>[],
+      'campuses': campuses,
+      'institutes': institutes,
       'directions': <String>[],
+      'start_date': startDate?.toIso8601String(),
+      'end_date': endDate?.toIso8601String(),
       'is_featured': featured,
       'priority_weight': 0,
       'views_count': 0,
@@ -762,6 +769,132 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Перейти к регистрации'), findsOneWidget);
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
+  });
+
+  group('Карточка и детали', () {
+    testWidgets('карточка: тип, организатор, дата, формат и срочность',
+        (tester) async {
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [
+          samplePost(
+            title: 'Хакатон осенью',
+            startDate: DateTime.now().add(const Duration(days: 1)),
+            // Запас в часах: inDays округляет вниз, и ровно 3 суток,
+            // отсчитанные до сборки виджета, успевали стать «2 дня».
+            endDate: DateTime.now().add(const Duration(days: 3, hours: 2)),
+            campuses: ['vernadsky78'],
+          ),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Хакатон осенью'), findsOneWidget);
+      // Тип — подписью, организация — отдельной строкой.
+      expect(find.text('СОБЫТИЕ'), findsOneWidget);
+      expect(find.text('Карьерный центр'), findsOneWidget);
+      // Короткие факты: формат и кампус видны прямо в ленте.
+      expect(find.text('Офлайн'), findsOneWidget);
+      expect(find.text('Вернадского, 78'), findsOneWidget);
+      // Дедлайн близко — плашка срочности с числом и правильной формой.
+      expect(find.text('Осталось 3 дня'), findsOneWidget);
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
+
+    testWidgets('детали: панель «Ключевое» с подписями фактов',
+        (tester) async {
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [
+          samplePost(
+            title: 'День карьеры',
+            startDate: DateTime.now().add(const Duration(days: 1)),
+            endDate: DateTime.now().add(const Duration(days: 40)),
+            campuses: ['vernadsky78'],
+            institutes: ['ikb'],
+          ),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+      await tester.tap(find.text('День карьеры'));
+      await tester.pumpAndSettle();
+
+      // Подписи фактов (рендерятся капсом) — главное отличие новой панели
+      // от прежних обезличенных чипов.
+      expect(find.text('КОГДА'), findsOneWidget);
+      expect(find.text('ЗАКАНЧИВАЕТСЯ'), findsOneWidget);
+      expect(find.text('ФОРМАТ'), findsOneWidget);
+      expect(find.text('КАМПУС'), findsOneWidget);
+      expect(find.text('ДЛЯ КОГО'), findsOneWidget);
+      expect(find.text('Вернадского, 78'), findsWidgets);
+      expect(find.text('ИКБ'), findsOneWidget);
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
+
+    testWidgets('детали: HTML описания не показывается тегами',
+        (tester) async {
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [
+          samplePost(
+            title: 'Пост с разметкой',
+            description:
+                '<p>Первый абзац</p><p>Второй <strong>жирный</strong></p>',
+          ),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+      await tester.tap(find.text('Пост с разметкой'));
+      await tester.pumpAndSettle();
+
+      // Поле description в БД — editor (HTML): студент должен видеть текст,
+      // а не разметку администратора.
+      expect(find.text('Первый абзац'), findsOneWidget);
+      expect(find.text('Второй жирный'), findsOneWidget);
+      expect(find.textContaining('<p>'), findsNothing);
+      expect(find.textContaining('<strong>'), findsNothing);
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
+
+    testWidgets('детали: кнопка действия видна без прокрутки', (tester) async {
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [
+          samplePost(
+            title: 'Стажировка с закреплённой кнопкой',
+            externalLink: 'https://example.com/apply',
+            // Длинное описание: раньше кнопка уезжала за несколько экранов.
+            description: List.filled(12, 'Абзац про условия участия.').join('\n\n'),
+          ),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+      await tester.tap(find.text('Стажировка с закреплённой кнопкой'));
+      await tester.pumpAndSettle();
+
+      final button = find.text('Перейти к регистрации');
+      expect(button, findsOneWidget);
+      // Кнопка в закреплённой нижней панели: внутри экрана сразу,
+      // без прокрутки до конца описания.
+      final bottom = tester.getBottomLeft(button).dy;
+      expect(bottom, lessThanOrEqualTo(tester.view.physicalSize.height /
+              tester.view.devicePixelRatio +
+          1));
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
   });
