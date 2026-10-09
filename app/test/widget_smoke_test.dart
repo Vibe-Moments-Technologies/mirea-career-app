@@ -892,8 +892,8 @@ void main() {
 
       final button = find.text('Перейти к регистрации');
       expect(button, findsOneWidget);
-      // Кнопка в закреплённой нижней панели: внутри экрана сразу,
-      // без прокрутки до конца описания.
+      // Кнопка стоит в потоке сразу за блоком организатора — выше длинного
+      // описания, поэтому видна на первом экране без прокрутки.
       final bottom = tester.getBottomLeft(button).dy;
       expect(bottom, lessThanOrEqualTo(tester.view.physicalSize.height /
               tester.view.devicePixelRatio +

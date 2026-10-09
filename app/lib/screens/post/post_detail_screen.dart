@@ -20,15 +20,13 @@ import '../org/org_screen.dart';
 ///     шапка pinned, поэтому сохранить можно не листая обратно наверх;
 ///  2. тип, срочность и заголовок — читается первым;
 ///  3. организатор — кто стоит за предложением;
-///  4. панель «Ключевое» — когда, дедлайн, формат, кампус, аудитория.
+///  4. кнопка отклика — сразу за организатором: кто предлагает, уже известно;
+///  5. панель «Ключевое» — когда, дедлайн, формат, кампус, аудитория.
 ///     Раньше те же данные лежали разноцветными чипами вперемешку: тип,
 ///     формат, дата и институт выглядели одинаково важными и их приходилось
 ///     расшифровывать. Теперь у каждого факта есть подпись;
-///  5. описание и теги;
-///  6. счётчики — в конце: это справочная, а не решающая информация.
-///
-/// Кнопка действия закреплена внизу экрана: она не уезжает вместе с текстом
-/// и не заставляет листать обратно после прочтения описания.
+///  6. описание и теги;
+///  7. счётчики — в конце: это справочная, а не решающая информация.
 class PostDetailScreen extends ConsumerStatefulWidget {
   const PostDetailScreen({super.key, required this.post});
 
@@ -75,14 +73,6 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
 
     return Scaffold(
-      // Закреплённое действие: bottomNavigationBar держит кнопку над
-      // системной панелью и не даёт контенту прятаться под неё.
-      bottomNavigationBar: hasLink
-          ? _ActionBar(
-              label: 'Перейти к регистрации',
-              onTap: () => _launchLink(link),
-            )
-          : null,
       body: CustomScrollView(
         slivers: [
           SliverAppBar(
@@ -110,8 +100,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
               pad,
               20,
               pad,
-              // С закреплённой панелью нижний safe-area уже занят ею.
-              hasLink ? 24 : AppInsets.screenBottom(context),
+              AppInsets.screenBottom(context),
             ),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
@@ -121,6 +110,10 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                     style: AppText.largeTitle.copyWith(fontSize: 28)),
                 const SizedBox(height: 18),
                 _Organizer(post: post),
+                // Действие сразу после организатора: к этому моменту студент
+                // уже знает, кто предлагает, — и может откликнуться, не
+                // листая описание. Внизу экрана кнопка терялась за текстом.
+                if (hasLink) _ApplyButton(onTap: () => _launchLink(link)),
                 _FactsPanel(post: post),
                 if (post.description.trim().isNotEmpty) ...[
                   const SizedBox(height: 26),
@@ -560,46 +553,34 @@ class _StatItem extends StatelessWidget {
   }
 }
 
-/// Закреплённая внизу панель действия.
-class _ActionBar extends StatelessWidget {
-  const _ActionBar({required this.label, required this.onTap});
-  final String label;
+/// Кнопка отклика — в потоке контента, сразу за блоком организатора.
+///
+/// Раньше она была закреплена внизу экрана: панель перекрывала часть
+/// контента, съедала высоту и создавала вторую зону внимания рядом
+/// с описанием. На своём месте в потоке она читается как шаг сценария
+/// «узнал, кто предлагает → откликнулся».
+class _ApplyButton extends StatelessWidget {
+  const _ApplyButton({required this.onTap});
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
-
-    return Material(
-      color: scheme.surface,
-      child: Container(
-        decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: AppColors.separator(context))),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(pad, 12, pad, 12),
-            child: SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: onTap,
-                icon: const Icon(Icons.open_in_new_rounded, size: 20),
-                label: Text(label),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(52),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppRadius.pill),
-                  ),
-                ),
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: 18),
+        child: SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: onTap,
+            icon: const Icon(Icons.open_in_new_rounded, size: 20),
+            label: const Text('Перейти к регистрации'),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(52),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppRadius.pill),
               ),
             ),
           ),
         ),
-      ),
-    );
-  }
+      );
 }
 
 /// Описание: абзацы и списки из HTML-редактора PocketBase.

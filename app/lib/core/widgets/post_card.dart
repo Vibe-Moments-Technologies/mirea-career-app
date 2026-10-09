@@ -69,7 +69,19 @@ class PostCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _TypeLabel(type: post.type),
+                    // Тип и срочность в одной строке: метка «Осталось N дней»
+                    // про то же решение «успею ли откликнуться», что и тип
+                    // предложения. Отдельной строкой внизу она читалась как
+                    // постскриптум и растягивала карточку.
+                    Row(
+                      children: [
+                        _TypeLabel(type: post.type),
+                        // Сжимается плашка, а не тип: при нехватке места
+                        // обрезается хвост подписи, а число дней остаётся
+                        // видимым — оно в начале строки.
+                        Flexible(child: _Urgency(end: post.endDate)),
+                      ],
+                    ),
                     const SizedBox(height: 7),
                     Text(
                       post.title,
@@ -88,7 +100,6 @@ class PostCard extends StatelessWidget {
                       ),
                     ],
                     _Facts(post: post),
-                    _Urgency(end: post.endDate),
                   ],
                 ),
               ),
@@ -179,17 +190,19 @@ class _TypeLabel extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 6),
-        Flexible(
-          child: Text(
-            (Catalogs.postTypes[type] ?? type).toUpperCase(),
-            style: AppText.caption.copyWith(
-              color: AppColors.secondaryLight,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.4,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+        // Без Flexible: подпись — негибкий ребёнок строки «тип + срочность»,
+        // и гибкий потомок при неограниченной ширине ронял бы раскладку
+        // assert'ом про unbounded constraints. Типы берутся из короткого
+        // справочника, самый длинный — «СТАЖИРОВКА» — помещается всегда.
+        Text(
+          (Catalogs.postTypes[type] ?? type).toUpperCase(),
+          style: AppText.caption.copyWith(
+            color: AppColors.secondaryLight,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.4,
           ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
       ],
     );
@@ -263,7 +276,8 @@ class _Urgency extends StatelessWidget {
     if (label == null) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.only(top: 9),
+      // Отступ слева, а не сверху: плашка стоит в одной строке с типом.
+      padding: const EdgeInsets.only(left: 8),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
