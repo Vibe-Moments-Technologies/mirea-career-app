@@ -20,6 +20,11 @@ const double _kThumb = 104;
 /// строка фактов (дата · формат · кампус). Если дедлайн близко, добавляется
 /// плашка срочности: это единственное, что в ленте окрашено предупреждающим.
 ///
+/// Кнопки избранного здесь нет. Карточка ведёт на детали, а там избранное
+/// живёт в закреплённой шапке — сохранить можно не листая обратно. Дубль
+/// в ленте забирал место у заголовка и ловил случайные нажатия при прокрутке;
+/// из самого списка избранного пост убирается свайпом.
+///
 /// Приоритет (is_featured) на карточке никак не рисуется: он влияет только
 /// на порядок в списке (`priorityFirst`). Метка и обводка делали из карточки
 /// «особый тип», которого на самом деле нет.
@@ -27,15 +32,11 @@ class PostCard extends StatelessWidget {
   const PostCard({
     super.key,
     required this.post,
-    required this.isFavorite,
     required this.onTap,
-    required this.onToggleFavorite,
   });
 
   final Post post;
-  final bool isFavorite;
   final VoidCallback onTap;
-  final VoidCallback onToggleFavorite;
 
   @override
   Widget build(BuildContext context) {
@@ -90,12 +91,6 @@ class PostCard extends StatelessWidget {
                     _Urgency(end: post.endDate),
                   ],
                 ),
-              ),
-              // Избранное — вне текстовой колонки: кнопка не сжимает заголовок
-              // и остаётся на одном месте у всех карточек.
-              _FavoriteButton(
-                isFavorite: isFavorite,
-                onTap: onToggleFavorite,
               ),
             ],
           ),
@@ -298,25 +293,4 @@ class _Urgency extends StatelessWidget {
   }
 }
 
-class _FavoriteButton extends StatelessWidget {
-  const _FavoriteButton({required this.isFavorite, required this.onTap});
-  final bool isFavorite;
-  final VoidCallback onTap;
 
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return IconButton(
-      onPressed: onTap,
-      visualDensity: VisualDensity.compact,
-      padding: const EdgeInsets.all(6),
-      constraints: const BoxConstraints(),
-      icon: Icon(
-        isFavorite ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
-        size: 22,
-        color: isFavorite ? scheme.primary : AppColors.secondaryLight,
-      ),
-      tooltip: isFavorite ? 'Убрать из избранного' : 'В избранное',
-    );
-  }
-}

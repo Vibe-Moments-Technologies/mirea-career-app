@@ -87,7 +87,6 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final favorites = ref.watch(favoritesProvider);
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
 
     final posts = _posts;
@@ -141,9 +140,7 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
                     RevealOnMount(
                       child: PostCard(
                         post: posts[i],
-                        isFavorite: favorites.contains(posts[i].id),
                         onTap: () => _open(posts[i]),
-                        onToggleFavorite: () => _toggleFavorite(posts[i].id),
                       ),
                     ),
                     if (i < posts.length - 1) const SizedBox(height: 10),
@@ -178,11 +175,6 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
     Navigator.of(context).push(
       appRoute(context, PostDetailScreen(post: post)),
     );
-  }
-
-  Future<void> _toggleFavorite(String id) async {
-    final added = await ref.read(favoritesProvider.notifier).toggle(id);
-    await ref.read(metricsProvider).registerFavorite(id, added ? 1 : -1);
   }
 }
 

@@ -98,7 +98,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     final feed = ref.watch(feedNotifierProvider);
     final profile = ref.watch(profileProvider);
-    final favorites = ref.watch(favoritesProvider);
     final banners = ref.watch(spotlightProvider);
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
 
@@ -175,10 +174,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           itemBuilder: (_, i) => RevealOnMount(
                             child: PostCard(
                               post: posts[i],
-                              isFavorite: favorites.contains(posts[i].id),
                               onTap: () => _open(posts[i]),
-                              onToggleFavorite: () =>
-                                  _toggleFavorite(posts[i].id),
                             ),
                           ),
                         ),
@@ -276,11 +272,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     Navigator.of(context).push(
       appRoute(context, PostDetailScreen(post: post)),
     );
-  }
-
-  Future<void> _toggleFavorite(String id) async {
-    final added = await ref.read(favoritesProvider.notifier).toggle(id);
-    await ref.read(metricsProvider).registerFavorite(id, added ? 1 : -1);
   }
 }
 

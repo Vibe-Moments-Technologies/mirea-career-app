@@ -103,14 +103,9 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
                     },
                     child: PostCard(
                       post: post,
-                      isFavorite: true,
                       onTap: () => Navigator.of(context).push(
                         appRoute(context, PostDetailScreen(post: post))
                       ),
-                      onToggleFavorite: () {
-                        ref.read(favoritesProvider.notifier).toggle(post.id);
-                        ref.read(metricsProvider).registerFavorite(post.id, -1);
-                      },
                     ),
                   );
                 },

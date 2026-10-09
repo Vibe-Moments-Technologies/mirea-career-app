@@ -804,6 +804,9 @@ void main() {
       expect(find.text('Вернадского, 78'), findsOneWidget);
       // Дедлайн близко — плашка срочности с числом и правильной формой.
       expect(find.text('Осталось 3 дня'), findsOneWidget);
+      // Кнопки избранного в карточке намеренно нет: сохранение живёт
+      // в закреплённой шапке деталей, а в списке избранного — свайп.
+      expect(find.byTooltip('В избранное'), findsNothing);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
 

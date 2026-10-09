@@ -62,7 +62,6 @@ class _OrgScreenState extends ConsumerState<OrgScreen> {
   @override
   Widget build(BuildContext context) {
     final org = widget.organization;
-    final favorites = ref.watch(favoritesProvider);
     final own = priorityFirst(_posts ?? const <Post>[]);
 
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
@@ -112,17 +111,9 @@ class _OrgScreenState extends ConsumerState<OrgScreen> {
                 for (final p in own) ...[
                   PostCard(
                     post: p,
-                    isFavorite: favorites.contains(p.id),
                     onTap: () => Navigator.of(context).push(
                       appRoute(context, PostDetailScreen(post: p)),
                     ),
-                    onToggleFavorite: () async {
-                      final added =
-                          await ref.read(favoritesProvider.notifier).toggle(p.id);
-                      await ref
-                          .read(metricsProvider)
-                          .registerFavorite(p.id, added ? 1 : -1);
-                    },
                   ),
                   const SizedBox(height: 10),
                 ],
