@@ -31,3 +31,6 @@ app/ios/Pods/
 admin/
 # pnpm store
 .pnpm-store/
+
+# Документация для агентов (секреты, токены, внутренние заметки)
+.agent-docs/
