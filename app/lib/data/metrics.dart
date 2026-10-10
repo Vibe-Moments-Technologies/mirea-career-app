@@ -1,5 +1,9 @@
 import 'dart:async';
 
+import 'package:sentry_flutter/sentry_flutter.dart';
+
+import 'app_http_client.dart';
+import 'crash_reporting.dart';
 import 'local_store.dart';
 import 'posts_repo.dart';
 
@@ -98,6 +102,14 @@ Future<Bootstrap> bootstrap() async {
   final store = await LocalStore.open();
 
   if (!PocketBaseConfig.isConfigured) {
+    // Ошибка конфигурации сборки: приложение стартует без бэкенда.
+    // Это не падение, а ветка кода — без явной отправки Sentry о ней
+    // не узнает никогда, а знать нужно сразу.
+    unawaited(CrashReporting.message(
+      'Сборка без POCKETBASE_URL: приложение стартовало без бэкенда',
+      context: 'bootstrap:not_configured',
+      level: SentryLevel.fatal,
+    ));
     return Bootstrap(
       store: store,
       metrics: Metrics(PostsRepo.offline(), store),
@@ -108,5 +120,34 @@ Future<Bootstrap> bootstrap() async {
   final metrics = Metrics(PostsRepo(PocketBaseConfig.url), store);
   // Досылаем накопленное офлайн — но не ждём: сеть может быть недоступна.
   unawaited(metrics.flush());
+  // Телеметрия доступности бэкенда: на интерфейс не влияет, но даёт
+  // событие в Sentry, когда API не отвечает. Всплеск таких событий =
+  // бэкенд лежит, и мы узнаём об этом раньше тестировщиков.
+  unawaited(_probeApi());
   return Bootstrap(store: store, metrics: metrics, configured: true);
+}
+
+/// Разовая проверка доступности API при старте — только для телеметрии.
+///
+/// Результат НИ НА ЧТО не влияет: приложение стартует в любом случае,
+/// а недоступность сети пользователь увидит в офлайн-баннере. Раньше
+/// похожая проверка решала судьбу всей сессии и молча уводила приложение
+/// в заглушку — теперь она умеет только рассказывать о себе в Sentry.
+Future<void> _probeApi() async {
+  try {
+    final bytes = await AppHttpClient.instance
+        .fetchBytes('${PocketBaseConfig.url}/api/health',
+            timeout: const Duration(seconds: 10));
+    if (bytes == null) {
+      await CrashReporting.message(
+        'API PocketBase не ответил при старте',
+        context: 'bootstrap:api_unreachable',
+      );
+    }
+  } catch (_) {
+    await CrashReporting.message(
+      'API PocketBase не ответил при старте',
+      context: 'bootstrap:api_unreachable',
+    );
+  }
 }
