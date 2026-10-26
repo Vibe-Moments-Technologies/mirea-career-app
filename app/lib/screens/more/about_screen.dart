@@ -139,8 +139,8 @@ class AboutScreen extends StatelessWidget {
           const SizedBox(height: 24),
           Center(
             child: Text(
-              '© РТУ МИРЭА, ${DateTime.now().year}\n'
-              '© Vibe Moments Technologies, ${DateTime.now().year}',
+              'c �����? �?�?���-�?, ${DateTime.now().year}\n'
+              'c Vibe Moments Technologies для РТУ МИРЭА, ${DateTime.now().year}',
               textAlign: TextAlign.center,
               style: AppText.caption.copyWith(color: AppColors.secondaryLight, height: 1.5),
             ),

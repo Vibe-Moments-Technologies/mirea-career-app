@@ -41,23 +41,26 @@ class PostCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final isArchived = post.isArchived;
 
-    return Material(
-      color: scheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadius.card),
-        side: BorderSide(color: AppColors.separator(context)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        highlightColor: scheme.primary.withValues(alpha: 0.06),
-        splashColor: scheme.primary.withValues(alpha: 0.08),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+    return Opacity(
+      opacity: isArchived ? 0.55 : 1.0,
+      child: Material(
+        color: scheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.card),
+          side: BorderSide(color: AppColors.separator(context)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          highlightColor: scheme.primary.withValues(alpha: 0.06),
+          splashColor: scheme.primary.withValues(alpha: 0.08),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
               PostCover(
                 post: post,
                 size: _kThumb,
@@ -222,7 +225,13 @@ class _Facts extends StatelessWidget {
     final p = post;
 
     final facts = <Widget>[
-      if (p.startDate != null)
+      if (p.startDate != null || p.endDate != null)
+        _fact(
+          context,
+          Icons.schedule_rounded,
+          dateRange(p.startDate, p.endDate) ?? dateShort(p.startDate ?? p.endDate!),
+        )
+      else if (p.startDate != null)
         _fact(context, Icons.schedule_rounded, dateShort(p.startDate!)),
       if (Catalogs.formats[p.format] != null)
         _fact(context, _formatIcon(p.format), Catalogs.formats[p.format]!),

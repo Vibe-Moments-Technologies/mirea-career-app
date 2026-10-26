@@ -47,6 +47,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ('all', 'Все'),
     ('university', 'От вуза'),
     ('partner', 'Партнёры'),
+    ('current', 'Текущие'),
+    ('future', 'Будущие'),
   ];
 
   /// Запрос по действию: параметры изменились — идём на сервер.
@@ -54,13 +56,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// Типы/поиск/архив фильтрует PocketBase; теги, институт, кампус и
   /// формат применяются поверх ответа на клиенте (applyFilters).
   void _reload() {
+    final isTimeTab = _tab == 'current' || _tab == 'future';
     ref.read(feedQueryProvider.notifier).set(
           FeedQuery(
-            tab: _tab,
+            tab: isTimeTab ? 'all' : _tab,
             filters: FeedFiltersLite(
               query: _query,
               types: _filters.types,
               showArchived: _filters.showArchived,
+              onlyUpcoming: _tab == 'future',
+              timeFilter: isTimeTab ? _tab : null,
             ),
           ),
         );
@@ -96,7 +101,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final feed = ref.watch(feedNotifierProvider);
+    final feed = ref.watch(feedProvider);
     final profile = ref.watch(profileProvider);
     final banners = ref.watch(spotlightProvider);
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
@@ -110,7 +115,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       body: Stack(
         children: [
           RefreshIndicator(
-            onRefresh: () => ref.read(feedNotifierProvider.notifier).refresh(),
+            onRefresh: () => ref.read(feedProvider.notifier).refresh(),
             child: PinnedHeaderScreen(
               title: 'Карьера МИРЭА',
               actions: [
@@ -135,7 +140,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 },
               ),
               onRefresh: () =>
-                  ref.read(feedNotifierProvider.notifier).refresh(),
+                  ref.read(feedProvider.notifier).refresh(),
               slivers: [
                 if (feed.offline)
                   const SliverToBoxAdapter(child: _OfflineBanner()),

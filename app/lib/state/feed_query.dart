@@ -37,11 +37,15 @@ class FeedFiltersLite {
     this.query = '',
     this.types = const {},
     this.showArchived = false,
+    this.onlyUpcoming = false,
+    this.timeFilter,
   });
 
   final String query;
   final Set<String> types;
   final bool showArchived;
+  final bool onlyUpcoming;
+  final String? timeFilter;
 
   @override
   bool operator ==(Object other) =>
@@ -49,10 +53,13 @@ class FeedFiltersLite {
       other.query == query &&
       other.types.length == types.length &&
       other.types.containsAll(types) &&
-      other.showArchived == showArchived;
+      other.showArchived == showArchived &&
+      other.onlyUpcoming == onlyUpcoming &&
+      other.timeFilter == timeFilter;
 
   @override
-  int get hashCode => Object.hash(query, Object.hashAllUnordered(types), showArchived);
+  int get hashCode => Object.hash(query, Object.hashAllUnordered(types), showArchived,
+      onlyUpcoming, timeFilter);
 }
 
 /// Состояние ленты для конкретного запроса.

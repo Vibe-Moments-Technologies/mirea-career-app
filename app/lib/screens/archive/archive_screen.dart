@@ -5,10 +5,13 @@ import '../../core/app_route.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/glass_back_button.dart';
 import '../../core/widgets/list_tail.dart';
+import '../../core/widgets/pinned_header_screen.dart';
 import '../../core/widgets/post_card.dart';
 import '../../core/widgets/reveal_on_mount.dart';
 import '../../core/widgets/search_overlay.dart';
 import '../../data/models.dart';
+import '../../state/feed_filters.dart';
+import '../../state/feed_query.dart';
 import '../../state/providers.dart';
 import '../post/post_detail_screen.dart';
 
@@ -33,6 +36,9 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
   String _query = '';
   final _search = TextEditingController();
 
+  String _tab = 'all';
+  Set<String> _types = const {};
+
   List<Post> _posts = const [];
   bool _loading = false;
   bool _offline = false;
@@ -51,8 +57,9 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
     });
     try {
       final posts = await ref.read(postsRepoProvider).fetchFeed(
-            tab: 'all',
+            tab: _tab == 'all' ? 'all' : _tab,
             query: _query,
+            types: _types,
             showArchived: true,
           );
       if (!mounted) return;
@@ -91,65 +98,86 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
 
     final posts = _posts;
 
+    static const _tabs = <(String, String)>[
+      ('foryou', 'Для вас'),
+      ('all', 'Все'),
+      ('university', 'От вуза'),
+      ('partner', 'Партнёры'),
+      ('current', 'Текущие'),
+      ('future', 'Будущие'),
+    ];
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Архив'),
-        titleTextStyle: AppText.headline,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.search_rounded),
-            tooltip: 'Поиск',
-            onPressed: () => setState(() => _searchOpen = true),
-          ),
-          const SizedBox(width: 4),
-        ],
-        leading: const GlassBackButton(),
-      ),
       body: Stack(
         children: [
           RefreshIndicator(
             onRefresh: _load,
-            child: ListView(
-              padding:
-                  EdgeInsets.fromLTRB(pad, 8, pad, AppInsets.screenBottom(context)),
-              children: [
+            child: PinnedHeaderScreen(
+              title: 'Архив',
+              leading: const GlassBackButton(),
+              actions: [
+                HeaderAction(
+                  icon: Icons.search_rounded,
+                  tooltip: 'Поиск',
+                  onTap: () => setState(() => _searchOpen = true),
+                ),
+              ],
+              tabs: PinnedTabStrip(
+                segments: _tabs,
+                selected: _tab,
+                onSelected: (id) {
+                  setState(() => _tab = id);
+                  _load();
+                },
+              ),
+              onRefresh: _load,
+              slivers: [
                 if (_offline)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: _ArchiveOfflineBanner(),
-                  ),
+                  const SliverToBoxAdapter(child: _ArchiveOfflineBanner()),
                 if (_loading)
-                  const Column(
-                    children: [
-                      PostCardSkeleton(),
-                      SizedBox(height: 10),
-                      PostCardSkeleton(),
-                      SizedBox(height: 10),
-                      PostCardSkeleton(),
-                    ],
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(pad, 8, pad, 0),
+                    sliver: SliverList.separated(
+                      itemCount: 3,
+                      separatorBuilder: (_, _) => const SizedBox(height: 10),
+                      itemBuilder: (_, _) => const PostCardSkeleton(),
+                    ),
                   )
                 else if (posts.isEmpty)
-                  ListTail(
-                    isEmpty: true,
-                    emptyTitle: 'Архив пуст',
-                    emptyBody: 'Завершённые записи появятся здесь '
-                        'после окончания их срока',
-                  )
-                else ...[
-                  for (var i = 0; i < posts.length; i++) ...[
-                    RevealOnMount(
-                      child: PostCard(
-                        post: posts[i],
-                        onTap: () => _open(posts[i]),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(pad, 16, pad, 0),
+                      child: ListTail(
+                        isEmpty: true,
+                        emptyTitle: 'Архив пуст',
+                        emptyBody: 'В архив попадают события, завершившиеся '
+                            'ранее текущего момента',
                       ),
                     ),
-                    if (i < posts.length - 1) const SizedBox(height: 10),
-                  ],
-                  const SizedBox(height: 16),
-                  ListTail(
-                    isEmpty: false,
-                    loaded: posts.length,
-                    total: posts.length,
+                  )
+                else ...[
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(pad, 8, pad, 0),
+                    sliver: SliverList.separated(
+                      itemCount: posts.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 10),
+                      itemBuilder: (_, i) => RevealOnMount(
+                        child: PostCard(
+                          post: posts[i],
+                          onTap: () => _open(posts[i]),
+                        ),
+                      ),
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(pad, 16, pad, AppInsets.scrollBottom(context)),
+                      child: ListTail(
+                        isEmpty: false,
+                        loaded: posts.length,
+                        total: posts.length,
+                      ),
+                    ),
                   ),
                 ],
               ],
