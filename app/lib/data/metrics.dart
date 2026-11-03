@@ -4,6 +4,7 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 
 import 'app_http_client.dart';
 import 'crash_reporting.dart';
+import 'form_history.dart';
 import 'local_store.dart';
 import 'posts_repo.dart';
 
@@ -67,10 +68,14 @@ class Bootstrap {
   const Bootstrap({
     required this.store,
     required this.metrics,
+    required this.formHistory,
     required this.configured,
   });
   final LocalStore store;
   final Metrics metrics;
+
+  /// История отправленных анкет (файл на устройстве).
+  final FormHistoryStore formHistory;
 
   /// false — PocketBase URL не передан при сборке: это ошибка конфигурации
   /// сборки, показываем подсказку разработчику вместо пустого приложения.
@@ -100,6 +105,9 @@ class Bootstrap {
 /// показывает офлайн-баннер поверх кэша — приложение остаётся живым.
 Future<Bootstrap> bootstrap() async {
   final store = await LocalStore.open();
+  // История анкет: отдельный файл в папке приложения. Открытие не бросает
+  // исключений и не блокирует старт (см. FormHistoryStore.open).
+  final formHistory = await FormHistoryStore.open();
 
   if (!PocketBaseConfig.isConfigured) {
     // Ошибка конфигурации сборки: приложение стартует без бэкенда.
@@ -113,6 +121,7 @@ Future<Bootstrap> bootstrap() async {
     return Bootstrap(
       store: store,
       metrics: Metrics(PostsRepo.offline(), store),
+      formHistory: formHistory,
       configured: false,
     );
   }
@@ -124,7 +133,12 @@ Future<Bootstrap> bootstrap() async {
   // событие в Sentry, когда API не отвечает. Всплеск таких событий =
   // бэкенд лежит, и мы узнаём об этом раньше тестировщиков.
   unawaited(_probeApi());
-  return Bootstrap(store: store, metrics: metrics, configured: true);
+  return Bootstrap(
+    store: store,
+    metrics: metrics,
+    formHistory: formHistory,
+    configured: true,
+  );
 }
 
 /// Разовая проверка доступности API при старте — только для телеметрии.

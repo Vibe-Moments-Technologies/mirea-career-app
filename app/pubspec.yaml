@@ -10,6 +10,9 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_riverpod: ^3.4.3
+  # Папки приложения на устройстве (история анкет: form_history.json
+  # в getApplicationSupportDirectory).
+  path_provider: ^2.1.5
   sentry_flutter: ^9.30.1
   shared_preferences: ^2.5.5
   survey_kit: ^1.0.4

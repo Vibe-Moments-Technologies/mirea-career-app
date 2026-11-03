@@ -11,6 +11,7 @@ import 'package:mirea_career/core/widgets/pinned_header_screen.dart';
 import 'package:mirea_career/core/widgets/screen_header.dart';
 import 'package:mirea_career/data/catalogs.dart';
 import 'package:mirea_career/data/crash_reporting.dart';
+import 'package:mirea_career/data/form_history.dart';
 import 'package:mirea_career/data/local_store.dart';
 import 'package:mirea_career/data/metrics.dart';
 import 'package:mirea_career/data/models.dart';
@@ -35,6 +36,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 Future<ProviderContainer> container({
   StudentProfile? profile,
   List<Map<String, dynamic>>? cache,
+  List<FormSubmission>? formSubmissions,
 }) async {
   SharedPreferences.setMockInitialValues({});
   final store = await LocalStore.open();
@@ -42,6 +44,7 @@ Future<ProviderContainer> container({
   if (cache != null) await store.saveFeedCache(cache);
 
   final cachedRepo = _CachedRepo(cache ?? const []);
+  final formHistory = FormHistoryStore.inMemory(formSubmissions ?? const []);
   return ProviderContainer(
     overrides: [
       localStoreProvider.overrideWithValue(store),
@@ -49,6 +52,7 @@ Future<ProviderContainer> container({
       // действию, и в тестах сервером становится сам кэш.
       postsRepoProvider.overrideWithValue(cachedRepo),
       metricsProvider.overrideWithValue(Metrics(cachedRepo, store)),
+      formHistoryProvider.overrideWithValue(formHistory),
       backendConfiguredProvider.overrideWithValue(true),
     ],
   );
@@ -948,6 +952,89 @@ void main() {
 
       // Экран подтверждения: анкета отправлена.
       expect(find.text('Анкета отправлена'), findsOneWidget);
+
+      // История: анкета записана с ФИО и группой в ответах.
+      final submission =
+          c.read(formSubmissionsProvider.notifier).forPost('a');
+      expect(submission, isNotNull, reason: 'анкета не записана в историю');
+      expect(submission!.answers['fio'], 'Иванов Иван Иванович');
+      expect(submission.answers['group'], 'ИКБО-01-24');
+
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
+
+    testWidgets('заполненная анкета блокирует повтор и помечена в ленте',
+        (tester) async {
+      final form = {
+        'id': 'frm3',
+        'title': 'Анкета повторная',
+        'definition': {
+          'type': 'ordered',
+          'id': 'test_form3',
+          'steps': [
+            {
+              'id': 'q1',
+              'isMandatory': true,
+              'content': [
+                {'type': 'text', 'text': 'Вопрос?', 'fontSize': 22},
+              ],
+              'answerFormat': {'type': 'text', 'hint': 'Ответ', 'maxLines': 1},
+              'buttonText': 'Отправить',
+            },
+          ],
+        },
+      };
+
+      // История уже содержит отправку для поста 'a'.
+      final submission = FormSubmission(
+        formId: 'frm3',
+        postId: 'a',
+        postTitle: 'Мероприятие заполнено',
+        formTitle: 'Анкета повторная',
+        submittedAt: DateTime(2026, 11, 1, 10, 30),
+        answers: const {'q1': 'да'},
+      );
+
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [
+          samplePost(id: 'a', title: 'Мероприятие заполнено', form: form),
+        ],
+        formSubmissions: [submission],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Карточка в ленте сразу показывает: заполнено.
+      expect(find.text('Анкета заполнена'), findsOneWidget);
+
+      await tester.tap(find.text('Мероприятие заполнено'));
+      await tester.pumpAndSettle();
+
+      // Кнопка в деталях — «Анкета заполнена», не «Заполнить анкету».
+      expect(find.text('Заполнить анкету'), findsNothing);
+      final filled = find.text('Анкета заполнена');
+      expect(filled, findsOneWidget);
+
+      // Тап по кнопке открывает НЕ опрос, а экран «уже отправлена».
+      await tester.ensureVisible(filled);
+      await tester.tap(filled);
+      await tester.pump(const Duration(milliseconds: 300));
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+        if (find.textContaining('повторное заполнение недоступно')
+            .evaluate()
+            .isNotEmpty) {
+          break;
+        }
+      }
+      expect(find.textContaining('повторное заполнение недоступно'),
+          findsOneWidget);
+      // Сам вопрос не показан: опросник не открылся.
+      expect(find.text('Вопрос?'), findsNothing);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
   });
@@ -1407,6 +1494,78 @@ void main() {
       expect(find.text('Архивное'), findsOneWidget);
       expect(find.text('ТИП'), findsOneWidget);
       expect(find.text('Показать'), findsOneWidget);
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
+  });
+
+  group('Мои анкеты', () {
+    testWidgets('пустое состояние и карточка с отправленной анкетой',
+        (tester) async {
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [samplePost()],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Пустое состояние: пункт «Мои анкеты» в «Ещё» ведёт на экран
+      // с заглушкой.
+      await tester.tap(find.byIcon(Icons.person_rounded).last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Мои анкеты'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Пока пусто'), findsOneWidget);
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
+
+    testWidgets('отправленная анкета видна карточкой с датой и ответами',
+        (tester) async {
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        formSubmissions: [
+          FormSubmission(
+            formId: 'frm1',
+            postId: 'a',
+            postTitle: 'Стажировка в лаборатории ИИТ',
+            formTitle: 'Анкета на стажировку',
+            submittedAt: DateTime(2026, 11, 3, 14, 5),
+            answers: const {'fio': 'Иванов Иван', 'group': 'ИКБО-01-24'},
+            successText: 'Мы свяжемся с вами',
+          ),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.person_rounded).last);
+      await tester.pumpAndSettle();
+
+      // В «Ещё» пункт показывает число отправленных.
+      expect(find.text('Отправлено: 1'), findsOneWidget);
+
+      await tester.tap(find.text('Мои анкеты'));
+      await tester.pumpAndSettle();
+
+      // Карточка: заголовок поста, анкета и дата.
+      expect(find.text('Стажировка в лаборатории ИИТ'), findsOneWidget);
+      expect(
+        find.text('Анкета на стажировку · 03.11.2026 · 14:05'),
+        findsOneWidget,
+      );
+
+      // Тап — снимок ответов в нижнем листе.
+      await tester.tap(find.text('Стажировка в лаборатории ИИТ'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Иванов Иван'), findsOneWidget);
+      expect(find.text('ИКБО-01-24'), findsOneWidget);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
   });

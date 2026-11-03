@@ -114,6 +114,9 @@ class _OrgScreenState extends ConsumerState<OrgScreen> {
                     onTap: () => Navigator.of(context).push(
                       appRoute(context, PostDetailScreen(post: p)),
                     ),
+                    filledForm: p.form != null &&
+                        ref.watch(formSubmissionsProvider.notifier)
+                            .forPost(p.id) != null,
                   ),
                   const SizedBox(height: 10),
                 ],

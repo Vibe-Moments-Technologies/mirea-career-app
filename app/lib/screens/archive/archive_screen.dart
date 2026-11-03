@@ -141,6 +141,9 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
                       child: PostCard(
                         post: posts[i],
                         onTap: () => _open(posts[i]),
+                        filledForm: posts[i].form != null &&
+                            ref.watch(formSubmissionsProvider.notifier)
+                                .forPost(posts[i].id) != null,
                       ),
                     ),
                     if (i < posts.length - 1) const SizedBox(height: 10),

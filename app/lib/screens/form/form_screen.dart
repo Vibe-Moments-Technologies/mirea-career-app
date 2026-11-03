@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:survey_kit/survey_kit.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../data/form_history.dart';
 import '../../data/models.dart';
 import '../../state/providers.dart';
 
@@ -35,10 +36,14 @@ class FormScreen extends ConsumerStatefulWidget {
     super.key,
     required this.form,
     this.postId,
+    this.postTitle,
   });
 
   final FormDefinition form;
   final String? postId;
+
+  /// Заголовок поста — для снимка в истории анкет.
+  final String? postTitle;
 
   @override
   ConsumerState<FormScreen> createState() => _FormScreenState();
@@ -46,6 +51,7 @@ class FormScreen extends ConsumerStatefulWidget {
 
 class _FormScreenState extends ConsumerState<FormScreen> {
   bool _submitted = false;
+  FormSubmission? _lastSubmission;
 
   /// Определение с изъятыми автозаполняемыми шагами (готово к рендеру).
   ///
@@ -134,7 +140,27 @@ class _FormScreenState extends ConsumerState<FormScreen> {
       );
       return;
     }
-    setState(() => _submitted = true);
+
+    // История на устройстве: «Мои анкеты», метка «заполнено» на карточке
+    // и блокировка повторного заполнения. Пишем снимок (заголовки поста
+    // и анкеты, ответы) — пост может уйти в архив или удалиться на
+    // сервере, а карточка истории должна остаться осмысленной.
+    final submission = FormSubmission(
+      formId: widget.form.id,
+      postId: widget.postId ?? '',
+      postTitle: widget.postTitle ?? '',
+      formTitle: widget.form.title,
+      submittedAt: DateTime.now(),
+      answers: Map<String, dynamic>.from(answers),
+      successText: widget.form.successText,
+    );
+    await ref.read(formSubmissionsProvider.notifier).add(submission);
+
+    if (!mounted) return;
+    setState(() {
+      _submitted = true;
+      _lastSubmission = submission;
+    });
   }
 
   /// Ручные ответы ФИО/группа сохраняются в профиль (если там пусто).
@@ -167,41 +193,19 @@ class _FormScreenState extends ConsumerState<FormScreen> {
   Widget build(BuildContext context) {
     final form = widget.form;
 
-    // Отправлено: простой экран подтверждения вместо чьей-либо анкеты.
-    // Повторная отправка не нужна — иначе админ увидит дубли.
-    if (_submitted) {
-      return Scaffold(
-        appBar: AppBar(
-          title: Text(form.title),
-          titleTextStyle: AppText.headline,
-          leading: _BackButton(),
-        ),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.check_circle_outline_rounded,
-                  size: 64,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-                const SizedBox(height: 16),
-                Text('Анкета отправлена', style: AppText.title),
-                if ((form.successText ?? '').isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    form.successText!,
-                    textAlign: TextAlign.center,
-                    style: AppText.footnote
-                        .copyWith(color: AppColors.secondaryLight),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
+    // Уже заполнено раньше (файл истории на устройстве): блокируем
+    // повтор — иначе админ увидит дубли ответов. Показываем снимок:
+    // когда отправлено и что ответили.
+    final existing = _submitted
+        ? _lastSubmission
+        : (widget.postId != null
+            ? ref.watch(formSubmissionsProvider.notifier).forPost(widget.postId!)
+            : null);
+
+    if (existing != null) {
+      return _DoneScreen(
+        formTitle: form.title,
+        submission: existing,
       );
     }
 
@@ -225,6 +229,66 @@ class _FormScreenState extends ConsumerState<FormScreen> {
       ),
     );
   }
+}
+
+/// Экран «отправлено»: подтверждение сразу после анкеты и блокировка
+/// повторного входа. Один и тот же для обоих случаев — меньше кода,
+/// одинаковый вид.
+class _DoneScreen extends StatelessWidget {
+  const _DoneScreen({required this.formTitle, required this.submission});
+
+  final String formTitle;
+  final FormSubmission submission;
+
+  @override
+  Widget build(BuildContext context) {
+    final date = _formatDate(submission.submittedAt);
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(formTitle),
+        titleTextStyle: AppText.headline,
+        leading: _BackButton(),
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.check_circle_outline_rounded,
+                size: 64,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(height: 16),
+              Text('Анкета отправлена', style: AppText.title),
+              const SizedBox(height: 8),
+              Text(
+                '$date · повторное заполнение недоступно',
+                textAlign: TextAlign.center,
+                style:
+                    AppText.footnote.copyWith(color: AppColors.secondaryLight),
+              ),
+              if ((submission.successText ?? '').isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  submission.successText!,
+                  textAlign: TextAlign.center,
+                  style: AppText.footnote
+                      .copyWith(color: AppColors.secondaryLight),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static String _formatDate(DateTime dt) =>
+      '${dt.day.toString().padLeft(2, '0')}.'
+      '${dt.month.toString().padLeft(2, '0')}.'
+      '${dt.year}';
 }
 
 /// Пустая шапка для SurveyKit: сам экран уже держит AppBar.

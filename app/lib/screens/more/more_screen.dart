@@ -8,6 +8,7 @@ import '../../core/widgets/settings_list.dart';
 import '../../state/providers.dart';
 import '../archive/archive_screen.dart';
 import 'about_screen.dart';
+import 'my_forms_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart';
 
@@ -18,6 +19,7 @@ class MoreScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(profileProvider);
+    final submissions = ref.watch(formSubmissionsProvider);
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
 
     return Scaffold(
@@ -58,6 +60,16 @@ class MoreScreen extends ConsumerWidget {
                 subtitle: 'Завершённые вакансии, события и стажировки',
                 onTap: () => Navigator.of(context).push(
                   appRoute(context, const ArchiveScreen())
+                ),
+              ),
+              SettingsTile(
+                icon: Icons.task_alt_rounded,
+                title: 'Мои анкеты',
+                subtitle: submissions.isEmpty
+                    ? 'Заполненные анкеты мероприятий'
+                    : 'Отправлено: ${submissions.length}',
+                onTap: () => Navigator.of(context).push(
+                  appRoute(context, const MyFormsScreen())
                 ),
               ),
             ],

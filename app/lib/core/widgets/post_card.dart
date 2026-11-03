@@ -33,10 +33,15 @@ class PostCard extends StatelessWidget {
     super.key,
     required this.post,
     required this.onTap,
+    this.filledForm = false,
   });
 
   final Post post;
   final VoidCallback onTap;
+
+  /// Анкета поста уже заполнена (история на устройстве): на карточке
+  /// сразу виден статус, чтобы не открывать детали для проверки.
+  final bool filledForm;
 
   @override
   Widget build(BuildContext context) {
@@ -99,6 +104,29 @@ class PostCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
+                    // Анкета уже отправлена: одна строка, не плашка.
+                    // Зелёная галочка читается как «сделано», не спорит
+                    // с плашкой срочности и не занимает место у заголовка.
+                    if (filledForm)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.check_circle_rounded,
+                              size: 14,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              'Анкета заполнена',
+                              style: AppText.caption.copyWith(
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     _Facts(post: post),
                   ],
                 ),

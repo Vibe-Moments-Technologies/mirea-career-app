@@ -74,6 +74,10 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     // Анкета приоритетнее внешней ссылки: опросник в приложении
     // открывает прямой канал отклика (ответ летит в БД), а ссылка —
     // браузер с чужой регистрацией.
+    // Заполненная анкета блокируется повторно: история на устройстве
+    // знает, что уже отправлено, и кнопка сразу показывает это.
+    final filledForm = form != null &&
+        ref.watch(formSubmissionsProvider.notifier).forPost(post.id) != null;
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
 
     return Scaffold(
@@ -120,11 +124,19 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                 // Анкета (если привязана) открывается вместо внешней ссылки.
                 if (form != null)
                   _ApplyButton(
-                    label: 'Заполнить анкету',
-                    icon: Icons.description_outlined,
+                    label: filledForm ? 'Анкета заполнена' : 'Заполнить анкету',
+                    icon: filledForm
+                        ? Icons.task_alt_rounded
+                        : Icons.description_outlined,
                     onTap: () => Navigator.of(context).push(
-                      appRoute(context,
-                          FormScreen(form: form, postId: post.id)),
+                      appRoute(
+                        context,
+                        FormScreen(
+                          form: form,
+                          postId: post.id,
+                          postTitle: post.title,
+                        ),
+                      ),
                     ),
                   )
                 else if (link.isNotEmpty)

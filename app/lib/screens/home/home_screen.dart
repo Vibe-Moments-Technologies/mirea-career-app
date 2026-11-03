@@ -175,6 +175,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             child: PostCard(
                               post: posts[i],
                               onTap: () => _open(posts[i]),
+                              filledForm: posts[i].form != null &&
+                                  ref.watch(
+                                          formSubmissionsProvider.notifier)
+                                      .forPost(posts[i].id) !=
+                                  null,
                             ),
                           ),
                         ),

@@ -6,9 +6,7 @@ import 'core/theme/app_theme.dart';
 import 'data/crash_reporting.dart';
 import 'data/metrics.dart';
 import 'screens/root_shell.dart';
-import 'state/providers.dart';
-
-Future<void> main() async {
+import 'state/providers.dart';Future<void> main() async {
   // release-сборка не показывает ни красного экрана, ни сообщений: при сбое
   // пользователь видит однотонную заливку, и на устройстве не остаётся
   // следов. Мы уже дважды искали причину вслепую — поэтому здесь сразу
@@ -46,6 +44,7 @@ Future<void> _start() async {
       overrides: [
         localStoreProvider.overrideWithValue(boot.store),
         metricsProvider.overrideWithValue(boot.metrics),
+        formHistoryProvider.overrideWithValue(boot.formHistory),
         backendConfiguredProvider.overrideWithValue(boot.configured),
         // Тема из хранилища — до первого кадра: иначе стартовала светлая
         // по умолчанию, и на тёмном устройстве вспыхивал белый экран.

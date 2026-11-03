@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../data/form_history.dart';
 import '../data/local_store.dart';
 import '../data/metrics.dart';
 import '../data/models.dart';
@@ -8,6 +9,10 @@ import '../data/posts_repo.dart';
 
 /// LocalStore открывается один раз при старте (main переопределяет провайдер).
 final localStoreProvider = Provider<LocalStore>((ref) => throw UnimplementedError());
+
+/// История отправленных анкет из файла на устройстве
+/// (main переопределяет провайдер после старта).
+final formHistoryProvider = Provider<FormHistoryStore>((ref) => throw UnimplementedError());
 
 /// Отправка счётчиков интереса (main переопределяет готовым экземпляром).
 final metricsProvider = Provider<Metrics>((ref) => throw UnimplementedError());
@@ -291,3 +296,24 @@ class FavoritesNotifier extends Notifier<List<String>> {
 
 final favoritesProvider =
     NotifierProvider<FavoritesNotifier, List<String>>(FavoritesNotifier.new);
+
+// ---------------- История анкет ----------------
+
+/// Список отправленных анкет + уведомление UI о новых записях.
+class FormHistoryNotifier extends Notifier<List<FormSubmission>> {
+  @override
+  List<FormSubmission> build() => ref.watch(formHistoryProvider).all;
+
+  /// Записать отправленную анкету в файл и обновить состояние.
+  Future<void> add(FormSubmission submission) async {
+    await ref.read(formHistoryProvider).add(submission);
+    state = ref.read(formHistoryProvider).all;
+  }
+
+  FormSubmission? forPost(String postId) =>
+      ref.read(formHistoryProvider).forPost(postId);
+}
+
+final formSubmissionsProvider =
+    NotifierProvider<FormHistoryNotifier, List<FormSubmission>>(
+        FormHistoryNotifier.new);
