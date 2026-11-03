@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:survey_kit/survey_kit.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../data/form_history.dart';
 import '../../data/models.dart';
 import '../../state/providers.dart';
+import 'form_view.dart';
 
 /// Id шагов анкеты, которые питаются профилем студента.
 ///
@@ -18,16 +18,15 @@ const _kGroupStepIds = {'group', 'group_number', 'группа'};
 
 /// Экран опросника: анкета, конфигурируемая в БД.
 ///
-/// Определение приходит из PocketBase (expand.form) в JSON-формате
-/// survey_kit: `Task.fromJson(definition)`. Результат сериализуется
-/// и отправляется в form_responses (анонимно: create открыт, read закрыт).
+/// Определение приходит из PocketBase (expand.form) в JSON — шаги,
+/// подписи, типы ответов. Рендер — [FormView] в стиле приложения.
+/// Ответы уходят в form_responses (анонимно: create открыт, read закрыт).
 ///
 /// **Автозаполнение из профиля:** шаги с id ФИО/группы, для которых в
 /// локальном профиле уже есть значение, ИЗЫМАЮТСЯ из анкеты (студент
 /// не вводит одно и то же дважды), а сами значения подставляются
 /// в ответы при отправке. Если в профиле пусто — шаг остаётся, студент
-/// заполняет его руками, и после отправки поле запоминается в профиле
-/// для следующих анкет.
+/// заполняет его руками, и после отправки поле запоминается в профиле.
 ///
 /// Приоритет над внешней ссылкой: если у поста есть форма,
 /// кнопка в деталях открывает её, а не браузер.
@@ -50,8 +49,7 @@ class FormScreen extends ConsumerStatefulWidget {
 }
 
 class _FormScreenState extends ConsumerState<FormScreen> {
-  bool _submitted = false;
-  FormSubmission? _lastSubmission;
+  bool _submitting = false;
 
   /// Определение с изъятыми автозаполняемыми шагами (готово к рендеру).
   ///
@@ -59,6 +57,22 @@ class _FormScreenState extends ConsumerState<FormScreen> {
   /// профиль в рамках экрана меняться не должен.
   Map<String, dynamic>? _strippedDefinition;
   Map<String, String> _prefilled = {};
+
+  /// Сколько студентов уже заполнили анкету (хук PocketBase).
+  int? _responsesCount;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadResponsesCount();
+  }
+
+  Future<void> _loadResponsesCount() async {
+    final n = await ref.read(postsRepoProvider)
+        .fetchFormResponsesCount(widget.form.id);
+    if (!mounted) return;
+    setState(() => _responsesCount = n);
+  }
 
   Map<String, dynamic> _definitionFor() {
     if (_strippedDefinition != null) return _strippedDefinition!;
@@ -87,35 +101,14 @@ class _FormScreenState extends ConsumerState<FormScreen> {
       kept.add(s);
     }
 
-    // survey_kit требует List<Map<String, dynamic>> (жёсткий каст
-    // в OrderedTask.fromJson), поэтому типизируем явно.
     definition['steps'] = kept;
     _prefilled = prefilled;
     _strippedDefinition = definition;
     return definition;
   }
 
-  Future<void> _onResult(SurveyResult result) async {
-    if (result.finishReason != FinishReason.completed) return;
-
-    // Компактное представление: id шага → значение ответа.
-    // Полный SurveyResult.toJson() избыточен для админа (тайминги,
-    // дубли шагов) — оставляем только суть.
-    final answers = <String, dynamic>{};
-    for (final r in result.results) {
-      final value = r.result;
-      if (value == null) continue;
-      if (value is BooleanResult) {
-        answers[r.id] = value.name;
-      } else if (value is TextChoice) {
-        answers[r.id] = value.value ?? value.text;
-      } else if (value is List<TextChoice>) {
-        answers[r.id] =
-            value.map((c) => c.value ?? c.text).toList(growable: false);
-      } else {
-        answers[r.id] = value.toString();
-      }
-    }
+  Future<void> _onSubmit(Map<String, dynamic> answers) async {
+    setState(() => _submitting = true);
 
     // Автозаполнение: значения профиля занимают свои места ДО ручных
     // ответов (ручные не могут совпасть — шаги с таким id изъяты).
@@ -125,8 +118,15 @@ class _FormScreenState extends ConsumerState<FormScreen> {
     // запоминаем в профиль — следующая анкета не спросит их снова.
     await _learnProfileFields(answers);
 
+    final form = FormDefinition(
+      id: widget.form.id,
+      title: widget.form.title,
+      definition: widget.form.definition,
+      successText: widget.form.successText,
+    );
+
     final ok = await ref.read(postsRepoProvider).submitFormResponse(
-          formId: widget.form.id,
+          formId: form.id,
           postId: widget.postId,
           answers: answers,
           deviceId: _deviceId(),
@@ -134,6 +134,7 @@ class _FormScreenState extends ConsumerState<FormScreen> {
 
     if (!mounted) return;
     if (!ok) {
+      setState(() => _submitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
             content: Text('Не удалось отправить — попробуйте ещё раз')),
@@ -146,22 +147,25 @@ class _FormScreenState extends ConsumerState<FormScreen> {
     // и анкеты, ответы) — пост может уйти в архив или удалиться на
     // сервере, а карточка истории должна остаться осмысленной.
     final submission = FormSubmission(
-      formId: widget.form.id,
+      formId: form.id,
       postId: widget.postId ?? '',
       postTitle: widget.postTitle ?? '',
-      formTitle: widget.form.title,
+      formTitle: form.title,
       submittedAt: DateTime.now(),
       answers: Map<String, dynamic>.from(answers),
-      successText: widget.form.successText,
+      successText: form.successText,
     );
     await ref.read(formSubmissionsProvider.notifier).add(submission);
 
+    // Счётчик прошедших +1: локально, чтобы не ждать перезагрузки.
     if (!mounted) return;
     setState(() {
-      _submitted = true;
-      _lastSubmission = submission;
+      _responsesCount = (_responsesCount ?? 0) + 1;
+      _submitted = submission;
     });
   }
+
+  FormSubmission? _submitted;
 
   /// Ручные ответы ФИО/группа сохраняются в профиль (если там пусто).
   Future<void> _learnProfileFields(Map<String, dynamic> answers) async {
@@ -196,18 +200,20 @@ class _FormScreenState extends ConsumerState<FormScreen> {
     // Уже заполнено раньше (файл истории на устройстве): блокируем
     // повтор — иначе админ увидит дубли ответов. Показываем снимок:
     // когда отправлено и что ответили.
-    final existing = _submitted
-        ? _lastSubmission
-        : (widget.postId != null
-            ? ref.watch(formSubmissionsProvider.notifier).forPost(widget.postId!)
+    final existing = _submitted ??
+        (widget.postId != null && ref.watch(hasSubmittedProvider(widget.postId!))
+            ? ref.read(formSubmissionsProvider.notifier).forPost(widget.postId!)
             : null);
 
     if (existing != null) {
       return _DoneScreen(
         formTitle: form.title,
         submission: existing,
+        responsesCount: _responsesCount,
       );
     }
+
+    final definition = _definitionFor();
 
     return Scaffold(
       appBar: AppBar(
@@ -215,17 +221,59 @@ class _FormScreenState extends ConsumerState<FormScreen> {
         titleTextStyle: AppText.headline,
         leading: _BackButton(),
       ),
-      body: SurveyKit(
-        task: Task.fromJson(_definitionFor()),
-        onResult: _onResult,
-        // Тёмная тема и фон страницы: survey_kit рисует собственный
-        // MaterialApp-подобный контейнер, тема снаружи до него не доходит.
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        // Своя пустая шапка вместо встроенной: SurveyAppBar пакета
-        // показывает «Cancel» и прогресс, а при завершении опроса падает
-        // (баг: каст SurveyResultState в PresentingSurveyState). Наш AppBar
-        // над ним уже даёт заголовок и «назад», дублировать нечего.
-        appBar: _EmptyAppBar(),
+      body: Column(
+        children: [
+          _ResponsesCount(
+            count: _responsesCount,
+            onRetry: _loadResponsesCount,
+          ),
+          Expanded(
+            child: FormView(
+              form: FormDefinition(
+                id: form.id,
+                title: form.title,
+                definition: definition,
+                successText: form.successText,
+              ),
+              onSubmit: _onSubmit,
+              submitting: _submitting,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Строка «уже прошли: N» под шапкой.
+///
+/// Число — из хука PocketBase (сами ответы закрыты, торчит только
+/// счётчик). Офлайн — строка скрыта: число важнее отсутствия строки,
+/// а не наоборот.
+class _ResponsesCount extends StatelessWidget {
+  const _ResponsesCount({required this.count, required this.onRetry});
+
+  final int? count;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    if (count == null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 4, 0, 0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.how_to_reg_rounded,
+              size: 14, color: AppColors.secondaryLight),
+          const SizedBox(width: 5),
+          Text(
+            'Уже прошли: $count',
+            style: AppText.caption
+                .copyWith(color: AppColors.secondaryLight),
+          ),
+        ],
       ),
     );
   }
@@ -234,15 +282,24 @@ class _FormScreenState extends ConsumerState<FormScreen> {
 /// Экран «отправлено»: подтверждение сразу после анкеты и блокировка
 /// повторного входа. Один и тот же для обоих случаев — меньше кода,
 /// одинаковый вид.
+///
+/// Кнопка «Вернуться к карточке» обязательна: раньше экран заканчивался
+/// текстом, и выйти можно было только системным «назад».
 class _DoneScreen extends StatelessWidget {
-  const _DoneScreen({required this.formTitle, required this.submission});
+  const _DoneScreen({
+    required this.formTitle,
+    required this.submission,
+    required this.responsesCount,
+  });
 
   final String formTitle;
   final FormSubmission submission;
+  final int? responsesCount;
 
   @override
   Widget build(BuildContext context) {
     final date = _formatDate(submission.submittedAt);
+
     return Scaffold(
       appBar: AppBar(
         title: Text(formTitle),
@@ -269,6 +326,14 @@ class _DoneScreen extends StatelessWidget {
                 style:
                     AppText.footnote.copyWith(color: AppColors.secondaryLight),
               ),
+              if (responsesCount != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Всего прошло: $responsesCount',
+                  style: AppText.footnote
+                      .copyWith(color: AppColors.secondaryLight),
+                ),
+              ],
               if ((submission.successText ?? '').isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Text(
@@ -278,6 +343,22 @@ class _DoneScreen extends StatelessWidget {
                       .copyWith(color: AppColors.secondaryLight),
                 ),
               ],
+              const SizedBox(height: 28),
+              // Явный выход к карточке: не заставляем искать системную
+              // кнопку «назад» и не оставляем «висеть» на экране.
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.pill),
+                    ),
+                  ),
+                  child: const Text('Вернуться к карточке'),
+                ),
+              ),
             ],
           ),
         ),
@@ -289,17 +370,6 @@ class _DoneScreen extends StatelessWidget {
       '${dt.day.toString().padLeft(2, '0')}.'
       '${dt.month.toString().padLeft(2, '0')}.'
       '${dt.year}';
-}
-
-/// Пустая шапка для SurveyKit: сам экран уже держит AppBar.
-class _EmptyAppBar extends StatelessWidget implements PreferredSizeWidget {
-  const _EmptyAppBar();
-
-  @override
-  Size get preferredSize => const Size.fromHeight(0);
-
-  @override
-  Widget build(BuildContext context) => const SizedBox.shrink();
 }
 
 /// Кнопка «назад»: обычная, а не стеклянная — фон у шапки не картинка.

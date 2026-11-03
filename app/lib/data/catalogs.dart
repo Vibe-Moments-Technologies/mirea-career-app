@@ -75,13 +75,24 @@ class Catalogs {
     InterestTag('scholarship', 'Стипендии'),
   ];
 
+  /// Базовые типы карточек. Отдельные подтипы событий (ифт-школа,
+  /// ярмарка вакансий и т.п.) — это поле tags/подзаголовок, а не тип:
+  /// типов в ленте должно быть четыре, иначе глаз перестаёт их различать.
   static const postTypes = <String, String>{
-    'event': 'Событие',
-    'vacancy': 'Вакансия',
     'internship': 'Стажировка',
+    'vacancy': 'Вакансия',
+    'event': 'Мероприятие',
+    'survey': 'Опрос',
+  };
+
+  /// Легаси-типы из старых записей: показываем нейтральной подписью.
+  static const legacyPostTypes = <String, String>{
     'scholarship': 'Стипендия',
     'project': 'Проект',
   };
+
+  static String postTypeTitle(String? type) =>
+      postTypes[type] ?? legacyPostTypes[type] ?? (type ?? '');
 
   static const formats = <String, String>{
     'online': 'Онлайн',

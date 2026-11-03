@@ -1,0 +1,14 @@
+[Unit]
+Description=PocketBase for MIREA Career (vmt-mireacareer.l1ratch.ru)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/mirea-pocketbase
+ExecStart=/opt/mirea-pocketbase/pocketbase serve --http=127.0.0.1:8090
+Restart=always
+RestartSec=3
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

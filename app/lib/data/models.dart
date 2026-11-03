@@ -94,10 +94,11 @@ class Organization {
   }
 }
 
-/// Опросник (survey_kit), конфигурируемый в БД.
+/// Опросник, конфигурируемый в БД.
 ///
-/// `definition` — JSON в формате survey_kit Task.fromJson
-/// (type: ordered/navigable, steps с content и answerFormat).
+/// `definition` — JSON: `{type, id, steps: [{id, content, answerFormat,
+/// isMandatory}]}`. Формат совместим с прежним survey_kit-определением,
+/// но рендерится собственным [FormView] в стиле приложения.
 /// Хранится в отдельной коллекции `forms` и приходит в посте
 /// через `expand.form`.
 class FormDefinition {
@@ -111,11 +112,10 @@ class FormDefinition {
   final String id;
   final String title;
 
-  /// JSON-определение опроса для survey_kit.
+  /// JSON-определение опроса: шаги, подписи, типы ответов.
   final Map<String, dynamic> definition;
 
-  /// Текст после отправки: показываем свой экран «готово»
-  /// поверх стандартного completion-шага.
+  /// Текст после отправки: показываем на экране «готово».
   final String? successText;
 
   static FormDefinition? tryParse(Object? json) {

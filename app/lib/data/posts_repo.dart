@@ -42,10 +42,11 @@ class PostsRepo {
       filters.add('(end_date>@now||end_date="")');
     }
 
-    if (tab == 'university') {
-      filters.add('organization.type="university_dept"');
-    } else if (tab == 'partner') {
-      filters.add('organization.type="partner"');
+    // Вкладка «Опросы» — карточки типа survey (опросы от вуза).
+    // Вкладки «От вуза»/«Партнёры» убраны вместе с профилями организаций:
+    // организатора указывает админ, источник больше не режет ленту.
+    if (tab == 'survey') {
+      filters.add('type="survey"');
     }
 
     if (types.isNotEmpty) {
@@ -229,9 +230,9 @@ class PostsRepo {
 
   /// Отправка ответов опросника.
   ///
-  /// [answers] — сериализованный SurveyResult (или компактный map
-  /// «id шага → значение»). createRule формы открыт анонимно,
-  /// чтение закрыто: студент отправляет, но не может вытащить чужие ответы.
+  /// [answers] — компактный map «id шага → значение». createRule формы
+  /// открыт анонимно, чтение закрыто: студент отправляет, но не может
+  /// вытащить чужие ответы.
   ///
   /// Отправляем и device_id: анонимный «кто» без персональных данных —
   /// по нему админ видит дубли, а мы считаем уникальных респондентов.
@@ -252,6 +253,26 @@ class PostsRepo {
         'device_id': deviceId,
       },
     );
+  }
+
+  /// Сколько студентов уже заполнили анкету.
+  ///
+  /// Ответы закрыты для чтения (create-only), поэтому число приходит
+  /// из отдельного маршрута хука (pb_hooks/forms.pb.js) и только число —
+  /// без самих ответов. null = не удалось узнать (офлайн, ошибка).
+  Future<int?> fetchFormResponsesCount(String formId) async {
+    if (isOffline) return null;
+
+    final bytes = await AppHttpClient.instance
+        .fetchBytes('$_baseUrl/api/forms/responses-count/$formId');
+    if (bytes == null) return null;
+    try {
+      final json = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+      final count = json['count'];
+      return count is num ? count.toInt() : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   // ---------- Парсинг ----------

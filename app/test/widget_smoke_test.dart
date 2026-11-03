@@ -1,6 +1,5 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mirea_career/core/theme/app_theme.dart';
@@ -19,7 +18,6 @@ import 'package:mirea_career/data/posts_repo.dart';
 import 'package:mirea_career/screens/favorites/favorites_screen.dart';
 import 'package:mirea_career/screens/home/home_screen.dart';
 import 'package:mirea_career/screens/more/profile_screen.dart';
-import 'package:mirea_career/screens/org/organizations_screen.dart';
 import 'package:mirea_career/screens/onboarding/onboarding_screen.dart';
 import 'package:mirea_career/screens/root_shell.dart';
 import 'package:mirea_career/state/feed_query.dart';
@@ -90,6 +88,10 @@ class _CachedRepo extends PostsRepo {
   }) async =>
       true;
 
+  /// Счётчик прошедших: «сервер» в тестах отдаёт 7.
+  @override
+  Future<int?> fetchFormResponsesCount(String formId) async => 7;
+
   /// Организации собираются из expand постов — как отдельный запрос.
   @override
   Future<List<Organization>> fetchOrganizations() async => [
@@ -111,6 +113,7 @@ Map<String, dynamic> samplePost({
   String organizationId = 'org1',
   String? externalLink,
   String description = 'Описание',
+  String type = 'event',
   DateTime? startDate,
   DateTime? endDate,
   List<String> campuses = const [],
@@ -122,7 +125,7 @@ Map<String, dynamic> samplePost({
       'organization': organizationId,
       'title': title,
       'description': description,
-      'type': 'event',
+      'type': type,
       'format': 'offline',
       'status': 'published',
       // PocketBase-формат: организация приезжает в expand.organization,
@@ -486,8 +489,7 @@ void main() {
   });
 
   group('Лента', () {
-    testWidgets('вкладки главной: Для вас / Все / От вуза / Партнёры',
-        (tester) async {
+    testWidgets('вкладки главной: Для вас / Все / Опросы', (tester) async {
       final c = await container(
         profile: const StudentProfile(completed: true, tags: ['it']),
         cache: [samplePost()],
@@ -500,8 +502,10 @@ void main() {
       // Сегменты-вкладки встроены в закреплённую шапку главной.
       expect(find.text('Для вас'), findsOneWidget);
       expect(find.text('Все'), findsOneWidget);
-      expect(find.text('От вуза'), findsOneWidget);
-      expect(find.text('Партнёры'), findsOneWidget);
+      expect(find.text('Опросы'), findsOneWidget);
+      // Профили организаций временно убраны: вкладок по источнику нет.
+      expect(find.text('От вуза'), findsNothing);
+      expect(find.text('Партнёры'), findsNothing);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
 
@@ -647,7 +651,6 @@ void main() {
       await tester.pump();
 
       for (final icon in [
-        Icons.apartment_rounded,
         Icons.bookmark_rounded,
         Icons.person_rounded,
         Icons.home_rounded,
@@ -794,8 +797,8 @@ void main() {
     });
 
     testWidgets('анкета из БД заменяет внешнюю ссылку', (tester) async {
-      // Минимальный опросник survey_kit: инструкция + один текстовый
-      // вопрос. Достаточно проверить: кнопка ведёт в анкету, а не в браузер.
+      // Минимальная анкета: вопрос-текст. Проверяем: кнопка в деталях
+      // ведёт в анкету, а не в браузер; рендер в стиле приложения.
       final form = {
         'id': 'frm1',
         'title': 'Анкета стажёра',
@@ -804,24 +807,16 @@ void main() {
           'id': 'test_form',
           'steps': [
             {
-              'id': 'intro',
-              'content': [
-                {'type': 'text', 'text': 'Анкета стажёра', 'fontSize': 22},
-              ],
-              'buttonText': 'Начать',
-            },
-            {
               'id': 'name',
               'isMandatory': true,
               'content': [
-                {'type': 'text', 'text': 'Как вас зовут?', 'fontSize': 22},
+                {'type': 'text', 'text': 'Как вас зовут?'},
               ],
               'answerFormat': {
                 'type': 'text',
                 'hint': 'Имя',
                 'maxLines': 1,
               },
-              'buttonText': 'Отправить',
             },
           ],
         },
@@ -855,9 +850,12 @@ void main() {
       await tester.tap(find.text('Заполнить анкету'));
       await tester.pumpAndSettle();
 
-      // Отрисовался survey_kit: заголовок анкеты и первый шаг.
-      expect(find.text('Анкета стажёра'), findsWidgets);
-      expect(find.text('Начать'), findsOneWidget);
+      // Анкета в стиле приложения: шапка с названием, вопрос с полем,
+      // кнопка отправки внизу, счётчик прошедших.
+      expect(find.text('Анкета стажёра'), findsOneWidget);
+      expect(find.text('Как вас зовут?'), findsOneWidget);
+      expect(find.text('Уже прошли: 7'), findsOneWidget);
+      expect(find.text('Отправить анкету'), findsOneWidget);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
 
@@ -877,23 +875,21 @@ void main() {
               'id': 'fio',
               'isMandatory': true,
               'content': [
-                {'type': 'text', 'text': 'Как вас зовут?', 'fontSize': 22},
+                {'type': 'text', 'text': 'Как вас зовут?'},
               ],
               'answerFormat': {'type': 'text', 'hint': 'ФИО', 'maxLines': 1},
-              'buttonText': 'Далее',
             },
             {
               'id': 'group',
               'isMandatory': true,
               'content': [
-                {'type': 'text', 'text': 'Ваша группа?', 'fontSize': 22},
+                {'type': 'text', 'text': 'Ваша группа?'},
               ],
               'answerFormat': {
                 'type': 'text',
                 'hint': 'Группа',
                 'maxLines': 1,
               },
-              'buttonText': 'Отправить',
             },
           ],
         },
@@ -920,7 +916,7 @@ void main() {
       await tester.tap(find.text('Заполнить анкету'));
       await tester.pumpAndSettle();
 
-      // Шаг fio изъят: анкета сразу начинается с вопроса про группу.
+      // Шаг fio изъят: анкета сразу показывает вопрос про группу.
       expect(find.text('Как вас зовут?'), findsNothing,
           reason: 'шаг fio должен быть скрыт при заполненном профиле');
       expect(find.text('Ваша группа?'), findsOneWidget);
@@ -928,34 +924,25 @@ void main() {
       // Заполняем группу руками и отправляем.
       await tester.enterText(find.byType(TextField), 'ИКБО-01-24');
       await tester.pump();
-      // Кнопка может лежать ниже видимой области (шаг в ScrollView):
-      // прячем клавиатуру и докручиваем до кнопки.
-      await tester.sendKeyDownEvent(LogicalKeyboardKey.escape);
-      await tester.pump();
-      await tester.ensureVisible(find.text('Отправить'));
-      await tester.tap(find.text('Отправить'));
-      await tester.pump(const Duration(milliseconds: 150));
-      // pumpAndSettle здесь не годится: у survey_kit остаются вечные
-      // анимации (переходы страниц строятся бесконечно), поэтому
-      // прокачиваем кадры вручную до появления экрана подтверждения.
+      await tester.ensureVisible(find.text('Отправить анкету'));
+      await tester.tap(find.text('Отправить анкету'));
       for (var i = 0; i < 30; i++) {
         await tester.pump(const Duration(milliseconds: 100));
         if (find.text('Анкета отправлена').evaluate().isNotEmpty) break;
       }
 
       // Группа запомнилась в профиле: следующая анкета не спросит её.
-      // Проверяем ДО экрана подтверждения — это tells, дошёл ли _onResult.
       final profile = c.read(profileProvider);
       expect(profile.group, 'ИКБО-01-24',
-          reason: '_onResult не доработал: профиль не обновлён');
+          reason: 'отправка не доработала: профиль не обновлён');
       expect(profile.fullName, 'Иванов Иван Иванович');
 
-      // Экран подтверждения: анкета отправлена.
+      // Экран подтверждения: анкета отправлена + кнопка возврата.
       expect(find.text('Анкета отправлена'), findsOneWidget);
+      expect(find.text('Вернуться к карточке'), findsOneWidget);
 
       // История: анкета записана с ФИО и группой в ответах.
-      final submission =
-          c.read(formSubmissionsProvider.notifier).forPost('a');
+      final submission = c.read(formSubmissionsProvider.notifier).forPost('a');
       expect(submission, isNotNull, reason: 'анкета не записана в историю');
       expect(submission!.answers['fio'], 'Иванов Иван Иванович');
       expect(submission.answers['group'], 'ИКБО-01-24');
@@ -976,10 +963,9 @@ void main() {
               'id': 'q1',
               'isMandatory': true,
               'content': [
-                {'type': 'text', 'text': 'Вопрос?', 'fontSize': 22},
+                {'type': 'text', 'text': 'Вопрос?'},
               ],
               'answerFormat': {'type': 'text', 'hint': 'Ответ', 'maxLines': 1},
-              'buttonText': 'Отправить',
             },
           ],
         },
@@ -1037,6 +1023,77 @@ void main() {
       expect(find.text('Вопрос?'), findsNothing);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
+
+    testWidgets('карточка-опрос от вуза: тип и кнопка «Пройти опрос»',
+        (tester) async {
+      // Опрос — базовый тип карточки: анкета внутри, кнопка отклика
+      // называется «Пройти опрос», внешняя ссылка не участвует.
+      final form = {
+        'id': 'frmS',
+        'title': 'Опрос о столовых',
+        'definition': {
+          'type': 'ordered',
+          'id': 'survey_food',
+          'steps': [
+            {
+              'id': 'q1',
+              'isMandatory': true,
+              'content': [
+                {'type': 'text', 'text': 'Хватает ли мест в столовых?'},
+              ],
+              'answerFormat': {
+                'type': 'single',
+                'textChoices': [
+                  {'text': 'Да', 'value': 'yes'},
+                  {'text': 'Нет', 'value': 'no'},
+                ],
+              },
+            },
+          ],
+        },
+      };
+
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [
+          samplePost(
+            id: 's1',
+            title: 'Опрос о столовых',
+            type: 'survey',
+            externalLink: 'https://example.com/legacy',
+            form: form,
+          ),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Карточка: подпись типа ОПРОС.
+      expect(find.text('ОПРОС'), findsOneWidget);
+
+      await tester.tap(find.text('Опрос о столовых'));
+      await tester.pumpAndSettle();
+
+      // Кнопка зовёт пройти опрос, не «заполнить анкету».
+      expect(find.text('Пройти опрос'), findsOneWidget);
+      expect(find.text('Перейти к регистрации'), findsNothing);
+
+      await tester.tap(find.text('Пройти опрос'));
+      await tester.pumpAndSettle();
+
+      // Анкета открылась: вопрос и плитки выбора.
+      expect(find.text('Хватает ли мест в столовых?'), findsOneWidget);
+      expect(find.text('Да'), findsOneWidget);
+      expect(find.text('Нет'), findsOneWidget);
+
+      // Выбор варианта: плитка выделяется, не «сливается».
+      await tester.tap(find.text('Да'));
+      await tester.pump();
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
   });
 
   group('Карточка и детали', () {
@@ -1063,7 +1120,7 @@ void main() {
 
       expect(find.text('Хакатон осенью'), findsOneWidget);
       // Тип — подписью, организация — отдельной строкой.
-      expect(find.text('СОБЫТИЕ'), findsOneWidget);
+      expect(find.text('МЕРОПРИЯТИЕ'), findsOneWidget);
       expect(find.text('Карьерный центр'), findsOneWidget);
       // Короткие факты: формат и кампус видны прямо в ленте.
       expect(find.text('Офлайн'), findsOneWidget);
@@ -1288,27 +1345,6 @@ void main() {
       );
       expect(scroll.physics, isA<AlwaysScrollableScrollPhysics>());
     });
-
-    testWidgets('организации обновляются жестом, как главная', (tester) async {
-      final c = await container(
-        profile: const StudentProfile(completed: true),
-        cache: [samplePost()],
-      );
-      addTearDown(c.dispose);
-
-      await tester.pumpWidget(wrap(c, const RootShell()));
-      await tester.pump();
-      await tester.tap(find.byIcon(Icons.apartment_rounded).last);
-      await tester.pumpAndSettle();
-
-      final scroll = tester.widget<CustomScrollView>(
-        find.descendant(
-          of: find.byType(OrganizationsScreen),
-          matching: find.byType(CustomScrollView),
-        ),
-      );
-      expect(scroll.physics, isA<AlwaysScrollableScrollPhysics>());
-    });
   });
 
   group('Поиск', () {
@@ -1410,30 +1446,22 @@ void main() {
     });
   });
 
-  group('Организации', () {
-    testWidgets('страница в доке: список и фильтр вуз/партнёры',
+  group('Организатор', () {
+    testWidgets('страницы организаций в доке больше нет; подпись в деталях',
         (tester) async {
+      // Профили организаций временно убраны: организатора указывает админ
+      // при создании карточки. В доке — три вкладки, в деталях — подпись
+      // без перехода в профиль.
       final c = await container(
         profile: const StudentProfile(completed: true),
         cache: [
           samplePost(
             id: 'a',
-            title: 'Стажировка',
+            title: 'Стажировка в Яндексе',
             organization: {
               'id': 'org1',
               'name': 'Яндекс',
               'type': 'partner',
-              'description': 'Технологическая компания',
-            },
-          ),
-          samplePost(
-            id: 'b',
-            title: 'Олимпиада',
-            organizationId: 'org2',
-            organization: {
-              'id': 'org2',
-              'name': 'Карьерный центр',
-              'type': 'university_dept',
             },
           ),
         ],
@@ -1442,32 +1470,19 @@ void main() {
 
       await tester.pumpWidget(wrap(c, const RootShell()));
       await tester.pump();
-
-      await tester.tap(find.byIcon(Icons.apartment_rounded));
       await tester.pumpAndSettle();
 
-      // Организации приходят прямым запросом (не из ленты) — обе на месте.
+      // В доке нет вкладки «Организации».
+      expect(find.byIcon(Icons.apartment_rounded), findsNothing);
+
+      await tester.tap(find.text('Стажировка в Яндексе'));
+      await tester.pumpAndSettle();
+
+      // Организатор — карточка-подпись: имени нет ссылки на профиль,
+      // шеврона-стрелки нет.
       expect(find.text('Яндекс'), findsOneWidget);
-      expect(find.text('Карьерный центр'), findsOneWidget);
-      expect(find.text('Найдено организаций: 2'), findsOneWidget);
-
-      // Фильтры — в bottom sheet: открываем кнопкой в шапке.
-      await tester.tap(find.byIcon(Icons.tune_rounded));
-      await tester.pumpAndSettle();
-      expect(find.text('ИСТОЧНИК'), findsOneWidget);
-
-      // фильтр по партнёрам убирает подразделение вуза
-      await tester.tap(find.text('Партнёры'));
-      await tester.pump();
-      await tester.tap(find.text('Показать'));
-      await tester.pumpAndSettle();
-      expect(find.text('Карьерный центр'), findsNothing);
-      expect(find.text('Яндекс'), findsOneWidget);
-
-      // тап ведёт в профиль организации
-      await tester.tap(find.text('Яндекс'));
-      await tester.pumpAndSettle();
-      expect(find.text('Предложения'), findsOneWidget);
+      expect(find.text('Компания-партнёр'), findsOneWidget);
+      expect(find.byIcon(Icons.chevron_right_rounded), findsNothing);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
   });
@@ -1657,50 +1672,6 @@ void main() {
           isA<CupertinoPageRoute<void>>());
       expect(await routeFor(TargetPlatform.android),
           isA<MaterialPageRoute<void>>());
-    });
-  });
-
-  group('Профиль организации', () {
-    testWidgets('открывается из деталей и показывает контакты и предложения',
-        (tester) async {
-      final c = await container(
-        profile: const StudentProfile(completed: true),
-        cache: [
-          samplePost(
-            id: 'a',
-            title: 'Стажировка в Яндексе',
-            organization: {
-              'id': 'org1',
-              'name': 'Яндекс',
-              'type': 'partner',
-              'description': 'Технологическая компания',
-              'website': 'https://yandex.ru/yaintern',
-              'contact_email': 'interns@yandex-team.ru',
-              'contact_name': 'Рекрутинг-команда',
-            },
-          ),
-        ],
-      );
-      addTearDown(c.dispose);
-
-      await tester.pumpWidget(wrap(c, const RootShell()));
-      await tester.pump();
-
-      // открываем детали
-      await tester.tap(find.text('Стажировка в Яндексе'));
-      await tester.pumpAndSettle();
-
-      // организатор кликабелен и ведёт в профиль
-      await tester.tap(find.text('Яндекс'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Организация'), findsOneWidget);
-      expect(find.text('Предложения'), findsOneWidget);
-      expect(find.text('Рекрутинг-команда'), findsOneWidget);
-      expect(find.text('interns@yandex-team.ru'), findsOneWidget);
-      // предложение организации видно в её профиле
-      expect(find.text('Стажировка в Яндексе'), findsOneWidget);
-      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
   });
 }

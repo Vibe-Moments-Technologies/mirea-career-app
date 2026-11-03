@@ -8,7 +8,6 @@ import 'favorites/favorites_screen.dart';
 import 'home/home_screen.dart';
 import 'more/more_screen.dart';
 import 'onboarding/onboarding_screen.dart';
-import 'org/organizations_screen.dart';
 
 /// Корневой экран: контент во весь экран + парящий док поверх.
 ///
@@ -36,9 +35,10 @@ class _RootShellState extends ConsumerState<RootShell>
     value: 1,
   );
 
+  /// Раздел «Организации» временно убран: организатора указывает админ
+  /// при создании карточки, профили организаций пока не нужны.
   static const _items = <DockItem>[
     DockItem(Icons.home_rounded, 'Главная'),
-    DockItem(Icons.apartment_rounded, 'Организации'),
     DockItem(Icons.bookmark_rounded, 'Избранное'),
     DockItem(Icons.person_rounded, 'Ещё'),
   ];
@@ -83,7 +83,6 @@ class _RootShellState extends ConsumerState<RootShell>
             index: _index,
             children: const [
               HomeScreen(),
-              OrganizationsScreen(),
               FavoritesScreen(),
               MoreScreen(),
             ],

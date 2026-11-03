@@ -45,8 +45,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   static const _tabs = <(String, String)>[
     ('foryou', 'Для вас'),
     ('all', 'Все'),
-    ('university', 'От вуза'),
-    ('partner', 'Партнёры'),
+    ('survey', 'Опросы'),
   ];
 
   /// Запрос по действию: параметры изменились — идём на сервер.
@@ -175,16 +174,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             child: PostCard(
                               post: posts[i],
                               onTap: () => _open(posts[i]),
-                              filledForm: posts[i].form != null &&
-                                  ref.watch(
-                                          formSubmissionsProvider.notifier)
-                                      .forPost(posts[i].id) !=
-                                  null,
+                              filledForm: ref
+                                  .watch(hasSubmittedProvider(posts[i].id)),
                             ),
                           ),
                         ),
                 ),
-                // Хвост ленты: в «Для вас»/«От вуза»/«Партнёры» — карточка-CTA
+                // Хвост ленты: в «Для вас»/«Опросы» — карточка-CTA
                 // «Это всё» размером с обычную карточку; во «Все» — только
                 // строка-подпись о конце списка.
                 if (!feed.loading && posts.isNotEmpty) ...[

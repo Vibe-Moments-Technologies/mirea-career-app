@@ -12,7 +12,6 @@ import '../../data/catalogs.dart';
 import '../../data/models.dart';
 import '../../state/providers.dart';
 import '../form/form_screen.dart';
-import '../org/org_screen.dart';
 
 /// Экран деталей события.
 ///
@@ -71,13 +70,19 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     final isFav = favorites.contains(post.id);
     final link = post.externalLink?.trim() ?? '';
     final form = post.form;
+    final isSurvey = post.type == 'survey';
     // Анкета приоритетнее внешней ссылки: опросник в приложении
     // открывает прямой канал отклика (ответ летит в БД), а ссылка —
     // браузер с чужой регистрацией.
+    // Опрос — карточка вуза с анкетой внутри: кнопка зовёт «Пройти опрос»,
+    // внешняя ссылка ему не нужна.
     // Заполненная анкета блокируется повторно: история на устройстве
     // знает, что уже отправлено, и кнопка сразу показывает это.
-    final filledForm = form != null &&
-        ref.watch(formSubmissionsProvider.notifier).forPost(post.id) != null;
+    final filledForm =
+        form != null && ref.watch(hasSubmittedProvider(post.id));
+    final applyLabel = isSurvey
+        ? (filledForm ? 'Опрос пройден' : 'Пройти опрос')
+        : (filledForm ? 'Анкета заполнена' : 'Заполнить анкету');
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
 
     return Scaffold(
@@ -124,10 +129,12 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                 // Анкета (если привязана) открывается вместо внешней ссылки.
                 if (form != null)
                   _ApplyButton(
-                    label: filledForm ? 'Анкета заполнена' : 'Заполнить анкету',
+                    label: applyLabel,
                     icon: filledForm
                         ? Icons.task_alt_rounded
-                        : Icons.description_outlined,
+                        : (isSurvey
+                            ? Icons.poll_rounded
+                            : Icons.description_outlined),
                     onTap: () => Navigator.of(context).push(
                       appRoute(
                         context,
@@ -252,7 +259,7 @@ class _TypeRow extends StatelessWidget {
               ),
               const SizedBox(width: 6),
               Text(
-                (Catalogs.postTypes[post.type] ?? post.type).toUpperCase(),
+                Catalogs.postTypeTitle(post.type).toUpperCase(),
                 style: AppText.caption.copyWith(
                   color: scheme.primary,
                   fontWeight: FontWeight.w600,
@@ -439,56 +446,43 @@ class _Organizer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final org = post.organization;
     final name = post.organizationName?.trim() ?? '';
 
+    // Профили организаций временно убраны из приложения: организатор
+    // указывается админом при создании карточки и служит подписью,
+    // а не ссылкой. Когда вернём профили — сюда вернётся InkWell.
     return Material(
       color: scheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppRadius.card),
         side: BorderSide(color: AppColors.separator(context)),
       ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        // Ведёт на профиль организатора: там контакты и все его предложения.
-        // Организация собирается из вложенных полей поста — она уже известна,
-        // отдельный запрос не нужен. Если организатора в посте нет,
-        // карточка остаётся, но не кликабельна.
-        onTap: org == null
-            ? null
-            : () => Navigator.of(context).push(
-                  appRoute(context, OrgScreen(organization: org)),
-                ),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            children: [
-              _OrgAvatar(initial: name),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name.isEmpty ? 'Организатор не указан' : name,
-                      style: AppText.headline,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      post.isPartner ? 'Компания-партнёр' : 'Подразделение вуза',
-                      style: AppText.footnote
-                          .copyWith(color: AppColors.secondaryLight),
-                    ),
-                  ],
-                ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            _OrgAvatar(initial: name),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name.isEmpty ? 'Организатор не указан' : name,
+                    style: AppText.headline,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    post.isPartner ? 'Компания-партнёр' : 'Подразделение вуза',
+                    style: AppText.footnote
+                        .copyWith(color: AppColors.secondaryLight),
+                  ),
+                ],
               ),
-              if (org != null)
-                Icon(Icons.chevron_right_rounded,
-                    color: AppColors.secondaryLight),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

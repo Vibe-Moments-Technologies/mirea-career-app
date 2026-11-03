@@ -102,6 +102,7 @@ IconData _iconForType(String type) => switch (type) {
       'vacancy' => Icons.work_rounded,
       'internship' => Icons.school_rounded,
       'event' => Icons.event_rounded,
+      'survey' => Icons.poll_rounded,
       'scholarship' => Icons.card_giftcard_rounded,
       'project' => Icons.rocket_launch_rounded,
       _ => Icons.article_rounded,

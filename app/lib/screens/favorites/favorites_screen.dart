@@ -106,9 +106,7 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
                       onTap: () => Navigator.of(context).push(
                         appRoute(context, PostDetailScreen(post: post))
                       ),
-                      filledForm: post.form != null &&
-                          ref.watch(formSubmissionsProvider.notifier)
-                              .forPost(post.id) != null,
+                      filledForm: ref.watch(hasSubmittedProvider(post.id)),
                     ),
                   );
                 },

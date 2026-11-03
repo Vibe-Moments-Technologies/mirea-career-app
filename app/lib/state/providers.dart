@@ -310,10 +310,26 @@ class FormHistoryNotifier extends Notifier<List<FormSubmission>> {
     state = ref.read(formHistoryProvider).all;
   }
 
-  FormSubmission? forPost(String postId) =>
-      ref.read(formHistoryProvider).forPost(postId);
+  /// Есть ли отправка для поста. Реактивно: читает state (список),
+  /// поэтому экран, построенный на watch, обновится сразу после add —
+  /// без перезахода на карточку.
+  FormSubmission? forPost(String postId) {
+    for (final s in state) {
+      if (s.postId == postId) return s;
+    }
+    return null;
+  }
 }
 
 final formSubmissionsProvider =
     NotifierProvider<FormHistoryNotifier, List<FormSubmission>>(
         FormHistoryNotifier.new);
+
+/// Есть ли отправленная анкета у поста — для watch в виджетах:
+/// `ref.watch(hasSubmittedProvider(postId))`. Обновляется сразу после
+/// отправки (add меняет state), экрану не нужен перезаход.
+final hasSubmittedProvider = Provider.family<bool, String>(
+  (ref, postId) => ref
+      .watch(formSubmissionsProvider)
+      .any((s) => s.postId == postId),
+);

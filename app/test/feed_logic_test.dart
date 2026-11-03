@@ -315,9 +315,14 @@ void main() {
     });
 
     test('названия типов и форматов покрывают все значения БД', () {
-      for (final t in ['event', 'vacancy', 'internship', 'scholarship', 'project']) {
+      // Базовые типы карточек + легаси-типы старых записей.
+      for (final t in ['internship', 'vacancy', 'event', 'survey']) {
         expect(Catalogs.postTypes[t], isNotNull, reason: 'нет названия для типа $t');
       }
+      for (final t in ['scholarship', 'project']) {
+        expect(Catalogs.legacyPostTypes[t], isNotNull, reason: 'нет названия для легаси-типа $t');
+      }
+      expect(Catalogs.postTypeTitle('survey'), 'Опрос');
       for (final f in ['online', 'offline', 'hybrid']) {
         expect(Catalogs.formats[f], isNotNull, reason: 'нет названия для формата $f');
       }

@@ -45,6 +45,9 @@ class AppColors {
       case 'internship':
         return accent;
       case 'event':
+        return success;
+      case 'survey':
+        return b == Brightness.dark ? accentDark : const Color(0xFF7C5CFF);
       case 'project':
         return success;
       case 'scholarship':

@@ -223,7 +223,7 @@ class _TypeLabel extends StatelessWidget {
         // assert'ом про unbounded constraints. Типы берутся из короткого
         // справочника, самый длинный — «СТАЖИРОВКА» — помещается всегда.
         Text(
-          (Catalogs.postTypes[type] ?? type).toUpperCase(),
+          Catalogs.postTypeTitle(type).toUpperCase(),
           style: AppText.caption.copyWith(
             color: AppColors.secondaryLight,
             fontWeight: FontWeight.w600,
