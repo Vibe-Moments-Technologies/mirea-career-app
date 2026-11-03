@@ -94,6 +94,53 @@ class Organization {
   }
 }
 
+/// Опросник (survey_kit), конфигурируемый в БД.
+///
+/// `definition` — JSON в формате survey_kit Task.fromJson
+/// (type: ordered/navigable, steps с content и answerFormat).
+/// Хранится в отдельной коллекции `forms` и приходит в посте
+/// через `expand.form`.
+class FormDefinition {
+  const FormDefinition({
+    required this.id,
+    required this.title,
+    required this.definition,
+    this.successText,
+  });
+
+  final String id;
+  final String title;
+
+  /// JSON-определение опроса для survey_kit.
+  final Map<String, dynamic> definition;
+
+  /// Текст после отправки: показываем свой экран «готово»
+  /// поверх стандартного completion-шага.
+  final String? successText;
+
+  static FormDefinition? tryParse(Object? json) {
+    if (json is! Map) return null;
+    final id = json['id'];
+    final title = json['title'];
+    if (id is! String || title is! String) return null;
+    final definition = json['definition'];
+    if (definition is! Map) return null;
+    return FormDefinition(
+      id: id,
+      title: title,
+      definition: Map<String, dynamic>.from(definition),
+      successText: json['success_text'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'definition': definition,
+        'success_text': successText,
+      };
+}
+
 class Post {
   const Post({
     required this.id,
@@ -124,6 +171,10 @@ class Post {
     this.priorityWeight = 0,
     this.viewsCount = 0,
     this.favoritesCount = 0,
+    this.formId,
+    this.formTitle,
+    this.formDefinition,
+    this.formSuccessText,
   });
 
   final String id;
@@ -154,8 +205,22 @@ class Post {
   final int priorityWeight;
   final int viewsCount;
   final int favoritesCount;
+  final String? formId;
+  final String? formTitle;
+  final Map<String, dynamic>? formDefinition;
+  final String? formSuccessText;
 
   bool get isPartner => organizationType == 'partner';
+
+  /// Опросник, привязанный к посту: открывается вместо внешней ссылки.
+  FormDefinition? get form => formId == null || formDefinition == null
+      ? null
+      : FormDefinition(
+          id: formId!,
+          title: formTitle ?? '',
+          definition: formDefinition!,
+          successText: formSuccessText,
+        );
 
   /// Пост актуален если end_date ещё не наступил (или не указан).
   bool get isActual => endDate == null || endDate!.isAfter(DateTime.now());
@@ -201,6 +266,8 @@ class Post {
     final expand = json['expand'] as Map<String, dynamic>?;
     final orgJson = expand?['organization'];
     final org = orgJson is Map ? Organization.tryParse(orgJson) : null;
+    final formJson = expand?['form'];
+    final form = formJson is Map ? FormDefinition.tryParse(formJson) : null;
 
     String? imageUrl;
     final imageField = json['image'];
@@ -237,6 +304,10 @@ class Post {
       priorityWeight: (json['priority_weight'] as num?)?.toInt() ?? 0,
       viewsCount: (json['views_count'] as num?)?.toInt() ?? 0,
       favoritesCount: (json['favorites_count'] as num?)?.toInt() ?? 0,
+      formId: form?.id ?? (json['form'] as String?),
+      formTitle: form?.title,
+      formDefinition: form?.definition,
+      formSuccessText: form?.successText,
     );
   }
 
@@ -273,7 +344,20 @@ class Post {
         'priority_weight': priorityWeight,
         'views_count': viewsCount,
         'favorites_count': favoritesCount,
+        // Опросник хранится в кэше как JSON-объект — expand-формат,
+        // чтобы tryParse читал его тем же путём, что и серверный ответ.
+        ...?_formCacheJson,
       };
+
+  /// Кэш-представление формы: null → ничего не добавляется в JSON.
+  Map<String, dynamic>? get _formCacheJson {
+    final f = form;
+    if (f == null) return null;
+    return {
+      'form': f.id,
+      'expand': {'form': f.toJson()},
+    };
+  }
 
   Post copyWith({int? viewsCount, int? favoritesCount}) => Post(
         id: id,
@@ -304,5 +388,9 @@ class Post {
         priorityWeight: priorityWeight,
         viewsCount: viewsCount ?? this.viewsCount,
         favoritesCount: favoritesCount ?? this.favoritesCount,
+        formId: formId,
+        formTitle: formTitle,
+        formDefinition: formDefinition,
+        formSuccessText: formSuccessText,
       );
 }

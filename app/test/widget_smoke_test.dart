@@ -101,6 +101,7 @@ Map<String, dynamic> samplePost({
   DateTime? endDate,
   List<String> campuses = const [],
   List<String> institutes = const [],
+  Map<String, dynamic>? form,
 }) =>
     {
       'id': id,
@@ -110,10 +111,12 @@ Map<String, dynamic> samplePost({
       'type': 'event',
       'format': 'offline',
       'status': 'published',
-      // PocketBase-формат: организация приезжает в expand.organization.
+      // PocketBase-формат: организация приезжает в expand.organization,
+      // опросник — в expand.form.
       'expand': {
         'organization': organization ??
             {'id': 'org1', 'name': 'Карьерный центр', 'type': 'university_dept'},
+        if (form != null) 'form': form,
       },
       'external_link': externalLink,
       'tags': tags,
@@ -769,6 +772,74 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Перейти к регистрации'), findsOneWidget);
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
+
+    testWidgets('анкета из БД заменяет внешнюю ссылку', (tester) async {
+      // Минимальный опросник survey_kit: инструкция + один текстовый
+      // вопрос. Достаточно проверить: кнопка ведёт в анкету, а не в браузер.
+      final form = {
+        'id': 'frm1',
+        'title': 'Анкета стажёра',
+        'definition': {
+          'type': 'ordered',
+          'id': 'test_form',
+          'steps': [
+            {
+              'id': 'intro',
+              'content': [
+                {'type': 'text', 'text': 'Анкета стажёра', 'fontSize': 22},
+              ],
+              'buttonText': 'Начать',
+            },
+            {
+              'id': 'name',
+              'isMandatory': true,
+              'content': [
+                {'type': 'text', 'text': 'Как вас зовут?', 'fontSize': 22},
+              ],
+              'answerFormat': {
+                'type': 'text',
+                'hint': 'Имя',
+                'maxLines': 1,
+              },
+              'buttonText': 'Отправить',
+            },
+          ],
+        },
+        'success_text': 'Мы свяжемся с вами',
+      };
+
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [
+          samplePost(
+            id: 'a',
+            title: 'Стажировка с анкетой',
+            externalLink: 'https://example.com/apply',
+            form: form,
+          ),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Стажировка с анкетой'));
+      await tester.pumpAndSettle();
+
+      // Форма приоритетнее ссылки: кнопка открывает анкету.
+      expect(find.text('Перейти к регистрации'), findsNothing);
+      expect(find.text('Заполнить анкету'), findsOneWidget);
+
+      await tester.tap(find.text('Заполнить анкету'));
+      await tester.pumpAndSettle();
+
+      // Отрисовался survey_kit: заголовок анкеты и первый шаг.
+      expect(find.text('Анкета стажёра'), findsWidgets);
+      expect(find.text('Начать'), findsOneWidget);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
   });

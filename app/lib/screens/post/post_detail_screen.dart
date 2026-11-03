@@ -11,6 +11,7 @@ import '../../core/widgets/post_image.dart';
 import '../../data/catalogs.dart';
 import '../../data/models.dart';
 import '../../state/providers.dart';
+import '../form/form_screen.dart';
 import '../org/org_screen.dart';
 
 /// Экран деталей события.
@@ -69,7 +70,10 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     final favorites = ref.watch(favoritesProvider);
     final isFav = favorites.contains(post.id);
     final link = post.externalLink?.trim() ?? '';
-    final hasLink = link.isNotEmpty;
+    final form = post.form;
+    // Анкета приоритетнее внешней ссылки: опросник в приложении
+    // открывает прямой канал отклика (ответ летит в БД), а ссылка —
+    // браузер с чужой регистрацией.
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
 
     return Scaffold(
@@ -113,7 +117,20 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                 // Действие сразу после организатора: к этому моменту студент
                 // уже знает, кто предлагает, — и может откликнуться, не
                 // листая описание. Внизу экрана кнопка терялась за текстом.
-                if (hasLink) _ApplyButton(onTap: () => _launchLink(link)),
+                // Анкета (если привязана) открывается вместо внешней ссылки.
+                if (form != null)
+                  _ApplyButton(
+                    label: 'Заполнить анкету',
+                    icon: Icons.description_outlined,
+                    onTap: () => Navigator.of(context).push(
+                      appRoute(context,
+                          FormScreen(form: form, postId: post.id)),
+                    ),
+                  )
+                else if (link.isNotEmpty)
+                  _ApplyButton(
+                      label: 'Перейти к регистрации',
+                      onTap: () => _launchLink(link)),
                 _FactsPanel(post: post),
                 if (post.description.trim().isNotEmpty) ...[
                   const SizedBox(height: 26),
@@ -560,8 +577,14 @@ class _StatItem extends StatelessWidget {
 /// с описанием. На своём месте в потоке она читается как шаг сценария
 /// «узнал, кто предлагает → откликнулся».
 class _ApplyButton extends StatelessWidget {
-  const _ApplyButton({required this.onTap});
+  const _ApplyButton({
+    required this.onTap,
+    this.label = 'Перейти к регистрации',
+    this.icon = Icons.open_in_new_rounded,
+  });
   final VoidCallback onTap;
+  final String label;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -570,8 +593,8 @@ class _ApplyButton extends StatelessWidget {
           width: double.infinity,
           child: FilledButton.icon(
             onPressed: onTap,
-            icon: const Icon(Icons.open_in_new_rounded, size: 20),
-            label: const Text('Перейти к регистрации'),
+            icon: Icon(icon, size: 20),
+            label: Text(label),
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(52),
               shape: RoundedRectangleBorder(

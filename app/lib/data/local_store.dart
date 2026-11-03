@@ -94,6 +94,21 @@ class LocalStore {
   static const _kTheme = 'theme_mode';
   static const _kCatalog = 'catalog_state';
   static const _kSpotlight = 'spotlight_cache';
+  static const _kDeviceId = 'device_id';
+
+  // ---------- Устройство ----------
+
+  /// Анонимный идентификатор установки: случайная строка при первом
+  /// запуске, дальше неизменна. Персональных данных нет — это «кто
+  /// отправил» для ответов анкет и счётчиков, по нему админ видит дубли.
+  String get deviceId {
+    final existing = _prefs.getString(_kDeviceId);
+    if (existing != null && existing.isNotEmpty) return existing;
+    final generated = DateTime.now().microsecondsSinceEpoch.toRadixString(36) +
+        (DateTime.now().millisecondsSinceEpoch % 100000).toString();
+    _prefs.setString(_kDeviceId, generated);
+    return generated;
+  }
 
   // ---------- Профиль ----------
   StudentProfile get profile {

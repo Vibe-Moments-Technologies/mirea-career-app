@@ -63,7 +63,7 @@ class PostsRepo {
     final filterStr = filters.join('&&');
     final url = '$_baseUrl/api/collections/posts/records'
         '?filter=${Uri.encodeComponent(filterStr)}'
-        '&expand=organization'
+        '&expand=organization,form'
         '&sort=-published_at'
         '&perPage=200';
 
@@ -105,7 +105,7 @@ class PostsRepo {
     final filterStr = filters.join('&&');
     final url = '$_baseUrl/api/collections/posts/records'
         '?filter=${Uri.encodeComponent(filterStr)}'
-        '&expand=organization'
+        '&expand=organization,form'
         '&sort=-published_at'
         '&perPage=100';
 
@@ -227,6 +227,33 @@ class PostsRepo {
     // TODO: PATCH favorites_count+delta через API
   }
 
+  /// Отправка ответов опросника.
+  ///
+  /// [answers] — сериализованный SurveyResult (или компактный map
+  /// «id шага → значение»). createRule формы открыт анонимно,
+  /// чтение закрыто: студент отправляет, но не может вытащить чужие ответы.
+  ///
+  /// Отправляем и device_id: анонимный «кто» без персональных данных —
+  /// по нему админ видит дубли, а мы считаем уникальных респондентов.
+  Future<bool> submitFormResponse({
+    required String formId,
+    String? postId,
+    required Map<String, dynamic> answers,
+    required String deviceId,
+  }) async {
+    if (isOffline) return false;
+
+    return AppHttpClient.instance.postJson(
+      '$_baseUrl/api/collections/form_responses/records',
+      {
+        'form': formId,
+        if (postId != null) 'post': postId,
+        'answers': answers,
+        'device_id': deviceId,
+      },
+    );
+  }
+
   // ---------- Парсинг ----------
 
   Post? _parsePost(Object? json) {
@@ -238,6 +265,8 @@ class PostsRepo {
     final expand = json['expand'] as Map<String, dynamic>?;
     final orgJson = expand?['organization'];
     final org = orgJson is Map ? Organization.tryParse(orgJson) : null;
+    final formJson = expand?['form'];
+    final form = formJson is Map ? FormDefinition.tryParse(formJson) : null;
 
     String? imageUrl;
     final imageField = json['image'];
@@ -274,6 +303,10 @@ class PostsRepo {
       priorityWeight: (json['priority_weight'] as num?)?.toInt() ?? 0,
       viewsCount: (json['views_count'] as num?)?.toInt() ?? 0,
       favoritesCount: (json['favorites_count'] as num?)?.toInt() ?? 0,
+      formId: form?.id ?? (json['form'] as String?),
+      formTitle: form?.title,
+      formDefinition: form?.definition,
+      formSuccessText: form?.successText,
     );
   }
 

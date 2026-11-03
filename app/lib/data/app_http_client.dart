@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -60,6 +61,29 @@ class AppHttpClient {
       }
     }
     return null;
+  }
+
+  /// POST JSON: отправка данных (ответы анкет, счётчики).
+  ///
+  /// Возвращает true при 2xx. Не кэшируется — это запись, не чтение.
+  /// Повтор при неудаче НЕ делаем: повторная отправка анкеты создала бы
+  /// дубль записи; повторение таких операций решает вызывающая сторона.
+  Future<bool> postJson(
+    String url,
+    Map<String, dynamic> body, {
+    Duration timeout = const Duration(seconds: 15),
+  }) async {
+    try {
+      final request = await _client.postUrl(Uri.parse(url)).timeout(timeout);
+      request.headers.contentType = ContentType.json;
+      request.write(jsonEncode(body));
+      final response = await request.close().timeout(timeout);
+      // Вычитываем тело, чтобы соединение вернулось в пул.
+      await response.drain<void>();
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (_) {
+      return false;
+    }
   }
 }
 
