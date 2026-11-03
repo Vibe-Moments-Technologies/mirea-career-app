@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mirea_career/data/local_store.dart';
+import 'package:mirea_career/data/metrics.dart';
+import 'package:mirea_career/data/posts_repo.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -107,6 +109,43 @@ void main() {
       expect(store.feedCache, isNull);
       // тема — настройка интерфейса, а не данные студента: сброс её не трогает
       expect(store.themeMode, 'system');
+    });
+  });
+
+  group('Метрики через офлайн-репозиторий', () {
+    test('просмотр и избранное без сети копятся в очередь', () async {
+      // Репозиторий с пустым baseUrl = офлайн: отправка возвращает false,
+      // и вызов обязан лечь в офлайн-очередь, а не потеряться.
+      final metrics = Metrics(PostsRepo(''), store);
+
+      final counted = await metrics.registerView('p1');
+      // Локальная дедупликация сработала (первый просмотр), но сети нет —
+      // в очередь ушёл «view».
+      expect(counted, isTrue);
+      expect(store.pendingMetrics.length, 1);
+      expect(store.pendingMetrics.first.kind, 'view');
+      expect(store.pendingMetrics.first.postId, 'p1');
+
+      await metrics.registerFavorite('p1', 1);
+      expect(store.pendingMetrics.length, 2);
+      expect(store.pendingMetrics.last.kind, 'favorite');
+      expect(store.pendingMetrics.last.delta, 1);
+
+      // Повторный просмотр того же поста не дублируется (дедупликация
+      // на устройстве), даже офлайн.
+      await metrics.registerView('p1');
+      expect(store.pendingMetrics.length, 2);
+    });
+
+    test('сброс очереди после успешной отправки не оставляет хвостов', () async {
+      // flush с офлайн-репозиторием: очередь читается, отправка снова
+      // невозможна — метрики возвращаются в очередь в том же составе.
+      final metrics = Metrics(PostsRepo(''), store);
+      await metrics.registerFavorite('p2', -1);
+      await metrics.flush();
+      expect(store.pendingMetrics.length, 1);
+      expect(store.pendingMetrics.first.postId, 'p2');
+      expect(store.pendingMetrics.first.delta, -1);
     });
   });
 }

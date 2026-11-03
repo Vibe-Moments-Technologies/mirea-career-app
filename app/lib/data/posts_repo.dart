@@ -218,14 +218,39 @@ class PostsRepo {
   }
 
   /// Инкремент счётчика просмотров.
-  Future<void> incrementViews(String postId) async {
-    if (isOffline) return;
-    // TODO: PATCH views_count+1 через API
+  ///
+  /// Дедупликация на СЕРВЕРЕ (хук pb_hooks/metrics.pb.js): маршрут помнит
+  /// пару (post_id, visitor) в служебной таблице и игнорирует повторные
+  /// просмотры с того же устройства. [visitorId] — анонимный deviceId из
+  /// LocalStore: персональных данных нет, это просто «кто уже видел».
+  /// Прямой PATCH коллекции недоступен анониму — накрутить счётчик
+  /// напрямую нельзя, только через маршрут с дедупликацией.
+  ///
+  /// false — сети нет/ошибка: Metrics положит вызов в офлайн-очередь.
+  Future<bool> incrementViews(String postId,
+      {required String visitorId}) async {
+    if (isOffline) return false;
+
+    return AppHttpClient.instance.postJson(
+      '$_baseUrl/api/metrics/view/$postId',
+      const {},
+      visitorId: visitorId,
+    );
   }
 
-  Future<void> modifyFavorites(String postId, int delta) async {
-    if (isOffline) return;
-    // TODO: PATCH favorites_count+delta через API
+  /// Изменение счётчика избранного: delta = 1 (добавили) | -1 (убрали).
+  ///
+  /// Тоже через маршрут хука: аноним не может править записи постов,
+  /// а сервер дополнительно не даёт счётчику уйти ниже нуля (clamp).
+  ///
+  /// false — сети нет/ошибка: вызов повторится из офлайн-очереди.
+  Future<bool> modifyFavorites(String postId, int delta) async {
+    if (isOffline) return false;
+
+    return AppHttpClient.instance.postJson(
+      '$_baseUrl/api/metrics/favorite',
+      {'post_id': postId, 'delta': delta},
+    );
   }
 
   /// Отправка ответов опросника.

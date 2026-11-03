@@ -68,14 +68,21 @@ class AppHttpClient {
   /// Возвращает true при 2xx. Не кэшируется — это запись, не чтение.
   /// Повтор при неудаче НЕ делаем: повторная отправка анкеты создала бы
   /// дубль записи; повторение таких операций решает вызывающая сторона.
+  ///
+  /// [visitorId] — анонимный идентификатор устройства для маршрутов
+  /// метрик (X-Visitor-Id): по нему сервер дедуплицирует просмотры.
   Future<bool> postJson(
     String url,
     Map<String, dynamic> body, {
     Duration timeout = const Duration(seconds: 15),
+    String? visitorId,
   }) async {
     try {
       final request = await _client.postUrl(Uri.parse(url)).timeout(timeout);
       request.headers.contentType = ContentType.json;
+      if (visitorId != null) {
+        request.headers.set('X-Visitor-Id', visitorId);
+      }
       request.write(jsonEncode(body));
       final response = await request.close().timeout(timeout);
       // Вычитываем тело, чтобы соединение вернулось в пул.

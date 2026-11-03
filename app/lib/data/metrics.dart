@@ -35,11 +35,8 @@ class Metrics {
       _send(PendingMetric('favorite', postId, delta));
 
   Future<void> _send(PendingMetric m) async {
-    try {
-      await _apply(m);
-    } catch (_) {
-      await _store.queueMetric(m);
-    }
+    final ok = await _apply(m);
+    if (!ok) await _store.queueMetric(m);
   }
 
   /// Повторяет накопленные офлайн-вызовы (вызывается при старте).
@@ -48,18 +45,19 @@ class Metrics {
     if (pending.isEmpty) return;
     await _store.clearPendingMetrics();
     for (final m in pending) {
-      try {
-        await _apply(m);
-      } catch (_) {
-        await _store.queueMetric(m); // сеть всё ещё недоступна
-      }
+      final ok = await _apply(m);
+      if (!ok) await _store.queueMetric(m); // сеть всё ещё недоступна
     }
   }
 
-  Future<void> _apply(PendingMetric m) => switch (m.kind) {
-        'view' => _repo.incrementViews(m.postId),
+  /// true — сервер принял. Репозиторий не бросает исключений: сбой
+  /// сети = false, и вызов уходит в офлайн-очередь (репозиторий сам
+  /// повторов не делает — дубль view/favorite исказил бы счётчики,
+  /// повторение решает очередь здесь).
+  Future<bool> _apply(PendingMetric m) => switch (m.kind) {
+        'view' => _repo.incrementViews(m.postId, visitorId: _store.deviceId),
         'favorite' => _repo.modifyFavorites(m.postId, m.delta),
-        _ => Future.value(),
+        _ => Future.value(true),
       };
 }
 
