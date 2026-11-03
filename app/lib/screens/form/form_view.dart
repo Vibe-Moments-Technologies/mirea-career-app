@@ -25,6 +25,7 @@ class FormView extends StatefulWidget {
     required this.form,
     required this.onSubmit,
     this.submitting = false,
+    this.responsesCount,
   });
 
   final FormDefinition form;
@@ -35,6 +36,10 @@ class FormView extends StatefulWidget {
   final void Function(Map<String, dynamic> answers) onSubmit;
 
   final bool submitting;
+
+  /// Сколько студентов уже заполнили анкету — подпись ПОД кнопкой
+  /// отправки. null = неизвестно (офлайн): подпись скрыта.
+  final int? responsesCount;
 
   @override
   State<FormView> createState() => _FormViewState();
@@ -131,28 +136,54 @@ class _FormViewState extends State<FormView> {
         ),
         // Кнопка отправки — закреплена внизу: всегда на виду, но не
         // перекрывает контент (в отличие от floatingActionButton).
+        // Под ней — сколько студентов уже прошли анкету: подпись
+        // относится к действию «отправить», поэтому стоит у кнопки,
+        // а не в шапке.
         SafeArea(
           top: false,
           child: Padding(
             padding: EdgeInsets.fromLTRB(pad, 8, pad, 14),
-            child: SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: _allFilled && !widget.submitting ? _submit : null,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(52),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppRadius.pill),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed:
+                        _allFilled && !widget.submitting ? _submit : null,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(52),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.pill),
+                      ),
+                    ),
+                    child: widget.submitting
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child:
+                                CircularProgressIndicator(strokeWidth: 2.4),
+                          )
+                        : const Text('Отправить анкету'),
                   ),
                 ),
-                child: widget.submitting
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2.4),
-                      )
-                    : const Text('Отправить анкету'),
-              ),
+                if (widget.responsesCount != null) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.how_to_reg_rounded,
+                          size: 13, color: AppColors.secondaryLight),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Уже прошли: ${widget.responsesCount}',
+                        style: AppText.caption
+                            .copyWith(color: AppColors.secondaryLight),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
             ),
           ),
         ),

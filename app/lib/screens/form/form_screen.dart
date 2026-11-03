@@ -221,59 +221,16 @@ class _FormScreenState extends ConsumerState<FormScreen> {
         titleTextStyle: AppText.headline,
         leading: _BackButton(),
       ),
-      body: Column(
-        children: [
-          _ResponsesCount(
-            count: _responsesCount,
-            onRetry: _loadResponsesCount,
-          ),
-          Expanded(
-            child: FormView(
-              form: FormDefinition(
-                id: form.id,
-                title: form.title,
-                definition: definition,
-                successText: form.successText,
-              ),
-              onSubmit: _onSubmit,
-              submitting: _submitting,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Строка «уже прошли: N» под шапкой.
-///
-/// Число — из хука PocketBase (сами ответы закрыты, торчит только
-/// счётчик). Офлайн — строка скрыта: число важнее отсутствия строки,
-/// а не наоборот.
-class _ResponsesCount extends StatelessWidget {
-  const _ResponsesCount({required this.count, required this.onRetry});
-
-  final int? count;
-  final Future<void> Function() onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    if (count == null) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(0, 4, 0, 0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.how_to_reg_rounded,
-              size: 14, color: AppColors.secondaryLight),
-          const SizedBox(width: 5),
-          Text(
-            'Уже прошли: $count',
-            style: AppText.caption
-                .copyWith(color: AppColors.secondaryLight),
-          ),
-        ],
+      body: FormView(
+        form: FormDefinition(
+          id: form.id,
+          title: form.title,
+          definition: definition,
+          successText: form.successText,
+        ),
+        onSubmit: _onSubmit,
+        submitting: _submitting,
+        responsesCount: _responsesCount,
       ),
     );
   }
