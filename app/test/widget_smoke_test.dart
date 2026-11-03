@@ -116,7 +116,7 @@ Map<String, dynamic> samplePost({
       'expand': {
         'organization': organization ??
             {'id': 'org1', 'name': 'Карьерный центр', 'type': 'university_dept'},
-        if (form != null) 'form': form,
+        'form': ?form,
       },
       'external_link': externalLink,
       'tags': tags,

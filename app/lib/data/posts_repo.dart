@@ -247,7 +247,7 @@ class PostsRepo {
       '$_baseUrl/api/collections/form_responses/records',
       {
         'form': formId,
-        if (postId != null) 'post': postId,
+        'post': ?postId,
         'answers': answers,
         'device_id': deviceId,
       },
