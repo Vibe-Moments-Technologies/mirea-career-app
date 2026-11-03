@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mirea_career/core/theme/app_theme.dart';
@@ -75,6 +76,15 @@ class _CachedRepo extends PostsRepo {
       .whereType<Post>()
       .where((p) => organizationId == null || p.organizationId == organizationId)
       .toList();
+
+  @override
+  Future<bool> submitFormResponse({
+    required String formId,
+    String? postId,
+    required Map<String, dynamic> answers,
+    required String deviceId,
+  }) async =>
+      true;
 
   /// Организации собираются из expand постов — как отдельный запрос.
   @override
@@ -172,8 +182,9 @@ void main() {
       await tester.pump();
 
       expect(find.byType(OnboardingScreen), findsOneWidget);
-      // первый шаг теперь «Ваш институт»: шаг с адресом убран из анкеты
-      expect(find.text('Ваш институт'), findsOneWidget);
+      // первый шаг — ФИО и группа: они кормят автозаполнение анкет,
+      // институт — вторым шагом
+      expect(find.text('Как вас зовут?'), findsOneWidget);
       expect(frameworkErrors, isEmpty, reason: 'фреймворк сообщил об ошибке: $frameworkErrors');
     });
 
@@ -236,6 +247,7 @@ void main() {
       await tester.pump();
 
       const questions = [
+        'Как вас зовут?',
         'Ваш институт',
         'Уровень обучения',
         'Что вам интересно?',
@@ -277,7 +289,9 @@ void main() {
       );
       await tester.pump();
 
-      // шаг уровня — второй
+      // шаг уровня — третий (первый — ФИО и группа)
+      await tester.tap(find.text('Далее'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Далее'));
       await tester.pumpAndSettle();
 
@@ -840,6 +854,100 @@ void main() {
       // Отрисовался survey_kit: заголовок анкеты и первый шаг.
       expect(find.text('Анкета стажёра'), findsWidgets);
       expect(find.text('Начать'), findsOneWidget);
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
+
+    testWidgets('ФИО и группа из профиля не спрашиваются повторно',
+        (tester) async {
+      // Анкета со стандартными id: шаг fio изымается (в профиле есть),
+      // шаг group остаётся (в профиле пусто) — студент заполняет руками,
+      // и значение запоминается в профиль после отправки.
+      final form = {
+        'id': 'frm2',
+        'title': 'Анкета с ФИО',
+        'definition': {
+          'type': 'ordered',
+          'id': 'test_form2',
+          'steps': [
+            {
+              'id': 'fio',
+              'isMandatory': true,
+              'content': [
+                {'type': 'text', 'text': 'Как вас зовут?', 'fontSize': 22},
+              ],
+              'answerFormat': {'type': 'text', 'hint': 'ФИО', 'maxLines': 1},
+              'buttonText': 'Далее',
+            },
+            {
+              'id': 'group',
+              'isMandatory': true,
+              'content': [
+                {'type': 'text', 'text': 'Ваша группа?', 'fontSize': 22},
+              ],
+              'answerFormat': {
+                'type': 'text',
+                'hint': 'Группа',
+                'maxLines': 1,
+              },
+              'buttonText': 'Отправить',
+            },
+          ],
+        },
+        'success_text': null,
+      };
+
+      final c = await container(
+        profile: const StudentProfile(
+          completed: true,
+          fullName: 'Иванов Иван Иванович',
+        ),
+        cache: [
+          samplePost(id: 'a', title: 'Мероприятие с анкетой', form: form),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Мероприятие с анкетой'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Заполнить анкету'));
+      await tester.pumpAndSettle();
+
+      // Шаг fio изъят: анкета сразу начинается с вопроса про группу.
+      expect(find.text('Как вас зовут?'), findsNothing,
+          reason: 'шаг fio должен быть скрыт при заполненном профиле');
+      expect(find.text('Ваша группа?'), findsOneWidget);
+
+      // Заполняем группу руками и отправляем.
+      await tester.enterText(find.byType(TextField), 'ИКБО-01-24');
+      await tester.pump();
+      // Кнопка может лежать ниже видимой области (шаг в ScrollView):
+      // прячем клавиатуру и докручиваем до кнопки.
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      await tester.ensureVisible(find.text('Отправить'));
+      await tester.tap(find.text('Отправить'));
+      await tester.pump(const Duration(milliseconds: 150));
+      // pumpAndSettle здесь не годится: у survey_kit остаются вечные
+      // анимации (переходы страниц строятся бесконечно), поэтому
+      // прокачиваем кадры вручную до появления экрана подтверждения.
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+        if (find.text('Анкета отправлена').evaluate().isNotEmpty) break;
+      }
+
+      // Группа запомнилась в профиле: следующая анкета не спросит её.
+      // Проверяем ДО экрана подтверждения — это tells, дошёл ли _onResult.
+      final profile = c.read(profileProvider);
+      expect(profile.group, 'ИКБО-01-24',
+          reason: '_onResult не доработал: профиль не обновлён');
+      expect(profile.fullName, 'Иванов Иван Иванович');
+
+      // Экран подтверждения: анкета отправлена.
+      expect(find.text('Анкета отправлена'), findsOneWidget);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
   });

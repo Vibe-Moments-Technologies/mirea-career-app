@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Живёт ТОЛЬКО на устройстве: приложение работает без регистрации.
 class StudentProfile {
   const StudentProfile({
+    this.fullName,
+    this.group,
     this.campus,
     this.institute,
     this.level,
@@ -13,6 +15,8 @@ class StudentProfile {
     this.completed = false,
   });
 
+  final String? fullName;
+  final String? group;
   final String? campus;
   final String? institute;
   final String? level;
@@ -25,21 +29,31 @@ class StudentProfile {
   /// чтобы экран не показывался снова. Проверять «заполненность» по нему
   /// нельзя — интерфейс подписывал пустой профиль как заполненный.
   bool get hasAnswers =>
-      institute != null || level != null || tags.isNotEmpty;
+      fullName != null ||
+      group != null ||
+      institute != null ||
+      level != null ||
+      tags.isNotEmpty;
 
   /// `copyWith` умеет и сбрасывать поле: передайте `null` явно через
   /// `clearCampus: true` (иначе, как обычно в Dart, null = «не менять»).
   StudentProfile copyWith({
+    String? fullName,
+    String? group,
     String? campus,
     String? institute,
     String? level,
     List<String>? tags,
     bool? completed,
+    bool clearFullName = false,
+    bool clearGroup = false,
     bool clearCampus = false,
     bool clearInstitute = false,
     bool clearLevel = false,
   }) =>
       StudentProfile(
+        fullName: clearFullName ? null : fullName ?? this.fullName,
+        group: clearGroup ? null : group ?? this.group,
         campus: clearCampus ? null : campus ?? this.campus,
         institute: clearInstitute ? null : institute ?? this.institute,
         level: clearLevel ? null : level ?? this.level,
@@ -47,12 +61,21 @@ class StudentProfile {
         completed: completed ?? this.completed,
       );
 
-  Map<String, dynamic> toJson() =>
-      {'campus': campus, 'institute': institute, 'level': level, 'tags': tags, 'completed': completed};
+  Map<String, dynamic> toJson() => {
+        'full_name': fullName,
+        'group': group,
+        'campus': campus,
+        'institute': institute,
+        'level': level,
+        'tags': tags,
+        'completed': completed,
+      };
 
   static const empty = StudentProfile();
 
   factory StudentProfile.fromJson(Map<String, dynamic> j) => StudentProfile(
+        fullName: j['full_name'] as String?,
+        group: j['group'] as String?,
         campus: j['campus'] as String?,
         institute: j['institute'] as String?,
         level: j['level'] as String?,

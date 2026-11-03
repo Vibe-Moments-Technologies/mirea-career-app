@@ -33,6 +33,44 @@ class ProfileScreen extends ConsumerWidget {
           AppInsets.screenBottom(context),
         ),
         children: [
+          _Section('СТУДЕНТ'),
+          SettingsGroup(
+            children: [
+              SettingsTile(
+                icon: Icons.person_rounded,
+                title: 'ФИО',
+                subtitle: profile.fullName ?? 'Не указано',
+                onTap: () => _editText(
+                  context,
+                  ref,
+                  profile,
+                  title: 'ФИО',
+                  value: profile.fullName ?? '',
+                  hint: 'Фамилия Имя Отчество',
+                  apply: (v) => v.isEmpty
+                      ? profile.copyWith(clearFullName: true)
+                      : profile.copyWith(fullName: v),
+                ),
+              ),
+              SettingsTile(
+                icon: Icons.badge_outlined,
+                title: 'Группа',
+                subtitle: profile.group ?? 'Не указана',
+                onTap: () => _editText(
+                  context,
+                  ref,
+                  profile,
+                  title: 'Группа',
+                  value: profile.group ?? '',
+                  hint: 'Например, ИКБО-01-24',
+                  apply: (v) => v.isEmpty
+                      ? profile.copyWith(clearGroup: true)
+                      : profile.copyWith(group: v),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
           const _Section('ОБРАЗОВАНИЕ'),
           SettingsGroup(
             children: [
@@ -73,6 +111,49 @@ class ProfileScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  /// Правка текстового поля профиля (ФИО, группа): диалог с полем ввода.
+  /// Пустая строка = «не указывать»: поле снимается.
+  static Future<void> _editText(
+    BuildContext context,
+    WidgetRef ref,
+    StudentProfile profile, {
+    required String title,
+    required String value,
+    required String hint,
+    required StudentProfile Function(String) apply,
+  }) async {
+    final controller = TextEditingController(text: value);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(
+            hintText: hint,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppRadius.field),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(d).pop(),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(d).pop(controller.text.trim()),
+            child: const Text('Сохранить'),
+          ),
+        ],
+      ),
+    );
+    if (result == null || !context.mounted) return;
+    await ref.read(profileProvider.notifier).save(apply(result));
   }
 
   /// Пустая строка = «не указывать»: снимаем поле, а не молча оставляем старое.

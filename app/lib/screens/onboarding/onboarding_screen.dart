@@ -22,10 +22,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final _controller = PageController();
   int _step = 0;
 
-  /// Шага три: институт, уровень, интересы.
-  /// Кампус из опроса убран — адрес не нужен для подбора, а вопрос
-  /// «где вы учитесь» на старте только удлинял анкету.
-  static const _steps = 3;
+  /// Шага четыре: ФИО+группа, институт, уровень, интересы.
+  ///
+  /// ФИО и группа не нужны подбору ленты — они кормят автозаполнение
+  /// анкет мероприятий (поля из профиля подставляются в ответы
+  /// автоматически, студент не вводит их второй раз). Шаг пропускаемый:
+  /// анкета сама спросит, если поля пусты.
+  static const _steps = 4;
 
   /// В режиме редактирования (открыт из настроек) шаги не пролистываем
   /// заново — экран сразу показывает уже заполненные ответы.
@@ -118,6 +121,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 controller: _controller,
                 onPageChanged: (i) => setState(() => _step = i),
                 children: [
+                  _StepIdentity(
+                    profile: _p,
+                    onChanged: (p) => setState(() => _p = p),
+                  ),
                   _StepInstitute(
                     selected: _p.institute,
                     onPick: (v) {
@@ -209,6 +216,79 @@ class _StepScaffold extends StatelessWidget {
       ),
     );
   }
+}
+
+class _StepIdentity extends StatefulWidget {
+  const _StepIdentity({required this.profile, required this.onChanged});
+  final StudentProfile profile;
+  final ValueChanged<StudentProfile> onChanged;
+
+  @override
+  State<_StepIdentity> createState() => _StepIdentityState();
+}
+
+class _StepIdentityState extends State<_StepIdentity> {
+  late final _name = TextEditingController(text: widget.profile.fullName ?? '');
+  late final _group = TextEditingController(text: widget.profile.group ?? '');
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _group.dispose();
+    super.dispose();
+  }
+
+  void _sync() => widget.onChanged(
+        widget.profile.copyWith(
+          fullName: _name.text.trim().isEmpty ? null : _name.text.trim(),
+          group: _group.text.trim().isEmpty ? null : _group.text.trim(),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return _StepScaffold(
+      title: 'Как вас зовут?',
+      subtitle: 'ФИО и группа автозаполнят анкеты мероприятий',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _name,
+            onChanged: (_) => _sync(),
+            textCapitalization: TextCapitalization.words,
+            decoration: _fieldDecoration('Фамилия Имя Отчество'),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _group,
+            onChanged: (_) => _sync(),
+            //toUpperCase breaks ime: группы вводят латиницей и цифрами
+            decoration: _fieldDecoration('Группа (например, ИКБО-01-24)'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  InputDecoration _fieldDecoration(String hint) => InputDecoration(
+        hintText: hint,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.field),
+          borderSide: BorderSide(color: AppColors.separator(context)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.field),
+          borderSide: BorderSide(color: AppColors.separator(context)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.field),
+          borderSide: BorderSide(
+              color: Theme.of(context).colorScheme.primary, width: 1.5),
+        ),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      );
 }
 
 class _StepInstitute extends StatelessWidget {
