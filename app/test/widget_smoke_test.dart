@@ -1675,6 +1675,18 @@ void main() {
       // Слайдер: PageView построен (картинки в тестах не грузятся —
       // слайды показывают заглушки, сам свайп-контейнер на месте).
       expect(find.byType(PageView), findsOneWidget);
+
+      // Жест: свайп влево ПЕРЕКЛЮЧАЕТ слайд. Регрессия «показывает
+      // несколько фото, но листать не даёт» — PageView внутри
+      // FlexibleSpaceBar не получал жест. fling ближе к живому свайпу.
+      final pv = find.byType(PageView);
+      await tester.fling(pv, const Offset(-120, 0), 700);
+      await tester.pumpAndSettle();
+      final page = tester
+          .widget<PageView>(pv)
+          .controller
+          ?.page;
+      expect(page, 1.0, reason: 'свайп должен перелистывать слайдер');
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
 

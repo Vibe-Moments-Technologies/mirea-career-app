@@ -89,103 +89,118 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
 
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          SliverAppBar(
-            pinned: true,
-            expandedHeight: 240,
-            backgroundColor: scheme.surface.withValues(alpha: 0.94),
-            surfaceTintColor: Colors.transparent,
-            automaticallyImplyLeading: false,
-            leading: const GlassBackButton(),
-            actions: [
-              GlassIconButton(
-                // Избранное = звезда везде: и здесь, и в ленте, и в доке.
-                icon: isFav
-                    ? Icons.star_rounded
-                    : Icons.star_border_rounded,
-                color: isFav ? scheme.primary : Colors.white,
-                tooltip: isFav ? 'Убрать из избранного' : 'В избранное',
-                onTap: _toggleFavorite,
+      body: Stack(
+        children: [
+          CustomScrollView(
+            slivers: [
+              // Обложка/слайдер — ОБЫЧНЫЙ sliver, не flexibleSpace:
+              // FlexibleSpaceBar оборачивает background и не пропускает
+              // горизонтальные жесты к PageView (галерея «не листалась»).
+              SliverToBoxAdapter(
+                child: SizedBox(
+                  height: 240,
+                  width: double.infinity,
+                  child: _Cover(post: post),
+                ),
               ),
-              const SizedBox(width: 6),
-            ],
-            flexibleSpace: FlexibleSpaceBar(background: _Cover(post: post)),
-          ),
-          SliverPadding(
-            padding: EdgeInsets.fromLTRB(
-              pad,
-              20,
-              pad,
-              AppInsets.screenBottom(context),
-            ),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                _MetaRow(post: post),
-                const SizedBox(height: 12),
-                Text(post.title,
-                    style: AppText.largeTitle.copyWith(fontSize: 28)),
-                const SizedBox(height: 18),
-                _Organizer(post: post),
-                // Действие сразу после организатора: к этому моменту студент
-                // уже знает, кто предлагает, — и может откликнуться, не
-                // листая описание. Анкета (если привязана) открывается
-                // вместо внешней ссылки.
-                if (form != null)
-                  _ApplyButton(
-                    label: applyLabel,
-                    icon: filledForm
-                        ? Icons.task_alt_rounded
-                        : (isSurvey
-                            ? Icons.poll_rounded
-                            : Icons.description_outlined),
-                    onTap: () => Navigator.of(context).push(
-                      appRoute(
-                        context,
-                        FormScreen(
-                          form: form,
-                          postId: post.id,
-                          postTitle: post.title,
-                        ),
-                      ),
-                    ),
-                  )
-                else if (link.isNotEmpty)
-                  _ApplyButton(
-                      label: 'Перейти к регистрации',
-                      onTap: () => _launchLink(link)),
-                _FactsPanel(post: post),
-                if (post.description.trim().isNotEmpty) ...[
-                  const SizedBox(height: 26),
-                  const _SectionTitle('Описание'),
-                  const SizedBox(height: 10),
-                  _Description(text: post.description),
-                ],
-                if (post.tags.isNotEmpty) ...[
-                  const SizedBox(height: 24),
-                  const _SectionTitle('Теги'),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final t in post.tags)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 11, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: scheme.primary.withValues(alpha: 0.1),
-                            borderRadius:
-                                BorderRadius.circular(AppRadius.pill),
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(
+                  pad,
+                  20,
+                  pad,
+                  AppInsets.screenBottom(context),
+                ),
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate([
+                    _MetaRow(post: post),
+                    const SizedBox(height: 12),
+                    Text(post.title,
+                        style: AppText.largeTitle.copyWith(fontSize: 28)),
+                    const SizedBox(height: 18),
+                    _Organizer(post: post),
+                    // Действие сразу после организатора: к этому моменту студент
+                    // уже знает, кто предлагает, — и может откликнуться, не
+                    // листая описание. Анкета (если привязана) открывается
+                    // вместо внешней ссылки.
+                    if (form != null)
+                      _ApplyButton(
+                        label: applyLabel,
+                        icon: filledForm
+                            ? Icons.task_alt_rounded
+                            : (isSurvey
+                                ? Icons.poll_rounded
+                                : Icons.description_outlined),
+                        onTap: () => Navigator.of(context).push(
+                          appRoute(
+                            context,
+                            FormScreen(
+                              form: form,
+                              postId: post.id,
+                              postTitle: post.title,
+                            ),
                           ),
-                          child: Text('#$t',
-                              style: AppText.footnote
-                                  .copyWith(color: scheme.primary)),
                         ),
+                      )
+                    else if (link.isNotEmpty)
+                      _ApplyButton(
+                          label: 'Перейти к регистрации',
+                          onTap: () => _launchLink(link)),
+                    _FactsPanel(post: post),
+                    if (post.description.trim().isNotEmpty) ...[
+                      const SizedBox(height: 26),
+                      const _SectionTitle('Описание'),
+                      const SizedBox(height: 10),
+                      _Description(text: post.description),
                     ],
-                  ),
-                ],
-              ]),
+                    if (post.tags.isNotEmpty) ...[
+                      const SizedBox(height: 24),
+                      const _SectionTitle('Теги'),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final t in post.tags)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 11, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: scheme.primary.withValues(alpha: 0.1),
+                                borderRadius:
+                                    BorderRadius.circular(AppRadius.pill),
+                              ),
+                              child: Text('#$t',
+                                  style: AppText.footnote
+                                      .copyWith(color: scheme.primary)),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ]),
+                ),
+              ),
+            ],
+          ),
+          // Шапка поверх обложки: стекло без flexibleSpace, кнопки
+          // всегда вверху, обложка прокручивается ПОД ними.
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            child: Row(
+              children: [
+                GlassIconButton(
+                  icon: isFav ? Icons.star_rounded : Icons.star_border_rounded,
+                  color: isFav ? scheme.primary : Colors.white,
+                  tooltip: isFav ? 'Убрать из избранного' : 'В избранное',
+                  onTap: _toggleFavorite,
+                ),
+                const Spacer(),
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: GlassBackButton(),
+                ),
+              ],
             ),
           ),
         ],
@@ -262,7 +277,10 @@ class _CoverState extends State<_Cover> {
             ),
           ),
         ),
-        const _CoverShade(),
+        // Затемнение поверх слайдера, но НЕ мешает свайпу: DecoratedBox
+        // без IgnorePointer ловил бы тапы/драги на весь размер и жест
+        // не доходил до PageView («галерея не листалась»).
+        const IgnorePointer(child: _CoverShade()),
         // Точки-индикаторы поверх затемнения: видны и на светлом слайде.
         Positioned(
           left: 0,
@@ -272,21 +290,23 @@ class _CoverState extends State<_Cover> {
             animation: _controller!,
             builder: (_, _) {
               final page = _controller!.page?.round() ?? 0;
-              return Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  for (var i = 0; i < urls.length; i++)
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      margin: const EdgeInsets.symmetric(horizontal: 3),
-                      width: i == page ? 18 : 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: i == page ? Colors.white : Colors.white54,
-                        borderRadius: BorderRadius.circular(3),
+              return IgnorePointer(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    for (var i = 0; i < urls.length; i++)
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        margin: const EdgeInsets.symmetric(horizontal: 3),
+                        width: i == page ? 18 : 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: i == page ? Colors.white : Colors.white54,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               );
             },
           ),
