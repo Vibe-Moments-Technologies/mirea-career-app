@@ -62,10 +62,14 @@ class ProfileScreen extends ConsumerWidget {
                   profile,
                   title: 'Группа',
                   value: profile.group ?? '',
-                  hint: 'Например, ИКБО-01-24',
+                  hint: 'Например, ИКБО-01-23',
+                  // Курс пересчитывается из года в номере группы.
                   apply: (v) => v.isEmpty
                       ? profile.copyWith(clearGroup: true)
-                      : profile.copyWith(group: v),
+                      : profile.copyWith(
+                          group: v,
+                          course: StudentProfile.courseFromGroup(v),
+                        ),
                 ),
               ),
             ],
@@ -81,10 +85,35 @@ class ProfileScreen extends ConsumerWidget {
                 onTap: () => _pickInstitute(context, ref, profile),
               ),
               SettingsTile(
+                icon: Icons.chair_rounded,
+                title: 'Кафедра',
+                subtitle: profile.department ?? 'Не указана',
+                onTap: () => _editText(
+                  context,
+                  ref,
+                  profile,
+                  title: 'Кафедра',
+                  value: profile.department ?? '',
+                  hint: 'Например, КБ-11',
+                  apply: (v) => v.isEmpty
+                      ? profile.copyWith(clearDepartment: true)
+                      : profile.copyWith(department: v),
+                ),
+              ),
+              SettingsTile(
                 icon: Icons.layers_rounded,
                 title: 'Уровень обучения',
                 subtitle: Catalogs.levelTitle(profile.level),
                 onTap: () => _pickLevel(context, ref, profile),
+              ),
+              SettingsTile(
+                icon: Icons.grade_rounded,
+                title: 'Курс',
+                subtitle: profile.course == null
+                    ? 'Не указан'
+                    : '${profile.course}-й курс'
+                        '${_semesterOf(profile.course!)}',
+                onTap: () => _pickCourse(context, ref, profile),
               ),
             ],
           ),
@@ -111,6 +140,38 @@ class ProfileScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  /// Семестр по курсу: до января — осенний (1-й), после — весенний (2-й).
+  static String _semesterOf(int course) {
+    final month = DateTime.now().month;
+    final sem = month >= 9 || month == 1 ? 1 : 2;
+    return ', $sem-й семестр';
+  }
+
+  /// Выбор курса: шторка 1–6.
+  static Future<void> _pickCourse(
+    BuildContext context,
+    WidgetRef ref,
+    StudentProfile profile,
+  ) async {
+    final value = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => _ChoiceSheet(
+        title: 'Курс',
+        selected: profile.course?.toString(),
+        choices: [
+          for (var i = 1; i <= 6; i++) ('$i', '$i-й курс'),
+        ],
+      ),
+    );
+    if (value == null || !context.mounted) return;
+    await ref.read(profileProvider.notifier).save(
+          value.isEmpty
+              ? profile.copyWith(clearCourse: true)
+              : profile.copyWith(course: int.parse(value)),
+        );
   }
 
   /// Правка текстового поля профиля (ФИО, группа): диалог с полем ввода.
@@ -323,6 +384,8 @@ String profileSummary(StudentProfile profile) {
   if (!profile.hasAnswers) return 'Не заполнен — нажмите, чтобы настроить';
   return [
     if (profile.institute != null) Catalogs.instituteTitle(profile.institute),
+    if (profile.department != null) profile.department,
+    if (profile.course != null) '${profile.course} курс',
     if (profile.level != null) Catalogs.levelTitle(profile.level),
     if (profile.tags.isNotEmpty) '${profile.tags.length} интересов',
   ].join(' · ');

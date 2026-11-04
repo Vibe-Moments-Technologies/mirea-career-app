@@ -4,10 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/dock_visibility.dart';
 import '../core/widgets/glass_dock.dart';
 import '../state/providers.dart';
+import 'calendar/calendar_screen.dart';
 import 'favorites/favorites_screen.dart';
 import 'home/home_screen.dart';
 import 'more/more_screen.dart';
 import 'onboarding/onboarding_screen.dart';
+import 'org/organizations_screen.dart';
 
 /// Корневой экран: контент во весь экран + парящий док поверх.
 ///
@@ -24,6 +26,10 @@ class _RootShellState extends ConsumerState<RootShell>
     with SingleTickerProviderStateMixin {
   int _index = 0;
 
+  /// Общий контроллер прокрутки вкладок: тап по активной кнопке дока
+  /// скроллит экран к началу.
+  final _scrollController = ScrollController();
+
   /// Пока открыта подстраница, док уезжает вниз и гаснет.
   ///
   /// Он всё равно перекрыт новым маршрутом, но при возврате виден сразу на
@@ -35,11 +41,14 @@ class _RootShellState extends ConsumerState<RootShell>
     value: 1,
   );
 
-  /// Раздел «Организации» временно убран: организатора указывает админ
-  /// при создании карточки, профили организаций пока не нужны.
+  /// Раздел «Организации» вернулся по просьбе пользователя: карточки
+  /// организаций (профили) остались в приложении, исчезнут только
+  /// когда снова появится полноценная схема «учётки организаций».
   static const _items = <DockItem>[
     DockItem(Icons.home_rounded, 'Главная'),
-    DockItem(Icons.bookmark_rounded, 'Избранное'),
+    DockItem(Icons.calendar_month_rounded, 'Календарь'),
+    DockItem(Icons.star_rounded, 'Сохранённое'),
+    DockItem(Icons.apartment_rounded, 'Организации'),
     DockItem(Icons.person_rounded, 'Ещё'),
   ];
 
@@ -61,6 +70,7 @@ class _RootShellState extends ConsumerState<RootShell>
   void dispose() {
     dockHideNotifier.removeListener(_syncDock);
     _dockVisibility.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -77,13 +87,21 @@ class _RootShellState extends ConsumerState<RootShell>
 
     return Scaffold(
       extendBody: true,
-      body: Stack(
+      body: PrimaryScrollController(
+        // Тап по активной вкладке дока — «наверх» как в нативных
+        // таб-барах. Контроллер общий, но у каждого экрана свой
+        // ScrollPosition (CustomScrollView.attach); слушатель скроллит
+        // позицию АКТИВНОГО экрана — она одна подключена.
+        controller: _scrollController,
+        child: Stack(
         children: [
           IndexedStack(
             index: _index,
             children: const [
               HomeScreen(),
-              FavoritesScreen(),
+              CalendarScreen(),
+              SavedScreen(),
+              OrganizationsScreen(),
               MoreScreen(),
             ],
           ),
@@ -120,12 +138,31 @@ class _RootShellState extends ConsumerState<RootShell>
               child: GlassDock(
                 items: _items,
                 selectedIndex: _index,
-                onSelected: (i) => setState(() => _index = i),
+                onSelected: (i) {
+                  if (i == _index) {
+                    // Тап по активной вкладке — промотать её наверх
+                    // (стандартное поведение iOS/Android таб-баров).
+                    _scrollToTop();
+                  } else {
+                    setState(() => _index = i);
+                  }
+                },
               ),
             ),
           ),
         ],
+        ),
       ),
+    );
+  }
+
+  /// Скролл активной вкладки наверх: плавно, с системной кривой.
+  void _scrollToTop() {
+    if (!_scrollController.hasClients) return;
+    _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
     );
   }
 }

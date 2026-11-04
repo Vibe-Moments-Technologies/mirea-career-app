@@ -10,7 +10,9 @@ class StudentProfile {
     this.group,
     this.campus,
     this.institute,
+    this.department,
     this.level,
+    this.course,
     this.tags = const [],
     this.completed = false,
   });
@@ -19,7 +21,15 @@ class StudentProfile {
   final String? group;
   final String? campus;
   final String? institute;
+
+  /// Кафедра (КБ-2, КБ-11…): уточняет подбор внутри института.
+  final String? department;
   final String? level;
+
+  /// Курс (1–6). Вычисляется из года поступления в номере группы
+  /// (ИКБО-01-23 → 2023 → курс = текущий год − 2023 + 1), но студент
+  /// может поправить вручную.
+  final int? course;
   final List<String> tags;
   final bool completed;
 
@@ -33,7 +43,28 @@ class StudentProfile {
       group != null ||
       institute != null ||
       level != null ||
+      department != null ||
+      course != null ||
       tags.isNotEmpty;
+
+  /// Курс из номера группы: суффикс «-NN» после дефиса — год поступления.
+  ///
+  /// «БИСО-02-23» → 2023 → курс от сентября 2026 = 4. До сентября
+  /// считается, что старший курс ещё не закончился. null — год не
+  /// распознан (группы бывают без года: «АСП-1»).
+  static int? courseFromGroup(String? group, {DateTime? now}) {
+    if (group == null) return null;
+    final m = RegExp(r'-(\d{2})$').firstMatch(group.trim());
+    if (m == null) return null;
+    final year = 2000 + int.parse(m.group(1)!);
+    final today = now ?? DateTime.now();
+    // Учебный год начинается 1 сентября: до него предыдущий курс ещё длится.
+    final academicStart = DateTime(today.year, 9, 1);
+    final elapsedYears =
+        today.isBefore(academicStart) ? today.year - year : today.year - year + 1;
+    if (elapsedYears < 1 || elapsedYears > 8) return null;
+    return elapsedYears;
+  }
 
   /// `copyWith` умеет и сбрасывать поле: передайте `null` явно через
   /// `clearCampus: true` (иначе, как обычно в Dart, null = «не менять»).
@@ -42,21 +73,27 @@ class StudentProfile {
     String? group,
     String? campus,
     String? institute,
+    String? department,
     String? level,
+    int? course,
     List<String>? tags,
     bool? completed,
     bool clearFullName = false,
     bool clearGroup = false,
     bool clearCampus = false,
     bool clearInstitute = false,
+    bool clearDepartment = false,
     bool clearLevel = false,
+    bool clearCourse = false,
   }) =>
       StudentProfile(
         fullName: clearFullName ? null : fullName ?? this.fullName,
         group: clearGroup ? null : group ?? this.group,
         campus: clearCampus ? null : campus ?? this.campus,
         institute: clearInstitute ? null : institute ?? this.institute,
+        department: clearDepartment ? null : department ?? this.department,
         level: clearLevel ? null : level ?? this.level,
+        course: clearCourse ? null : course ?? this.course,
         tags: tags ?? this.tags,
         completed: completed ?? this.completed,
       );
@@ -66,7 +103,9 @@ class StudentProfile {
         'group': group,
         'campus': campus,
         'institute': institute,
+        'department': department,
         'level': level,
+        'course': course,
         'tags': tags,
         'completed': completed,
       };
@@ -78,7 +117,9 @@ class StudentProfile {
         group: j['group'] as String?,
         campus: j['campus'] as String?,
         institute: j['institute'] as String?,
+        department: j['department'] as String?,
         level: j['level'] as String?,
+        course: (j['course'] as num?)?.toInt(),
         tags: (j['tags'] as List?)?.cast<String>() ?? const [],
         completed: j['completed'] as bool? ?? false,
       );

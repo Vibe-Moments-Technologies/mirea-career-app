@@ -1,4 +1,3 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -207,9 +206,9 @@ void main() {
       await tester.pump();
 
       expect(find.byType(OnboardingScreen), findsOneWidget);
-      // первый шаг — ФИО и группа: они кормят автозаполнение анкет,
-      // институт — вторым шагом
-      expect(find.text('Как вас зовут?'), findsOneWidget);
+      // Welcome-экран без полей: приглашение + «Начать опрос».
+      expect(find.text('Добро пожаловать!'), findsOneWidget);
+      expect(find.text('Начать опрос'), findsOneWidget);
       expect(frameworkErrors, isEmpty, reason: 'фреймворк сообщил об ошибке: $frameworkErrors');
     });
 
@@ -271,10 +270,16 @@ void main() {
       );
       await tester.pump();
 
+      // Welcome → первый вопрос.
+      await tester.tap(find.text('Начать опрос'));
+      await tester.pumpAndSettle();
+
       const questions = [
         'Как вас зовут?',
         'Ваш институт',
-        'Уровень обучения',
+        'Кафедра',
+        'Ваша группа?',
+        'Уровень и курс',
         'Что вам интересно?',
       ];
 
@@ -314,11 +319,13 @@ void main() {
       );
       await tester.pump();
 
-      // шаг уровня — третий (первый — ФИО и группа)
-      await tester.tap(find.text('Далее'));
+      // шаг «Уровень и курс» — пятый: welcome → 4× «Далее».
+      await tester.tap(find.text('Начать опрос'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Далее'));
-      await tester.pumpAndSettle();
+      for (var i = 0; i < 4; i++) {
+        await tester.tap(find.text('Далее'));
+        await tester.pumpAndSettle();
+      }
 
       for (final level in [
         'Абитуриент',
@@ -326,8 +333,6 @@ void main() {
         'Специалитет',
         'Магистратура',
         'Аспирантура',
-        'Выпускник',
-        'Преподаватель',
       ]) {
         expect(find.text(level), findsOneWidget, reason: 'нет уровня «$level»');
       }
@@ -349,6 +354,10 @@ void main() {
       );
       await tester.pump();
 
+      // Welcome → «Начать опрос» → «Пропустить»: вопросы необязательны,
+      // но сам факт опроса фиксируется, чтобы экран не возвращался.
+      await tester.tap(find.text('Начать опрос'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Пропустить'));
       await tester.pump();
 
@@ -400,19 +409,21 @@ void main() {
       }
     });
 
-    test('уровни обучения включают новые категории', () {
+    test('уровни обучения — только ступени образования', () {
       final ids = Catalogs.levels.map((l) => l.id).toList();
       for (final expected in [
-        'applicant', 'bachelor', 'specialist', 'master',
-        'postgrad', 'graduate', 'teacher',
+        'applicant', 'bachelor', 'specialist', 'master', 'postgrad',
       ]) {
         expect(ids, contains(expected), reason: 'нет уровня «$expected»');
       }
+      // выпускник/преподаватель/«не важно» — не ступени, из опроса убраны
+      expect(ids, isNot(contains('graduate')));
+      expect(ids, isNot(contains('teacher')));
     });
 
     test('подписи уровней не подставляют чужие значения', () {
       expect(Catalogs.levelTitle('applicant'), 'Абитуриент');
-      expect(Catalogs.levelTitle('teacher'), 'Преподаватель');
+      expect(Catalogs.levelTitle('postgrad'), 'Аспирантура');
       // неизвестный id не должен молча стать «Не важно»
       expect(Catalogs.levelTitle('нет-такого'), contains('не указан'));
     });
@@ -547,18 +558,56 @@ void main() {
 
       await tester.pumpWidget(wrap(c, const RootShell()));
       await tester.pump();
+      // Лента грузится postFrameCallback'ом: дождаться карточек.
+      await tester.pumpAndSettle();
 
-      // Заголовок и вкладки в закреплённом PersistentHeader: при скролле
-      // их верхняя граница не уходит вверх.
+      // Заголовок в закреплённом PersistentHeader: при скролле его верхняя
+      // граница не уходит вверх. Вкладки, наоборот, уезжают под шапку —
+      // в ленте важна высота, переключатель возвращается наверх.
       final header = find.byType(PinnedHeaderScreen);
       expect(header, findsOneWidget);
+
+      // Лента постранична (по 5): до карточки 15 — две догрузки. Кнопка
+      // «Показать ещё» в хвосте и НЕ ПОСТРОЕНА, пока не подъехала
+      // (SliverList строит только видимое): скроллим жестом, пока не
+      // появится, потом тап. Кнопка под доком — тап без hit-проверки.
+      // Скроллим ленту ГЛАВНОЙ: IndexedStack строит и другие вкладки.
+      final homeScrollable = find
+          .descendant(
+            of: find.byType(HomeScreen),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      Future<void> loadMore() async {
+        for (var i = 0; i < 20; i++) {
+          if (find.text('Показать ещё 5').evaluate().isNotEmpty) break;
+          // Кнопка не построена (SliverList ленив): тянем ленту вверх.
+          await tester.drag(
+            find.byType(Scrollable).first,
+            const Offset(0, -400),
+          );
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        // Кнопка в самом низу — под стеклянным доком. Ещё один рывок
+        // поднимает её в зону удара.
+        await tester.drag(
+          find.byType(Scrollable).first,
+          const Offset(0, -300),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Показать ещё 5'));
+        await tester.pump();
+      }
+
+      await loadMore();
+      await loadMore();
       await tester.scrollUntilVisible(
         find.text('Карточка 15'),
         300,
-        scrollable: find.byType(Scrollable).first,
+        scrollable: homeScrollable,
       );
       await tester.pump();
-      expect(tester.getTopLeft(find.text('Для вас')).dy, lessThan(200));
+      expect(tester.getTopLeft(find.text('Карьера МИРЭА')).dy, lessThan(200));
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
 
@@ -669,7 +718,7 @@ void main() {
       await tester.pump();
 
       for (final icon in [
-        Icons.bookmark_rounded,
+        Icons.star_rounded,
         Icons.person_rounded,
         Icons.home_rounded,
       ]) {
@@ -1381,6 +1430,13 @@ void main() {
 
       expect(find.text('Институт'), findsOneWidget);
       expect(find.text('Уровень обучения'), findsOneWidget);
+      // «Интересы» ниже новых строк (кафедра, курс) — вне вьюпорта:
+      // проверяем через скролл.
+      await tester.scrollUntilVisible(
+        find.text('Интересы'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(find.text('Интересы'), findsOneWidget);
 
       // строка открывается и выбранный институт сохраняется
@@ -1408,7 +1464,7 @@ void main() {
       await tester.pumpWidget(wrap(c, const RootShell()));
       await tester.pump();
 
-      await tester.tap(find.byIcon(Icons.bookmark_rounded).last);
+      await tester.tap(find.byIcon(Icons.star_rounded).last);
       await tester.pumpAndSettle();
 
       // Карточка на месте и выглядит как любая другая: приоритет на ней
@@ -1416,7 +1472,7 @@ void main() {
       expect(find.text('Приоритетная'), findsWidgets);
       expect(
         find.descendant(
-          of: find.byType(FavoritesScreen),
+          of: find.byType(SavedScreen),
           matching: find.text('Приоритет'),
         ),
         findsNothing,
@@ -1435,7 +1491,7 @@ void main() {
 
       await tester.pumpWidget(wrap(c, const RootShell()));
       await tester.pump();
-      await tester.tap(find.byIcon(Icons.bookmark_rounded).last);
+      await tester.tap(find.byIcon(Icons.star_rounded).last);
       await tester.pumpAndSettle();
 
       // На избранном нет свайпа-обновления. Проверяем ВНУТРИ вкладки:
@@ -1443,7 +1499,7 @@ void main() {
       // находился бы через глобальный поиск.
       expect(
         find.descendant(
-          of: find.byType(FavoritesScreen),
+          of: find.byType(SavedScreen),
           matching: find.byType(RefreshIndicator),
         ),
         findsNothing,
@@ -1451,7 +1507,7 @@ void main() {
       // …и прокрутка ограничена содержимым, а не отскакивает за края.
       final scroll = tester.widget<CustomScrollView>(
         find.descendant(
-          of: find.byType(FavoritesScreen),
+          of: find.byType(SavedScreen),
           matching: find.byType(CustomScrollView),
         ),
       );
@@ -1585,11 +1641,11 @@ void main() {
   });
 
   group('Организатор', () {
-    testWidgets('страницы организаций в доке больше нет; подпись в деталях',
+    testWidgets('страницы организаций вернулись в док; подпись в деталях',
         (tester) async {
-      // Профили организаций временно убраны: организатора указывает админ
-      // при создании карточки. В доке — три вкладки, в деталях — подпись
-      // без перехода в профиль.
+      // Профили организаций вернули в док (когда появятся учётки
+      // организаций — схема сменится). В деталях организатор — подпись,
+      // карточка не ведёт в профиль с поста.
       final c = await container(
         profile: const StudentProfile(completed: true),
         cache: [
@@ -1610,8 +1666,8 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      // В доке нет вкладки «Организации».
-      expect(find.byIcon(Icons.apartment_rounded), findsNothing);
+      // В доке есть вкладка «Организации».
+      expect(find.byIcon(Icons.apartment_rounded), findsOneWidget);
 
       await tester.tap(find.text('Стажировка в Яндексе'));
       await tester.pumpAndSettle();
@@ -1651,9 +1707,8 @@ void main() {
     });
   });
 
-  group('Мои анкеты', () {
-    testWidgets('пустое состояние и карточка с отправленной анкетой',
-        (tester) async {
+  group('Сохранённое: анкеты', () {
+    testWidgets('пустое состояние на вкладке «Анкеты»', (tester) async {
       final c = await container(
         profile: const StudentProfile(completed: true),
         cache: [samplePost()],
@@ -1664,11 +1719,10 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      // Пустое состояние: пункт «Мои анкеты» в «Ещё» ведёт на экран
-      // с заглушкой.
-      await tester.tap(find.byIcon(Icons.person_rounded).last);
+      // Док → «Сохранённое» → свитчер «Анкеты».
+      await tester.tap(find.byIcon(Icons.star_rounded).last);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Мои анкеты'));
+      await tester.tap(find.text('Анкеты'));
       await tester.pumpAndSettle();
 
       expect(find.text('Пока пусто'), findsOneWidget);
@@ -1697,13 +1751,9 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.person_rounded).last);
+      await tester.tap(find.byIcon(Icons.star_rounded).last);
       await tester.pumpAndSettle();
-
-      // В «Ещё» пункт показывает число отправленных.
-      expect(find.text('Отправлено: 1'), findsOneWidget);
-
-      await tester.tap(find.text('Мои анкеты'));
+      await tester.tap(find.text('Анкеты'));
       await tester.pumpAndSettle();
 
       // Карточка: заголовок поста, анкета и дата.
@@ -1786,7 +1836,9 @@ void main() {
   group('Маршруты', () {
     testWidgets('на iOS маршрут интерактивный, на Android — системный',
         (tester) async {
-      // iOS: свайп-назад от левого края умеет только CupertinoPageRoute.
+      // iOS: WideSwipeBackRoute — Cupertino-переход + интерактивный
+      // свайп-назад с зоной 44 pt (системный CupertinoPageRoute ловит
+      // только 20 pt — туда трудно попасть).
       // Android: жест системный, принудительно его не включаем.
       // Платформу задаём явно: по умолчанию в тестах android, и iOS-ветка
       // никогда бы не проверялась.
@@ -1807,7 +1859,7 @@ void main() {
       }
 
       expect(await routeFor(TargetPlatform.iOS),
-          isA<CupertinoPageRoute<void>>());
+          isA<WideSwipeBackRoute<void>>());
       expect(await routeFor(TargetPlatform.android),
           isA<MaterialPageRoute<void>>());
     });

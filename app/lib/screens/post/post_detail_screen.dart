@@ -99,9 +99,10 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
             leading: const GlassBackButton(),
             actions: [
               GlassIconButton(
+                // Избранное = звезда везде: и здесь, и в ленте, и в доке.
                 icon: isFav
-                    ? Icons.bookmark_rounded
-                    : Icons.bookmark_border_rounded,
+                    ? Icons.star_rounded
+                    : Icons.star_border_rounded,
                 color: isFav ? scheme.primary : Colors.white,
                 tooltip: isFav ? 'Убрать из избранного' : 'В избранное',
                 onTap: _toggleFavorite,
@@ -630,7 +631,7 @@ class _Stats extends ConsumerWidget {
         ),
         const SizedBox(width: 24),
         _StatItem(
-          icon: Icons.bookmark_rounded,
+          icon: Icons.star_rounded,
           value: live.favoritesCount,
           label: 'в избранном',
         ),

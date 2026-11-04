@@ -6,12 +6,14 @@ import 'app_scroll.dart';
 /// Шаблон страницы с закреплённой шапкой.
 ///
 /// Шапка (заголовок + кнопки) прилипает к верху: контент прокручивается
-/// ПОД неё, никогда не над ней. Над шапкой — непрозрачная зона safe area
-/// (статус-бар), чтобы под вырезом не просвечивал скроллящийся контент.
+/// ПОД неё. Вкладки (PinnedTabStrip) при скролле УЕЗЖАЮТ под шапку:
+/// в ленте важен каждый экран высоты, а вернуться к переключателю можно
+/// тапом по активной вкладке дока или проскроллив наверх. Над шапкой —
+/// непрозрачная зона safe area (статус-бар), чтобы под вырезом
+/// не просвечивал скроллящийся контент.
 ///
-/// Так устроены главная, организации, избранное и архив: одинаковая
-/// механика, одинаковые отступы. Любой блок можно закрепить аналогично —
-/// [PinnedTabStrip] ниже (сегменты-вкладки) использует ту же схему.
+/// Так устроены главная, сохранённое, календарь и архив: одинаковая
+/// механика, одинаковые отступы.
 class PinnedHeaderScreen extends StatelessWidget {
   const PinnedHeaderScreen({
     super.key,
@@ -21,6 +23,7 @@ class PinnedHeaderScreen extends StatelessWidget {
     this.tabs,
     this.onRefresh,
     this.bottom = 8,
+    this.controller,
   });
 
   final String title;
@@ -28,7 +31,7 @@ class PinnedHeaderScreen extends StatelessWidget {
   /// Кнопки справа от заголовка (поиск, фильтры).
   final List<Widget> actions;
 
-  /// Сегменты-вкладки, которые закрепляются под шапкой (PinnedTabStrip).
+  /// Сегменты-вкладки: закрепляются под шапкой и уезжают при скролле.
   final Widget? tabs;
 
   /// Контент страницы. Первый элемент НЕ должен включать свой заголовок.
@@ -37,42 +40,57 @@ class PinnedHeaderScreen extends StatelessWidget {
   /// Свайп-обновление; null — прокрутка обычная.
   final Future<void> Function()? onRefresh;
 
-  /// Отступ под закреплённой зоной (шапка+вкладки).
+  /// Отступ под закреплённой зоной (шапка; вкладкам свой отступ).
   final double bottom;
+
+  /// Контроллер прокрутки: по умолчанию — PrimaryScrollController
+  /// (сигнал «наверх» из дока скроллит активную вкладку).
+  final ScrollController? controller;
 
   @override
   Widget build(BuildContext context) {
     final bg = Theme.of(context).scaffoldBackgroundColor;
-    // Высоты считаются один раз по контексту: safe area сверху входит в
-    // min/maxExtent — иначе Column в delegate переполняется на скролле.
     final top = AppInsets.top(context, extra: 0);
-    final tabsHeight = tabs != null ? _kTabsHeight : 0.0;
 
     return CustomScrollView(
+      // PrimaryScrollController слушает тап по активной вкладке дока
+      // (scrollToTopNotifier в root_shell) и скроллит экран наверх.
+      controller: controller ?? PrimaryScrollController.maybeOf(context),
       physics: onRefresh != null ? AppScroll.refreshable : AppScroll.plain,
       slivers: [
+        // Шапка прилипает всегда: название и кнопки — навигация.
         SliverPersistentHeader(
           pinned: true,
           delegate: _HeaderDelegate(
             title: title,
             actions: actions,
-            tabs: tabs,
             topInset: top,
-            tabsHeight: tabsHeight,
             bottom: bottom,
             background: bg,
           ),
         ),
+        // Вкладки НЕ прилипают: уезжают при скролле вниз, возвращаются
+        // при скролле наверх. Анимации не нужно — скорость прокрутки сама
+        // задаёт темп, а FadeTransition на каждый кадр дорожает.
+        if (tabs != null)
+          SliverPersistentHeader(
+            pinned: false,
+            delegate: _TabsDelegate(
+              tabs: tabs!,
+              bottom: bottom,
+              background: bg,
+            ),
+          ),
         ...slivers,
       ],
     );
   }
 }
 
-/// Высота строки заголовка (без safe area сверху и вкладок).
+/// Высота строки заголовка (без safe area сверху).
 const _kHeaderRow = 56.0;
 
-/// Фиксированная высота закреплённой полосы вкладок.
+/// Высота полосы вкладок.
 const _kTabsHeight = 52.0;
 
 class _HeaderDelegate extends SliverPersistentHeaderDelegate {
@@ -80,10 +98,8 @@ class _HeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.title,
     required this.actions,
     required this.topInset,
-    required this.tabsHeight,
     required this.bottom,
     required this.background,
-    this.tabs,
   });
 
   final String title;
@@ -91,15 +107,11 @@ class _HeaderDelegate extends SliverPersistentHeaderDelegate {
 
   /// Safe area сверху: непрозрачная зона над заголовком.
   final double topInset;
-
-  /// Высота полосы вкладок (0 — вкладок нет).
-  final double tabsHeight;
   final double bottom;
   final Color background;
-  final Widget? tabs;
 
   @override
-  double get minExtent => topInset + _kHeaderRow + tabsHeight + bottom;
+  double get minExtent => topInset + _kHeaderRow + bottom;
 
   @override
   double get maxExtent => minExtent;
@@ -110,16 +122,12 @@ class _HeaderDelegate extends SliverPersistentHeaderDelegate {
     double shrinkOffset,
     bool overlapsContent,
   ) {
-    // Контент проезжает под шапкой — добавляем нижнюю границу, иначе
-    // карточки «протекают» сквозь заголовок.
-    final scrolled = overlapsContent;
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
     return Material(
       color: background,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Safe area сверху непрозрачна — контент под вырезом не виден.
           SizedBox(height: topInset),
           Padding(
             padding: EdgeInsets.symmetric(horizontal: pad),
@@ -133,12 +141,7 @@ class _HeaderDelegate extends SliverPersistentHeaderDelegate {
               ),
             ),
           ),
-          if (tabs != null)
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: pad),
-              child: SizedBox(height: tabsHeight, child: tabs),
-            ),
-          if (scrolled)
+          if (overlapsContent)
             Container(
               height: 0.5,
               color: AppColors.separator(context),
@@ -152,18 +155,56 @@ class _HeaderDelegate extends SliverPersistentHeaderDelegate {
   @override
   bool shouldRebuild(_HeaderDelegate old) =>
       old.title != title ||
-      old.tabs != tabs ||
       old.background != background ||
       old.bottom != bottom ||
-      old.topInset != topInset ||
-      old.tabsHeight != tabsHeight;
+      old.topInset != topInset;
+}
+
+/// Неприлипающая полоса вкладок: уезжает при прокрутке.
+class _TabsDelegate extends SliverPersistentHeaderDelegate {
+  _TabsDelegate({
+    required this.tabs,
+    required this.bottom,
+    required this.background,
+  });
+
+  final Widget tabs;
+  final double bottom;
+  final Color background;
+
+  @override
+  double get minExtent => _kTabsHeight + bottom;
+
+  @override
+  double get maxExtent => minExtent;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
+    return Material(
+      color: background,
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: pad),
+        child: SizedBox(height: _kTabsHeight, child: tabs),
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(_TabsDelegate old) =>
+      old.tabs != tabs ||
+      old.background != background ||
+      old.bottom != bottom;
 }
 
 /// Закрепляемая полоса сегментов-вкладок («Для вас / Все / …»).
 ///
 /// Используется внутри [PinnedHeaderScreen.tabs]: экран передаёт список
-/// сегментов и колбэк, полоса рисует капсульный переключатель и
-/// прилипает под шапкой наравне с ней.
+/// сегментов и колбэк, полоса рисует капсульный переключатель.
 class PinnedTabStrip<T> extends StatelessWidget {
   const PinnedTabStrip({
     super.key,

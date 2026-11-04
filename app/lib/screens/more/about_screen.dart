@@ -1,19 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/app_route.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_scroll.dart';
 import '../../core/widgets/glass_back_button.dart';
 import '../../core/widgets/settings_list.dart';
+import 'licenses_screen.dart';
 
 /// Версия приложения. Совпадает с pubspec.yaml; CI подставляет свою.
 const _appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.1.0');
 const _appBuild = String.fromEnvironment('APP_BUILD', defaultValue: '1');
 
-/// «О приложении»: назначение, версия, контакты, авторы.
+/// «О приложении»: о нас, поддержка, версия и лицензии, копирайт.
 ///
 /// Экран полноценный, а не системный диалог: в `showAboutDialog` нельзя ни
 /// разместить контакты, ни показать копирайт командной разработки.
+/// Блок «Как это работает» убран (запрос пользователя): экран о проекте,
+/// а не инструкция — назначение объясняет раздел «О нас».
 class AboutScreen extends StatelessWidget {
   const AboutScreen({super.key});
 
@@ -64,63 +68,37 @@ class AboutScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 28),
-          const _Section('ЧТО ЭТО'),
+          const _Section('О НАС'),
           Text(
-            'Вакансии, стажировки, стипендии и события РТУ МИРЭА и компаний-партнёров '
-            'в одном месте. Карточки публикуют сотрудники университета и партнёров '
-            'после проверки модератором.',
+            '«Карьера РТУ МИРЭА» — проект команды Vibe Moments Technologies '
+            'совместно с университетом: мы соединяем студентов и их будущую '
+            'карьеру в одном приложении. Вакансии, стажировки, стипендии и '
+            'события собираются в единую ленту — без поиска по десятку '
+            'каналов и рассылок.',
             style: AppText.body.copyWith(height: 1.5),
           ),
           const SizedBox(height: 5),
           Text(
-            'Приложение работает без регистрации: смотреть и искать можно сразу. '
-            'Избранное, профиль и интересы хранятся только на вашем устройстве.',
+            'Карточки публикуют сотрудники университета и компаний-партнёров '
+            'после проверки. Приложение работает без регистрации: избранное '
+            'и профиль хранятся только на вашем устройстве.',
             style: AppText.body.copyWith(height: 1.5),
           ),
           const SizedBox(height: 24),
-          const _Section('КАК ЭТО РАБОТАЕТ'),
-          SettingsGroup(
-            children: [
-              _HowTile(
-                icon: Icons.search_rounded,
-                title: 'Ищите',
-                body: 'Каталог с фильтрами по типу, формату, институту и тегам.',
-              ),
-              _HowTile(
-                icon: Icons.auto_awesome_rounded,
-                title: 'Подбирайте',
-                body: 'Раздел «Для вас» учитывает институт, уровень и интересы '
-                    'из профиля — всё считается на устройстве.',
-              ),
-              _HowTile(
-                icon: Icons.bookmark_rounded,
-                title: 'Сохраняйте',
-                body: 'Избранное доступно офлайн и не требует аккаунта.',
-              ),
-              _HowTile(
-                icon: Icons.open_in_new_rounded,
-                title: 'Записывайтесь',
-                body: 'Кнопка на карточке ведёт на форму регистрации организатора.',
-                last: true,
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
           const _Section('ПОДДЕРЖКА'),
+          // Почта карьерного центра убрана (запрос пользователя): каналы
+          // поддержки будут свои — бот в Telegram, сайт проекта, почта
+          // ответственного. Пока оставляем сайт вуза.
           SettingsGroup(
             children: [
-              SettingsTile(
-                icon: Icons.mail_outline_rounded,
-                title: 'Написать в карьерный центр',
-                subtitle: 'career@mirea.ru',
-                onTap: () => _openLink(context, 'mailto:career@mirea.ru'),
-              ),
               SettingsTile(
                 icon: Icons.language_rounded,
                 title: 'Сайт университета',
                 subtitle: 'mirea.ru',
                 onTap: () => _openLink(context, 'https://mirea.ru'),
               ),
+              // Появятся — добавим строками сюда:
+              // «Написать в поддержку» (бот Telegram), «Сайт приложения».
             ],
           ),
           const SizedBox(height: 24),
@@ -128,22 +106,26 @@ class AboutScreen extends StatelessWidget {
             footer: 'Данные профиля не покидают устройство. '
                 'Просмотры и добавления в избранное передаются обезличенно — '
                 'без идентификаторов пользователя.',
-            children: const [
-              // Версия — просто значение. Раньше здесь был счётчик нажатий с
-              // подсказкой «осталось N»: он выдавал отладочный экран с первых
-              // четырёх кликов и делал его видным студенту. Диагностика теперь
-              // идёт через Sentry, а не через тап-секрет в интерфейсе.
-              SettingsValueTile(title: 'Версия', value: '$_appVersion ($_appBuild)'),
+            children: [
+              SettingsTile(
+                icon: Icons.verified_outlined,
+                title: 'Версия',
+                subtitle: '$_appVersion ($_appBuild)',
+                onTap: () {},
+              ),
+              SettingsTile(
+                icon: Icons.description_outlined,
+                title: 'Лицензии',
+                subtitle: 'Используемые компоненты',
+                onTap: () => Navigator.of(context).push(
+                  appRoute(context, const LicensesScreen()),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 24),
           Center(
-            child: Text(
-              '© РТУ МИРЭА, ${DateTime.now().year}\n'
-              '© Vibe Moments Technologies, ${DateTime.now().year}',
-              textAlign: TextAlign.center,
-              style: AppText.caption.copyWith(color: AppColors.secondaryLight, height: 1.5),
-            ),
+            child: _Copyright(),
           ),
         ],
       ),
@@ -166,42 +148,20 @@ class AboutScreen extends StatelessWidget {
   }
 }
 
-class _HowTile extends StatelessWidget {
-  const _HowTile({
-    required this.icon,
-    required this.title,
-    required this.body,
-    this.last = false,
-  });
-
-  final IconData icon;
-  final String title;
-  final String body;
-  final bool last;
-
+/// Копирайт: год запуска — 2026; далее — диапазон до года устройства.
+/// Часы на телефоне могут врать в прошлое: меньше 2026 не показываем,
+/// а равный год печатается одиночным значением, без «2026 – 2026».
+class _Copyright extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16, 14, 16, last ? 14 : 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 20, color: scheme.primary),
-              const SizedBox(width: 10),
-              Text(title, style: AppText.headline),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            body,
-            style: AppText.footnote.copyWith(color: AppColors.secondaryLight, height: 1.45),
-          ),
-          if (!last) const SizedBox(height: 14),
-        ],
-      ),
+    final deviceYear = DateTime.now().year;
+    final year = deviceYear < 2026 ? 2026 : deviceYear;
+    final range = deviceYear > 2026 ? '2026 – $year' : '$year';
+
+    return Text(
+      '© РТУ МИРЭА, $range\n© Vibe Moments Technologies, $range',
+      textAlign: TextAlign.center,
+      style: AppText.caption.copyWith(color: AppColors.secondaryLight, height: 1.5),
     );
   }
 }
