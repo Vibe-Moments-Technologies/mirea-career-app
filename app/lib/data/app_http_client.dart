@@ -33,17 +33,23 @@ class AppHttpClient {
   /// [userAgent] — внешний API расписания вуза требует нестандартный UA
   /// и отвечает ошибкой на пустой/дефолтный.
   ///
-  /// Результат кэшируется в памяти: повторные вызовы для того же URL
-  /// возвращают байты мгновенно, без HTTP-запроса.
+  /// [cache] — кэшировать результат в памяти. Нужен ТОЛЬКО картинкам
+  /// (URL картинок стабильны, повторная загрузка — трата трафика при
+  /// скролле). API-запросы (лента, витрина, опросы, справочники) НЕ
+  /// кэшируются: иначе pull-to-refresh возвращал бы устаревший ответ
+  /// до перезапуска приложения — ровно этот баг был в dev.74.
   /// При ошибке делает одну повторную попытку.
   Future<Uint8List?> fetchBytes(
     String url, {
     Duration timeout = const Duration(seconds: 15),
     String? userAgent,
+    bool cache = false,
   }) async {
     // Кэш: если уже загружали — возвращаем сразу.
-    final cached = _imageCache[url];
-    if (cached != null) return cached;
+    if (cache) {
+      final cached = _imageCache[url];
+      if (cached != null) return cached;
+    }
 
     for (var attempt = 0; attempt < 2; attempt++) {
       try {
@@ -59,7 +65,7 @@ class AppHttpClient {
           chunks.addAll(chunk);
         }
         final bytes = Uint8List.fromList(chunks);
-        _imageCache[url] = bytes;
+        if (cache) _imageCache[url] = bytes;
         return bytes;
       } catch (_) {
         if (attempt == 0) {
@@ -171,7 +177,9 @@ class _AppNetworkImageState extends State<AppNetworkImage> {
       _bytes = null;
     });
 
-    final bytes = await AppHttpClient.instance.fetchBytes(widget.url);
+    // Кэш включён: это картинка — скролл не перезагружает байты.
+    final bytes =
+        await AppHttpClient.instance.fetchBytes(widget.url, cache: true);
     if (!mounted) return;
 
     if (bytes != null) {

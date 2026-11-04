@@ -35,13 +35,18 @@ class SpotlightGallery extends StatefulWidget {
     super.key,
     required this.banners,
     this.onOpenPost,
+    this.onOpenForm,
   });
 
   final List<SpotlightBanner> banners;
 
-  /// Пост-ссылка баннера (link_url = "post:XXXXXX"): хост открывает
+  /// Пост-ссылка баннера (link_post / "post:XXXXXX"): хост открывает
   /// экран поста по публичному номеру.
   final void Function(String publicId)? onOpenPost;
+
+  /// Анкета-ссылка баннера (link_form, приоритет ниже поста): хост
+  /// открывает опросник СРАЗУ по form_id, без карточки поста.
+  final void Function(String formId)? onOpenForm;
 
   @override
   State<SpotlightGallery> createState() => _SpotlightGalleryState();
@@ -137,6 +142,7 @@ class _SpotlightGalleryState extends State<SpotlightGallery> {
               child: _Card(
                 banner: widget.banners[spotlightIndex(i, count)],
                 onOpenPost: widget.onOpenPost,
+                onOpenForm: widget.onOpenForm,
               ),
             ),
           ),
@@ -168,19 +174,26 @@ class _SpotlightGalleryState extends State<SpotlightGallery> {
 }
 
 /// Карточка витрины: обложка, заголовок, подпись. Тап ведёт по ссылке, если
-/// администратор её задал: пост-ссылка (link_post или "post:" в link_url) —
-/// в детали поста через [onOpenPost], обычный URL — в браузер.
+/// администратор её задал. Приоритет (контракт 6.3): пост (link_post) →
+/// анкета (link_form) → внешний URL → ничего.
 class _Card extends StatelessWidget {
-  const _Card({required this.banner, this.onOpenPost});
+  const _Card({required this.banner, this.onOpenPost, this.onOpenForm});
 
   final SpotlightBanner banner;
   final void Function(String publicId)? onOpenPost;
+  final void Function(String formId)? onOpenForm;
 
   Future<void> _open() async {
     // Пост-ссылка (в любом формате): экран поста, не браузер.
     final postRef = banner.linkPostId;
     if (postRef != null) {
       onOpenPost?.call(postRef);
+      return;
+    }
+    // Анкета-ссылка: опросник сразу, без карточки поста.
+    final formRef = banner.linkFormId;
+    if (formRef != null) {
+      onOpenForm?.call(formRef);
       return;
     }
 
@@ -194,8 +207,7 @@ class _Card extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
-    final hasLink =
-        banner.linkPostId != null || (banner.linkUrl ?? '').isNotEmpty;
+    final hasLink = banner.hasLink;
 
     return Container(
       decoration: BoxDecoration(
@@ -259,10 +271,16 @@ class _Card extends StatelessWidget {
                   Positioned(
                     right: 10,
                     top: 10,
-                    // Пост-ссылка и внешний URL показываются разными
-                    // значками: «открывает внутренний экран поста» ≠
-                    // «уводит в браузер» — по бейджу это видно ДО тапа.
-                    child: _OpenBadge(isPost: banner.linkPostId != null),
+                    // Пост, анкета и внешний URL — разные значки: «карточка
+                    // поста» / «сразу опросник» / «уводит в браузер» —
+                    // по бейджу видно ДО тапа.
+                    child: _OpenBadge(
+                      kind: banner.linkPostId != null
+                          ? _BadgeKind.post
+                          : banner.linkFormId != null
+                              ? _BadgeKind.form
+                              : _BadgeKind.url,
+                    ),
                   ),
               ],
             ),
@@ -273,9 +291,11 @@ class _Card extends StatelessWidget {
   }
 }
 
+enum _BadgeKind { post, form, url }
+
 class _OpenBadge extends StatelessWidget {
-  const _OpenBadge({this.isPost = false});
-  final bool isPost;
+  const _OpenBadge({required this.kind});
+  final _BadgeKind kind;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -285,7 +305,11 @@ class _OpenBadge extends StatelessWidget {
           shape: BoxShape.circle,
         ),
         child: Icon(
-          isPost ? Icons.article_rounded : Icons.open_in_new_rounded,
+          switch (kind) {
+            _BadgeKind.post => Icons.article_rounded,
+            _BadgeKind.form => Icons.ballot_rounded,
+            _BadgeKind.url => Icons.open_in_new_rounded,
+          },
           size: 14,
           color: Colors.white,
         ),

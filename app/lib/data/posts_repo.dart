@@ -256,6 +256,30 @@ class PostsRepo {
     }
   }
 
+  /// Анкета по публичному номеру (forms.form_id, как post_id у постов).
+  ///
+  /// Так баннеры ссылаются на анкеты (link_form): тап открывает опросник
+  /// сразу, минуя карточку поста. null = не найдена или сети нет.
+  Future<FormDefinition?> fetchFormByPublicId(String publicId) async {
+    if (isOffline) return null;
+
+    final filter = Uri.encodeComponent('form_id="$publicId"');
+    final url = '$_baseUrl/api/collections/forms/records'
+        '?filter=$filter'
+        '&perPage=1';
+
+    final bytes = await AppHttpClient.instance.fetchBytes(url);
+    if (bytes == null) return null;
+
+    try {
+      final json = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+      final items = json['items'] as List<dynamic>? ?? [];
+      return items.map(FormDefinition.tryParse).whereType<FormDefinition>().firstOrNull;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Институты из БД (коллекция institutes): панель управляет составом
   /// и порядком. Пусто/офлайн — пустой список, вызывающий берёт запас
   /// из Catalogs.
@@ -536,9 +560,11 @@ class PostsRepo {
       subtitle: json['subtitle'] as String?,
       imageUrl: imageUrl,
       linkUrl: json['link_url'] as String?,
-      // Панель пишет номер поста отдельным полем link_post
-      // («PWUBVD»): без него баннер с пост-ссылкой был некликабельным.
+      // Панель пишет номера отдельными полями link_post / link_form
+      // («PWUBVD» / «9AQ5UY»): без них баннер со ссылкой был
+      // некликабельным.
       linkPost: json['link_post'] as String?,
+      linkForm: json['link_form'] as String?,
       sortOrder: (json['sort_order'] as num?)?.toInt() ?? 0,
     );
   }

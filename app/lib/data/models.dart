@@ -34,6 +34,7 @@ class SpotlightBanner {
     this.imageUrl,
     this.linkUrl,
     this.linkPost,
+    this.linkForm,
     this.sortOrder = 0,
   });
 
@@ -43,6 +44,13 @@ class SpotlightBanner {
   final String? imageUrl;
   final String? linkUrl;
   final int sortOrder;
+
+  /// Прямое поле link_post (чистый номер поста, без префикса).
+  final String? linkPost;
+
+  /// Прямое поле link_form: публичный номер анкеты (form_id).
+  /// Баннер открывает анкету СРАЗУ, без карточки поста.
+  final String? linkForm;
 
   /// Ссылка на пост: публичный номер (post_id), если баннер ведёт
   /// на внутренний экран.
@@ -61,8 +69,23 @@ class SpotlightBanner {
     return null;
   }
 
-  /// Прямое поле link_post (чистый номер поста, без префикса).
-  final String? linkPost;
+  /// Ссылка на анкету: form_id (приоритет ниже post, выше URL —
+  /// контракт 6.3 справки: link_post → link_form → link_url).
+  String? get linkFormId {
+    final direct = linkForm;
+    if (direct != null && direct.trim().isNotEmpty) return direct.trim();
+    // Легаси-формат в link_url: "form:XXXXXX".
+    final link = linkUrl;
+    if (link != null && link.startsWith('form:')) {
+      final id = link.substring(5).trim();
+      if (id.isNotEmpty) return id;
+    }
+    return null;
+  }
+
+  /// Есть ли вообще цель у баннера.
+  bool get hasLink =>
+      linkPostId != null || linkFormId != null || (linkUrl ?? '').isNotEmpty;
 
   static SpotlightBanner? tryParse(Object? json) {
     if (json is! Map) return null;
@@ -76,6 +99,7 @@ class SpotlightBanner {
       imageUrl: json['image_url'] as String?,
       linkUrl: json['link_url'] as String?,
       linkPost: json['link_post'] as String?,
+      linkForm: json['link_form'] as String?,
       sortOrder: (json['sort_order'] as num?)?.toInt() ?? 0,
     );
   }
@@ -88,6 +112,7 @@ class SpotlightBanner {
         'image_url': imageUrl,
         'link_url': linkUrl,
         'link_post': linkPost,
+        'link_form': linkForm,
         'sort_order': sortOrder,
       };
 }
@@ -162,6 +187,7 @@ class FormDefinition {
     required this.definition,
     this.successText,
     this.kind,
+    this.formId,
     this.oneResponsePerDevice = false,
   });
 
@@ -176,16 +202,26 @@ class FormDefinition {
 
   /// Тип анкеты (поле forms.kind консоли):
   ///  ''/null → 'application' — из карточки поста (легаси);
-  ///  'survey' — опрос из раздела «Опросы», не анонимный;
+  ///  'survey' — элемент ленты: карточка как пост, но тап сразу
+  ///             открывает опрос (контракт 6.4);
   ///  'anon_survey' — то же, анонимный: вопросы о студенте запрещены.
   final String? kind;
 
+  /// Публичный 6-символьный номер анкеты (forms.form_id, как post_id
+  /// у постов): по нему баннеры (link_form) и шаринг ссылаются на анкету.
+  final String? formId;
+
   /// «Один ответ с устройства»: хук вернёт 400 «Вы уже отвечали…»
   /// при повторной отправке (forms.one_response_per_device).
+  /// false — повторный проход разрешён (локальная блокировка НЕ нужна).
   final bool oneResponsePerDevice;
 
   /// Анонимный опрос?
   bool get isAnonSurvey => kind == 'anon_survey';
+
+  /// Это опрос ленты (survey/anon_survey), а не заявка из карточки?
+  bool get isSurveyKind =>
+      kind == 'survey' || kind == 'anon_survey';
 
   static FormDefinition? tryParse(Object? json) {
     if (json is! Map) return null;
@@ -200,8 +236,14 @@ class FormDefinition {
       definition: Map<String, dynamic>.from(definition),
       successText: json['success_text'] as String?,
       kind: (json['kind'] as String?)?.trim(),
+      formId: _nonEmptyString(json['form_id']),
       oneResponsePerDevice: json['one_response_per_device'] == true,
     );
+  }
+
+  static String? _nonEmptyString(Object? v) {
+    if (v is String && v.trim().isNotEmpty) return v.trim();
+    return null;
   }
 
   Map<String, dynamic> toJson() => {
@@ -210,6 +252,7 @@ class FormDefinition {
         'definition': definition,
         'success_text': successText,
         'kind': kind,
+        'form_id': formId,
         'one_response_per_device': oneResponsePerDevice,
       };
 
@@ -277,6 +320,9 @@ class Post {
     this.formTitle,
     this.formDefinition,
     this.formSuccessText,
+    this.formKind,
+    this.formPublicId,
+    this.formOncePerDevice = false,
   });
 
   final String id;
@@ -331,6 +377,12 @@ class Post {
   final Map<String, dynamic>? formDefinition;
   final String? formSuccessText;
 
+  /// Тип привязанной анкеты (forms.kind) и флаг «один ответ с
+  /// устройства» — из expand.form, чтобы Post.form не терял их.
+  final String? formKind;
+  final String? formPublicId;
+  final bool formOncePerDevice;
+
   bool get isPartner => organizationType == 'partner';
 
   /// Имя, которым подписываем автора поста: организация, иначе author_name.
@@ -338,6 +390,10 @@ class Post {
   String? get authorLabel => organizationName ?? authorName;
 
   /// Опросник, привязанный к посту: открывается вместо внешней ссылки.
+  ///
+  /// kind/one_response_per_device/form_id переносятся из expand.form:
+  /// без этого пост-анкеты теряли флаг «один ответ с устройства» и
+  /// тип — блокировка повтора не срабатывала из карточки поста.
   FormDefinition? get form => formId == null || formDefinition == null
       ? null
       : FormDefinition(
@@ -345,6 +401,11 @@ class Post {
           title: formTitle ?? '',
           definition: formDefinition!,
           successText: formSuccessText,
+          kind: formKind,
+          formId: (formPublicId != null && formPublicId!.trim().isNotEmpty)
+              ? formPublicId!.trim()
+              : null,
+          oneResponsePerDevice: formOncePerDevice,
         );
 
   /// Пост актуален если end_date ещё не наступил (или не указан).
@@ -437,6 +498,9 @@ class Post {
       formTitle: form?.title,
       formDefinition: form?.definition,
       formSuccessText: form?.successText,
+      formKind: form?.kind,
+      formPublicId: form?.formId,
+      formOncePerDevice: form?.oneResponsePerDevice ?? false,
     );
   }
 

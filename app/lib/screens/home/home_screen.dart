@@ -142,6 +142,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _reload());
   }
 
+  /// Полное обновление главной (pull-to-refresh): лента, витрина
+  /// баннеров, опросы и справочники — всё, что живёт в провайдерах.
+  /// Раньше свайп обновлял только посты: правки баннеров и форм в
+  /// консоли не появлялись до перезапуска приложения.
+  Future<void> _refreshAll() async {
+    ref.invalidate(spotlightProvider);
+    ref.invalidate(surveyFormsProvider);
+    ref.invalidate(onboardingCatalogProvider);
+    ref.invalidate(interestsProvider);
+    await ref.read(feedNotifierProvider.notifier).refresh();
+  }
+
   @override
   void dispose() {
     _search.dispose();
@@ -172,7 +184,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       body: Stack(
         children: [
           RefreshIndicator(
-            onRefresh: () => ref.read(feedNotifierProvider.notifier).refresh(),
+            // Свайп сверху вниз обновляет ВСЁ на главной: ленту постов,
+            // витрину баннеров и опросы — «изменения в БД появились после
+            // перезапуска» значило, что провайдеры форм/баннеров жили
+            // со старыми данными до перезапуска.
+            onRefresh: _refreshAll,
             child: PinnedHeaderScreen(
               title: 'Карьера МИРЭА',
               actions: [
@@ -196,8 +212,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   _reload();
                 },
               ),
-              onRefresh: () =>
-                  ref.read(feedNotifierProvider.notifier).refresh(),
+              onRefresh: _refreshAll,
               slivers: [
                 if (feed.offline)
                   const SliverToBoxAdapter(child: _OfflineBanner()),
@@ -208,6 +223,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       child: SpotlightGallery(
                         banners: banners,
                         onOpenPost: _openByPublicId,
+                        onOpenForm: _openFormById,
                       ),
                     ),
                   ),
@@ -377,6 +393,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   void _open(Post post) {
     FocusManager.instance.primaryFocus?.unfocus();
+    // Опрос в ленте (контракт 6.4): карточка выглядит как пост, но тап
+    // СРАЗУ открывает опросник — без экрана деталей поста.
+    if (post.type == 'survey' && post.form != null) {
+      Navigator.of(context).push(
+        appRoute(
+          context,
+          FormScreen(
+            form: post.form!,
+            postId: post.id,
+            postTitle: post.title,
+          ),
+        ),
+      );
+      return;
+    }
     Navigator.of(context).push(
       appRoute(context, PostDetailScreen(post: post)),
     );
@@ -407,6 +438,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
     Navigator.of(context).push(
       appRoute(context, PostDetailScreen(post: post)),
+    );
+  }
+
+  /// Баннер с анкетой-ссылкой (link_form = form_id): опросник ищется
+  /// по публичному номеру и открывается СРАЗУ, без карточки поста.
+  Future<void> _openFormById(String formId) async {
+    FocusManager.instance.primaryFocus?.unfocus();
+
+    final repo = ref.read(postsRepoProvider);
+    final form = await repo.fetchFormByPublicId(formId);
+    if (!mounted) return;
+    if (form == null) {
+      final offline = repo.isOffline;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            offline
+                ? 'Нет соединения — попробуйте ещё раз'
+                : 'Анкета $formId не найдена',
+          ),
+        ),
+      );
+      return;
+    }
+    Navigator.of(context).push(
+      appRoute(context, FormScreen(form: form)),
     );
   }
 }
@@ -808,7 +865,10 @@ class _SurveyCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    final answered = ref.watch(hasSubmittedFormProvider(form.id));
+    // Чип «Отвечено» — только для одноразовых опросов: повторно
+    // проходимые показываются как доступные всегда.
+    final answered = form.oneResponsePerDevice &&
+        ref.watch(hasSubmittedFormProvider(form.id));
     final anon = form.isAnonSurvey;
 
     return Material(

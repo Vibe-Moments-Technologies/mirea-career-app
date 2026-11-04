@@ -236,14 +236,17 @@ class _FormScreenState extends ConsumerState<FormScreen> {
     // повтор — иначе админ увидит дубли ответов. Показываем снимок:
     // когда отправлено и что ответили.
     //
-    // Поиск по ДВУМ ключам: из поста (postId) и просто по форме —
-    // опросы раздела «Опросы» живут без поста, их история только
-    // по formId.
+    // Блокируем ТОЛЬКО при one_response_per_device (флаг формы в БД):
+    // повторные прохождения разрешены, если галочка снята в консоли.
+    // Остаётся страховка сервера: хук вернёт 400 на дубль, если флаг
+    // всё же стоит.
+    final onceOnly = form.oneResponsePerDevice;
     final existing = _submitted ??
-        (widget.postId != null &&
+        (onceOnly &&
+                widget.postId != null &&
                 ref.watch(hasSubmittedProvider(widget.postId!))
             ? ref.read(formSubmissionsProvider.notifier).forPost(widget.postId!)
-            : ref.watch(hasSubmittedFormProvider(form.id))
+            : onceOnly && ref.watch(hasSubmittedFormProvider(form.id))
                 ? ref.read(formSubmissionsProvider.notifier).forForm(form.id)
                 : null);
 

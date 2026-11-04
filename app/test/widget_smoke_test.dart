@@ -1473,6 +1473,9 @@ void main() {
             },
           ],
         },
+        // Блокировка повтора — только при этом флаге (контракт 6.4):
+        // повторно проходимые анкеты не запираются локально.
+        'one_response_per_device': true,
       };
 
       // История уже содержит отправку для поста 'a'.
@@ -1578,20 +1581,17 @@ void main() {
       // Карточка: подпись типа ОПРОС.
       expect(find.text('ОПРОС'), findsOneWidget);
 
+      // Опрос в ленте (контракт 6.4): тап по карточке СРАЗУ открывает
+      // опросник, экран деталей поста не показывается.
       await tester.tap(find.text('Опрос о столовых'));
       await tester.pumpAndSettle();
 
-      // Кнопка зовёт пройти опрос, не «заполнить анкету».
-      expect(find.text('Пройти опрос'), findsOneWidget);
-      expect(find.text('Перейти к регистрации'), findsNothing);
-
-      await tester.tap(find.text('Пройти опрос'));
-      await tester.pumpAndSettle();
-
-      // Анкета открылась: вопрос и плитки выбора.
+      // Анкета открылась: вопрос и плитки выбора, кнопка отправки.
+      expect(find.text('Опрос о столовых'), findsOneWidget);
       expect(find.text('Хватает ли мест в столовых?'), findsOneWidget);
       expect(find.text('Да'), findsOneWidget);
       expect(find.text('Нет'), findsOneWidget);
+      expect(find.text('Отправить анкету'), findsOneWidget);
 
       // Выбор варианта: плитка выделяется, не «сливается».
       await tester.tap(find.text('Да'));
