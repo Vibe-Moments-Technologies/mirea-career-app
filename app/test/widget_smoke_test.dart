@@ -89,6 +89,29 @@ class _CachedRepo extends PostsRepo {
   }) async =>
       true;
 
+  /// Справочники для тестов чистки профиля и онбординга: как в БД.
+  final dbInstitutes = <InstituteRef>[
+    InstituteRef(code: 'ikb', title: 'Институт кибербезопасности', short: 'ИКБ'),
+    InstituteRef(code: 'iit', title: 'Институт информационных технологий', short: 'ИИТ'),
+  ];
+  final dbLevels = <LevelRef>[
+    LevelRef(code: 'applicant', title: 'Абитуриент'),
+    LevelRef(code: 'bachelor', title: 'Бакалавриат'),
+    LevelRef(code: 'specialist', title: 'Специалитет'),
+    LevelRef(code: 'master', title: 'Магистратура'),
+    LevelRef(code: 'postgrad', title: 'Аспирантура'),
+  ];
+  final dbInterests = <String>['IT и разработка', 'Стажировки'];
+
+  @override
+  Future<List<InstituteRef>> fetchInstitutes() async => dbInstitutes;
+
+  @override
+  Future<List<LevelRef>> fetchLevels() async => dbLevels;
+
+  @override
+  Future<List<String>> fetchInterests() async => dbInterests;
+
   /// Счётчик прошедших: «сервер» в тестах отдаёт 7.
   @override
   Future<int?> fetchFormResponsesCount(String formId) async => 7;
@@ -374,7 +397,8 @@ void main() {
       expect(skipped.completed, isTrue);
       expect(skipped.hasAnswers, isFalse,
           reason: 'completed ≠ заполнен: ответов нет');
-      expect(profileSummary(skipped), contains('Не заполнен'));
+      expect(profileSummary(skipped, const [], const []),
+          contains('Не заполнен'));
     });
 
     test('после ответов профиль считается заполненным', () {
@@ -385,8 +409,54 @@ void main() {
         tags: ['it', 'career'],
       );
       expect(filled.hasAnswers, isTrue);
-      expect(profileSummary(filled), contains('ИИТ'));
-      expect(profileSummary(filled), isNot(contains('Не заполнен')));
+      // Запасные справочники (как без сети): подписи корректны.
+      final institutes = [
+        for (final i in Catalogs.institutes)
+          InstituteRef(code: i.id, title: i.title, short: i.short),
+      ];
+      final levels = [
+        for (final l in Catalogs.levels) LevelRef(code: l.id, title: l.title),
+      ];
+      final s = profileSummary(filled, institutes, levels);
+      expect(s, contains('ИИТ'));
+      expect(s, contains('Бакалавриат'));
+      expect(s, isNot(contains('Не заполнен')));
+    });
+
+    test('чистка: удалённые в БД значения выпадают из профиля', () async {
+      // Панель удалила уровень applicant (есть в запасе кода!) и тег
+      // «Стипендии». Живые: iit, bachelor, «IT и разработка».
+      const stale = StudentProfile(
+        completed: true,
+        institute: 'iit',
+        level: 'applicant',
+        tags: ['IT и разработка', 'Стипендии', 'Стажировки'],
+      );
+      final repo = _CachedRepo(const []);
+      // В «БД» теста уровня applicant больше нет.
+      repo.dbLevels.removeWhere((l) => l.code == 'applicant');
+      final cleaned =
+          await sanitizeProfileAgainstCatalogs(stale, repo);
+
+      expect(cleaned.institute, 'iit', reason: 'живой институт остаётся');
+      expect(cleaned.level, isNull, reason: 'удалённый уровень снят');
+      expect(cleaned.tags, ['IT и разработка', 'Стажировки'],
+          reason: 'удалённый тег выкинут, живые остаются');
+    });
+
+    test('чистка: пустые справочники БД — профиль не трогаем', () async {
+      // Офлайн или пустые коллекции: сверять нечем, поля не пропадают.
+      const profile = StudentProfile(
+        completed: true,
+        institute: 'somewhere',
+        tags: ['Что-то'],
+      );
+      final repo = _CachedRepo(const []);
+      repo.dbInstitutes.clear();
+      repo.dbLevels.clear();
+      repo.dbInterests.clear();
+      final cleaned = await sanitizeProfileAgainstCatalogs(profile, repo);
+      expect(cleaned, same(profile));
     });
   });
 
@@ -601,8 +671,13 @@ void main() {
 
       // Профиль с интересами: лента персонализирована, догрузка по 5
       // доступна (пустой профиль видит ровно пять карточек — отдельно).
+      // Тег — из справочника БД теста: чистка профиля при старте
+      // выкидывает теги, которых нет в справочнике.
       final c = await container(
-        profile: const StudentProfile(completed: true, tags: ['it']),
+        profile: const StudentProfile(
+          completed: true,
+          tags: ['IT и разработка'],
+        ),
         cache: cache,
       );
       addTearDown(c.dispose);

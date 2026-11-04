@@ -5,6 +5,8 @@ import '../../core/app_route.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_scroll.dart';
 import '../../core/widgets/settings_list.dart';
+import '../../data/catalogs.dart';
+import '../../data/models.dart';
 import '../../state/providers.dart';
 import '../archive/archive_screen.dart';
 import '../org/organizations_screen.dart';
@@ -23,6 +25,13 @@ class MoreScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(profileProvider);
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
+    // Справочники из БД: подпись профиля в «Ещё» показывает те же
+    // названия, что опрос и страница профиля.
+    final catalog = ref.watch(onboardingCatalogProvider).value;
+    final institutes = catalog?.institutes ??
+        [for (final i in Catalogs.institutes) InstituteRef(code: i.id, title: i.title, short: i.short)];
+    final levels = catalog?.levels ??
+        [for (final l in Catalogs.levels) LevelRef(code: l.id, title: l.title)];
 
     return Scaffold(
       body: ListView(
@@ -43,7 +52,7 @@ class MoreScreen extends ConsumerWidget {
               SettingsTile(
                 icon: Icons.person_rounded,
                 title: 'Профиль',
-                subtitle: profileSummary(profile),
+                subtitle: profileSummary(profile, institutes, levels),
                 onTap: () => Navigator.of(context).push(
                   appRoute(context, const ProfileScreen()),
                 ),

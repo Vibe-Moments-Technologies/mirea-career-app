@@ -7,6 +7,7 @@ import '../../core/widgets/glass_back_button.dart';
 import '../../core/widgets/settings_list.dart';
 import '../../data/catalogs.dart';
 import '../../data/local_store.dart';
+import '../../data/models.dart';
 import '../../state/providers.dart';
 
 /// Локальный профиль студента. Каждая строка открывается и правится отдельно.
@@ -81,7 +82,9 @@ class ProfileScreen extends ConsumerWidget {
               SettingsTile(
                 icon: Icons.school_rounded,
                 title: 'Институт',
-                subtitle: Catalogs.instituteTitle(profile.institute),
+                // Подпись — из справочника БД: панель правит названия,
+                // профиль следует за ней, как и опрос при входе.
+                subtitle: _instituteLabel(ref, profile),
                 onTap: () => _pickInstitute(context, ref, profile),
               ),
               SettingsTile(
@@ -103,7 +106,7 @@ class ProfileScreen extends ConsumerWidget {
               SettingsTile(
                 icon: Icons.layers_rounded,
                 title: 'Уровень обучения',
-                subtitle: Catalogs.levelTitle(profile.level),
+                subtitle: _levelLabel(ref, profile),
                 onTap: () => _pickLevel(context, ref, profile),
               ),
               SettingsTile(
@@ -124,9 +127,9 @@ class ProfileScreen extends ConsumerWidget {
               SettingsTile(
                 icon: Icons.auto_awesome_rounded,
                 title: 'Интересы',
-                subtitle: profile.tags.isEmpty
-                    ? 'Не выбраны'
-                    : profile.tags.map(Catalogs.interestTitle).join(' · '),
+                // Теги в профиле — сами значения (титулы), не id:
+                // подпись и шторка используют один и тот же список из БД.
+                subtitle: _interestsLabel(ref, profile),
                 onTap: () => _pickInterests(context, ref, profile),
               ),
             ],
@@ -225,19 +228,56 @@ class ProfileScreen extends ConsumerWidget {
     await ref.read(profileProvider.notifier).save(apply(result));
   }
 
+  /// Подпись «Институт»: справочник БД (short), запас — из кода.
+  static String _instituteLabel(WidgetRef ref, StudentProfile profile) {
+    if (profile.institute == null) return 'Не указан';
+    final db = ref.watch(onboardingCatalogProvider).value;
+    final list = db?.institutes ??
+        [for (final i in Catalogs.institutes) InstituteRef(code: i.id, title: i.title, short: i.short)];
+    return list
+        .where((i) => i.code == profile.institute)
+        .map((i) => i.short)
+        .firstOrNull ?? 'Не указан';
+  }
+
+  /// Подпись «Уровень обучения»: справочник БД.
+  static String _levelLabel(WidgetRef ref, StudentProfile profile) {
+    if (profile.level == null) return 'Не указан';
+    final db = ref.watch(onboardingCatalogProvider).value;
+    final list = db?.levels ??
+        [for (final l in Catalogs.levels) LevelRef(code: l.id, title: l.title)];
+    return list
+        .where((l) => l.code == profile.level)
+        .map((l) => l.title)
+        .firstOrNull ?? 'Не указан';
+  }
+
+  /// Подпись «Интересы»: список БД, значения профиля уже титулы.
+  static String _interestsLabel(WidgetRef ref, StudentProfile profile) {
+    if (profile.tags.isEmpty) return 'Не выбраны';
+    final db = ref.watch(interestsProvider).value ??
+        Catalogs.interests.map((i) => i.title).toList();
+    return profile.tags
+        .map((t) => db.contains(t) ? t : t) // титул и есть значение
+        .join(' · ');
+  }
+
   /// Пустая строка = «не указывать»: снимаем поле, а не молча оставляем старое.
   static Future<void> _pickInstitute(
     BuildContext context,
     WidgetRef ref,
     StudentProfile profile,
   ) async {
+    final catalog = ref.read(onboardingCatalogProvider).value;
+    final institutes = catalog?.institutes ??
+        [for (final i in Catalogs.institutes) InstituteRef(code: i.id, title: i.title, short: i.short)];
     final value = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
       builder: (_) => _ChoiceSheet(
         title: 'Институт',
         selected: profile.institute,
-        choices: [for (final i in Catalogs.institutes) (i.id, i.short)],
+        choices: [for (final i in institutes) (i.code, i.short)],
       ),
     );
     if (value == null || !context.mounted) return;
@@ -251,13 +291,16 @@ class ProfileScreen extends ConsumerWidget {
     WidgetRef ref,
     StudentProfile profile,
   ) async {
+    final catalog = ref.read(onboardingCatalogProvider).value;
+    final levels = catalog?.levels ??
+        [for (final l in Catalogs.levels) LevelRef(code: l.id, title: l.title)];
     final value = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
       builder: (_) => _ChoiceSheet(
         title: 'Уровень обучения',
         selected: profile.level,
-        choices: [for (final l in Catalogs.levels) (l.id, l.title)],
+        choices: [for (final l in levels) (l.code, l.title)],
       ),
     );
     if (value == null || !context.mounted) return;
@@ -337,64 +380,87 @@ class _ChoiceSheet extends StatelessWidget {
   }
 }
 
-class _InterestsSheet extends StatefulWidget {
+class _InterestsSheet extends ConsumerStatefulWidget {
   const _InterestsSheet({required this.selected});
   final List<String> selected;
 
   @override
-  State<_InterestsSheet> createState() => _InterestsSheetState();
+  ConsumerState<_InterestsSheet> createState() => _InterestsSheetState();
 }
 
-class _InterestsSheetState extends State<_InterestsSheet> {
+class _InterestsSheetState extends ConsumerState<_InterestsSheet> {
   late final Set<String> chosen = widget.selected.toSet();
 
   @override
-  Widget build(BuildContext context) => SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Интересы', style: AppText.title),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final t in Catalogs.interests)
-                    FilterChip(
-                      label: Text(t.title),
-                      selected: chosen.contains(t.id),
-                      onSelected: (on) => setState(() {
-                        on ? chosen.add(t.id) : chosen.remove(t.id);
-                      }),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop(chosen.toList()),
-                child: const Text('Готово'),
-              ),
-            ],
-          ),
+  Widget build(BuildContext context) {
+    // Значения профиля — сами титулы из справочника БД: сверка прямая,
+    // без конверсии id → title (раньше лист сверялся по id локального
+    // каталога и «терял» выбранные теги после правок в панели).
+    final titles = ref.watch(interestsProvider).value ??
+        Catalogs.interests.map((i) => i.title).toList();
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Интересы', style: AppText.title),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final t in titles)
+                  FilterChip(
+                    label: Text(t),
+                    selected: chosen.contains(t),
+                    onSelected: (on) => setState(() {
+                      on ? chosen.add(t) : chosen.remove(t);
+                    }),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(chosen.toList()),
+              child: const Text('Готово'),
+            ),
+          ],
         ),
-      );
+      ),
+    );
+  }
 }
 
 /// Короткая сводка для строки в «Ещё».
 ///
 /// Проверяется [StudentProfile.hasAnswers], а не `completed`: флаг ставится
 /// и при пропуске опроса, и тогда подпись врала «Заполнен».
-String profileSummary(StudentProfile profile) {
+///
+/// Подписи института/уровня — из справочника БД (как в опросе): после
+/// правки названий в панели сводка не врёт устаревшим названием.
+String profileSummary(
+  StudentProfile profile,
+  List<InstituteRef> institutes,
+  List<LevelRef> levels,
+) {
   if (!profile.hasAnswers) return 'Не заполнен — нажмите, чтобы настроить';
   return [
-    if (profile.institute != null) Catalogs.instituteTitle(profile.institute),
+    if (profile.institute != null)
+      institutes
+          .where((i) => i.code == profile.institute)
+          .map((i) => i.short)
+          .firstOrNull ?? '—',
     if (profile.department != null) profile.department,
     if (profile.course != null) '${profile.course} курс',
-    if (profile.level != null) Catalogs.levelTitle(profile.level),
+    if (profile.level != null)
+      levels
+          .where((l) => l.code == profile.level)
+          .map((l) => l.title)
+          .firstOrNull ?? '—',
     if (profile.tags.isNotEmpty) '${profile.tags.length} интересов',
   ].join(' · ');
 }

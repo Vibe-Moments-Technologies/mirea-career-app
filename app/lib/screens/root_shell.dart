@@ -57,6 +57,17 @@ class _RootShellState extends ConsumerState<RootShell>
     // а observer — штатный способ узнать про push/pop.
     dockHideNotifier.addListener(_syncDock);
     _syncDock();
+    // Сверка профиля со справочниками БД: панель могла удалить институт/
+    // уровень/тег — вычищаем их из локального профиля при старте.
+    _sanitizeProfile();
+  }
+
+  Future<void> _sanitizeProfile() async {
+    final store = ref.read(localStoreProvider);
+    final repo = ref.read(postsRepoProvider);
+    final cleaned = await sanitizeProfileAgainstCatalogs(store.profile, repo);
+    if (cleaned == store.profile) return;
+    await ref.read(profileProvider.notifier).save(cleaned);
   }
 
   void _syncDock() {

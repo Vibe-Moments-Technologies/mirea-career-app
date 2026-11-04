@@ -51,6 +51,69 @@ class ProfileNotifier extends Notifier<StudentProfile> {
 final profileProvider =
     NotifierProvider<ProfileNotifier, StudentProfile>(ProfileNotifier.new);
 
+// ---------------- Чистка профиля от удалённых справочников ----------------
+
+/// Вычищает из профиля значения, которых больше нет в справочниках.
+///
+/// Панель может удалить институт/уровень/тег из БД — профиль студента
+/// хранит их коды локально и не узнает об удалении сам. Раз в старт
+/// сверяем: исчезло — снимаем поле (институт/уровень) и выкидываем
+/// теги. Сверка идёт по справочникам из БД, а офлайн — по запасу из
+/// кода: удалённое в панели исчезнет из профиля при первом запуске
+/// с сетью.
+Future<StudentProfile> sanitizeProfileAgainstCatalogs(
+  StudentProfile profile,
+  PostsRepo repo,
+) async {
+  if (!profile.hasAnswers) return profile;
+
+  final institutes = await repo.fetchInstitutes();
+  final levels = await repo.fetchLevels();
+  final interests = await repo.fetchInterests();
+
+  // Пустые ответы БД = офлайн или пустые коллекции: сверять нечем,
+  // поля не трогаем (запас ниже — источник не строгий).
+  if (institutes.isEmpty && levels.isEmpty && interests.isEmpty) {
+    return profile;
+  }
+
+  var changed = false;
+  String? institute = profile.institute;
+  String? level = profile.level;
+  var tags = profile.tags;
+
+  if (institute != null && institutes.isNotEmpty) {
+    final alive = institutes.any((i) => i.code == institute);
+    if (!alive) {
+      institute = null;
+      changed = true;
+    }
+  }
+  if (level != null && levels.isNotEmpty) {
+    final alive = levels.any((l) => l.code == level);
+    if (!alive) {
+      level = null;
+      changed = true;
+    }
+  }
+  if (interests.isNotEmpty && tags.isNotEmpty) {
+    final kept = tags.where(interests.contains).toList();
+    if (kept.length != tags.length) {
+      tags = kept;
+      changed = true;
+    }
+  }
+
+  if (!changed) return profile;
+  return profile.copyWith(
+    clearInstitute: institute == null,
+    institute: institute,
+    clearLevel: level == null,
+    level: level,
+    tags: tags,
+  );
+}
+
 // ---------------- Тема ----------------
 
 /// Начальное значение темы, прочитанное при старте ДО первого кадра.
