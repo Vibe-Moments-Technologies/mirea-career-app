@@ -162,6 +162,31 @@ class FormDefinition {
         'definition': definition,
         'success_text': successText,
       };
+
+  /// Текст вопроса шага: первый text-блок в content.
+  ///
+  /// Общий для формы (подпись над полем) и истории анкет (снимок
+  /// «что спрашивали»): одно место — одинаковый результат.
+  static String stepQuestion(Map<String, dynamic> step) {
+    final content = step['content'];
+    if (content is! List) return '';
+    return content
+            .whereType<Map>()
+            .map((c) => c['text'])
+            .whereType<String>()
+            .firstOrNull ??
+        '';
+  }
+
+  /// Шаги определения как список map (сырой JSON — не модель).
+  List<Map<String, dynamic>> get stepMaps {
+    final raw = definition['steps'];
+    if (raw is! List) return const [];
+    return [
+      for (final s in raw)
+        if (s is Map) Map<String, dynamic>.from(s),
+    ];
+  }
 }
 
 class Post {

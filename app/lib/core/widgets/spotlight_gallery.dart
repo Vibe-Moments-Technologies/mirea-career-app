@@ -256,10 +256,13 @@ class _Card extends StatelessWidget {
                   ),
                 ),
                 if (hasLink)
-                  const Positioned(
+                  Positioned(
                     right: 10,
                     top: 10,
-                    child: _OpenBadge(),
+                    // Пост-ссылка и внешний URL показываются разными
+                    // значками: «открывает внутренний экран поста» ≠
+                    // «уводит в браузер» — по бейджу это видно ДО тапа.
+                    child: _OpenBadge(isPost: banner.linkPostId != null),
                   ),
               ],
             ),
@@ -271,7 +274,8 @@ class _Card extends StatelessWidget {
 }
 
 class _OpenBadge extends StatelessWidget {
-  const _OpenBadge();
+  const _OpenBadge({this.isPost = false});
+  final bool isPost;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -280,8 +284,11 @@ class _OpenBadge extends StatelessWidget {
           color: Colors.black.withValues(alpha: 0.35),
           shape: BoxShape.circle,
         ),
-        child: const Icon(Icons.open_in_new_rounded,
-            size: 14, color: Colors.white),
+        child: Icon(
+          isPost ? Icons.article_rounded : Icons.open_in_new_rounded,
+          size: 14,
+          color: Colors.white,
+        ),
       );
 }
 

@@ -372,7 +372,9 @@ class _MetaRow extends ConsumerWidget {
           _Pill(
             icon: _formatIcon(post.format),
             text: Catalogs.formats[post.format]!,
-            color: AppColors.secondaryLight,
+            // Формат — своим цветом: онлайн/гибрид/офлайн различимы
+            // до чтения, как тип поста своей точкой.
+            color: _formatColor(post.format, context),
           ),
         // Срочность — только при близком дедлайне; завершившееся —
         // спокойная серая плашка.
@@ -396,6 +398,18 @@ class _MetaRow extends ConsumerWidget {
         'hybrid' => Icons.sync_alt_rounded,
         _ => Icons.location_city_rounded,
       };
+
+  /// Цвет чипа формата: онлайн — зелёный (участие откуда угодно),
+  /// гибрид — оранжевый (внимание: время и место), офлайн — синий
+  /// (акцент приложения: «приехать нужно»).
+  Color _formatColor(String format, BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return switch (format) {
+      'online' => AppColors.success,
+      'hybrid' => AppColors.warning,
+      _ => dark ? AppColors.accentDark : AppColors.accent,
+    };
+  }
 }
 
 /// Значок-счётчик: просмотры, избранное — с числом.

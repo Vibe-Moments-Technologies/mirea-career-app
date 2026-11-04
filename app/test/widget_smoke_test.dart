@@ -1916,7 +1916,18 @@ void main() {
             postTitle: 'Стажировка в лаборатории ИИТ',
             formTitle: 'Анкета на стажировку',
             submittedAt: DateTime(2026, 11, 3, 14, 5),
-            answers: const {'fio': 'Иванов Иван', 'group': 'ИКБО-01-24'},
+            // Снимок вопросов: подписи в снимке — человекочитаемые,
+            // bool показывается как «Да».
+            answers: const {
+              'fio': 'Иванов Иван',
+              'group': 'ИКБО-01-24',
+              'agree': true,
+            },
+            questions: const [
+              ('fio', 'Ваше ФИО'),
+              ('group', 'Ваша группа'),
+              ('agree', 'Согласны с условиями?'),
+            ],
             successText: 'Мы свяжемся с вами',
           ),
         ],
@@ -1943,8 +1954,15 @@ void main() {
       await tester.tap(find.text('Стажировка в лаборатории ИИТ'));
       await tester.pumpAndSettle();
 
+      // Вопросы — ЧЕЛОВЕКОЧИТАЕМЫЕ (не id шагов), bool — «Да», не true.
+      expect(find.text('Ваше ФИО'), findsOneWidget);
+      expect(find.text('Ваша группа'), findsOneWidget);
+      expect(find.text('Согласны с условиями?'), findsOneWidget);
       expect(find.text('Иванов Иван'), findsOneWidget);
       expect(find.text('ИКБО-01-24'), findsOneWidget);
+      expect(find.text('Да'), findsOneWidget);
+      expect(find.text('true'), findsNothing);
+      expect(find.text('fio'), findsNothing);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
   });

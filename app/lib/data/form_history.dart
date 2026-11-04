@@ -19,6 +19,7 @@ class FormSubmission {
     required this.submittedAt,
     this.answers = const {},
     this.successText,
+    this.questions = const [],
   });
 
   final String formId;
@@ -39,6 +40,28 @@ class FormSubmission {
   final Map<String, dynamic> answers;
   final String? successText;
 
+  /// Снимок вопросов на момент отправки: (id шага, текст вопроса).
+  ///
+  /// Без него снимок показывал бы технические id («вам_нравится_новое_
+  /// назва») вместо вопросов: определение анкеты могло измениться
+  /// в БД, а история должна читаться человеком и офлайн.
+  final List<(String, String)> questions;
+
+  /// Человекочитаемая подпись вопроса по id: текст из снимка, иначе —
+  /// сам id (старые записи до появления снимка).
+  String questionLabel(String id) =>
+      questions.where((q) => q.$1 == id).map((q) => q.$2).firstOrNull ?? id;
+
+  /// Ответ в человекочитаемом виде: bool → «Да»/«Нет», список →
+  /// через запятую, остальное — как есть. Голубые «true» в снимке
+  /// никто читать не должен.
+  static String answerText(Object? v) => switch (v) {
+        null => '—',
+        bool() => v ? 'Да' : 'Нет',
+        List() => v.isEmpty ? '—' : v.join(', '),
+        _ => '$v',
+      };
+
   Map<String, dynamic> toJson() => {
         'form_id': formId,
         'post_id': postId,
@@ -47,6 +70,9 @@ class FormSubmission {
         'submitted_at': submittedAt.toIso8601String(),
         'answers': answers,
         'success_text': successText,
+        'questions': [
+          for (final q in questions) {'id': q.$1, 'text': q.$2},
+        ],
       };
 
   static FormSubmission? tryParse(Object? json) {
@@ -65,6 +91,11 @@ class FormSubmission {
       answers:
           (json['answers'] as Map?)?.cast<String, dynamic>() ?? const {},
       successText: json['success_text'] as String?,
+      questions: [
+        for (final q in (json['questions'] as List? ?? const []))
+          if (q is Map && q['id'] is String && q['text'] is String)
+            (q['id'] as String, q['text'] as String),
+      ],
     );
   }
 }

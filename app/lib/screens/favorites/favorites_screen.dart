@@ -155,7 +155,11 @@ class _FormsList extends ConsumerWidget {
     );
   }
 
-  /// Снимок отправленных ответов: ключ → значение.
+  /// Снимок отправленных ответов: вопрос → ответ.
+  ///
+  /// Подписи вопросов — из снимка на момент отправки (questions),
+  /// ответы — в человекочитаемом виде (bool → «Да»). Голые id и
+  /// «true» показываться не должны.
   static void _showAnswers(BuildContext context, FormSubmission s) {
     showModalBottomSheet<void>(
       context: context,
@@ -182,12 +186,15 @@ class _FormsList extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      e.key,
+                      s.questionLabel(e.key),
                       style: AppText.caption
                           .copyWith(color: AppColors.secondaryLight),
                     ),
                     const SizedBox(height: 2),
-                    Text(_answerText(e.value), style: AppText.body),
+                    Text(
+                      FormSubmission.answerText(e.value),
+                      style: AppText.body,
+                    ),
                   ],
                 ),
               ),
@@ -196,8 +203,6 @@ class _FormsList extends ConsumerWidget {
       ),
     );
   }
-
-  static String _answerText(Object? v) => v is List ? v.join(', ') : '$v';
 }
 
 /// Дата+время для карточек и снимка: 03.11.2026 · 14:05.

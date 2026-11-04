@@ -144,8 +144,9 @@ class _FormScreenState extends ConsumerState<FormScreen> {
 
     // История на устройстве: «Мои анкеты», метка «заполнено» на карточке
     // и блокировка повторного заполнения. Пишем снимок (заголовки поста
-    // и анкеты, ответы) — пост может уйти в архив или удалиться на
-    // сервере, а карточка истории должна остаться осмысленной.
+    // и анкеты, ВОПРОСЫ и ответы) — пост может уйти в архив или
+    // удалиться на сервере, а карточка истории должна остаться
+    // осмысленной и читаемой человеком.
     final submission = FormSubmission(
       formId: form.id,
       postId: widget.postId ?? '',
@@ -154,6 +155,10 @@ class _FormScreenState extends ConsumerState<FormScreen> {
       submittedAt: DateTime.now(),
       answers: Map<String, dynamic>.from(answers),
       successText: form.successText,
+      questions: [
+        for (final step in form.stepMaps)
+          (step['id'] as String? ?? '', FormDefinition.stepQuestion(step)),
+      ],
     );
     await ref.read(formSubmissionsProvider.notifier).add(submission);
 

@@ -445,6 +445,9 @@ class PostsRepo {
       subtitle: json['subtitle'] as String?,
       imageUrl: imageUrl,
       linkUrl: json['link_url'] as String?,
+      // Панель пишет номер поста отдельным полем link_post
+      // («PWUBVD»): без него баннер с пост-ссылкой был некликабельным.
+      linkPost: json['link_post'] as String?,
       sortOrder: (json['sort_order'] as num?)?.toInt() ?? 0,
     );
   }
