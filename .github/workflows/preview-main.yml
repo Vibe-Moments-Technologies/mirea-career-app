@@ -129,7 +129,10 @@ jobs:
 
   build_ipa:
     name: 🍏 Build iOS Unsigned IPA (dev)
-    runs-on: macos-latest
+    # macos-13 (Intel): 4.11.2026 у GitHub перегружены arm64-раннеры —
+    # «job was not acquired by Runner of type hosted», три сборки подряд
+    # отменялись без раннера. Intel-пул свободнее, сборка та же.
+    runs-on: macos-13
     needs: resolve
     env:
       SENTRY_ENV: preview
