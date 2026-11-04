@@ -539,6 +539,53 @@ void main() {
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
 
+    testWidgets('правило ленты: приоритетные сверху (до 5), потом свежие',
+        (tester) async {
+      // Шесть приоритетных постов + свежие. Правило: приоритетные
+      // ИДУТ ПЕРВЫМИ (в порядке свежести), обычные — за ними. «Топ-5»
+      // — это первая пятёрка ленты: при шести приоритетных в ней лежат
+      // пять из них (шестой — шестым), никаких вырезаний нет.
+      final base = DateTime(2026, 1, 1);
+      final c = await container(
+        profile: const StudentProfile(completed: true, tags: ['it']),
+        cache: [
+          // Свежие приоритетные (новее — выше).
+          for (var i = 0; i < 6; i++)
+            samplePost(
+              id: 'f$i',
+              title: 'Приоритет $i',
+              featured: true,
+              publishedAt: base.subtract(Duration(minutes: i)),
+            ),
+          // Обычные посты следом.
+          for (var i = 0; i < 3; i++)
+            samplePost(
+              id: 'n$i',
+              title: 'Обычный $i',
+              publishedAt: base.subtract(Duration(hours: i + 1)),
+            ),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Правило подтверждаем на данных ленты (SliverList строит только
+      // видимое окно — визуальный порядок проверяется отдельно):
+      // приоритетные сверху в порядке свежести, обычные следом.
+      final order = [
+        for (final p in c.read(feedProvider).posts) p.title,
+      ];
+      expect(order.take(5), everyElement(startsWith('Приоритет')));
+      // Шестой приоритетный — сразу за пятёркой, не выброшен.
+      expect(order[5], 'Приоритет 5');
+      // Обычные — в конце.
+      expect(order.skip(6), everyElement(startsWith('Обычный')));
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
+
     testWidgets('шапка главной закреплена: контент уезжает под неё',
         (tester) async {
       final base = DateTime(2026, 1, 1);
@@ -551,8 +598,10 @@ void main() {
           ),
       ];
 
+      // Профиль с интересами: лента персонализирована, догрузка по 5
+      // доступна (пустой профиль видит ровно пять карточек — отдельно).
       final c = await container(
-        profile: const StudentProfile(completed: true),
+        profile: const StudentProfile(completed: true, tags: ['it']),
         cache: cache,
       );
       addTearDown(c.dispose);
@@ -609,6 +658,65 @@ void main() {
       );
       await tester.pump();
       expect(tester.getTopLeft(find.text('Карьера МИРЭА')).dy, lessThan(200));
+
+      // Тап по УЖЕ активной вкладке дока — лента плавно наверх.
+      final position = tester
+          .state<ScrollableState>(homeScrollable)
+          .position;
+      final scrolled = position.pixels;
+      expect(scrolled, greaterThan(0), reason: 'предусловие: мы в глубине');
+
+      await tester.tap(find.byIcon(Icons.home_rounded).last);
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+
+      expect(position.pixels, 0,
+          reason: 'тап по активной вкладке должен промотать наверх');
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
+
+    testWidgets('пустой профиль: ровно пять карточек, без догрузки',
+        (tester) async {
+      // Лента без персонализации — ровно ПЯТЬ карточек: листать дальше
+      // нечего, смысл ленты появляется после опроса. Кнопки «Показать
+      // ещё» нет; хвост — CTA «Это всё».
+      final base = DateTime(2026, 1, 1);
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [
+          for (var i = 0; i < 12; i++)
+            samplePost(
+              id: 'p$i',
+              title: 'Карточка $i',
+              publishedAt: base.subtract(Duration(minutes: i)),
+            ),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Прокручиваем ленту до конца: видны все ПЯТЬ карточек лимита.
+      final homeScrollable = find
+          .descendant(
+            of: find.byType(HomeScreen),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      await tester.scrollUntilVisible(
+        find.text('Карточка 4'),
+        300,
+        scrollable: homeScrollable,
+      );
+      await tester.pump();
+
+      // Пятая карточка (последняя из лимита) построена…
+      expect(find.text('Карточка 4'), findsOneWidget);
+      // …а шестой НЕТ — лента пустого профиля кончается на пяти.
+      expect(find.text('Карточка 5'), findsNothing);
+      // Кнопки догрузки нет.
+      expect(find.text('Показать ещё 5'), findsNothing);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
 
@@ -831,8 +939,9 @@ void main() {
 
     testWidgets('баннер с post:-ссылкой открывает пост по номеру',
         (tester) async {
-      // Баннеры консоли ссылаются на посты публичным номером:
-      // link_url = "post:4Z65U4". Тап должен открыть детали поста,
+      // Баннеры консоли ссылаются на посты публичным номером — в двух
+      // форматах: link_url = "post:4Z65U4" и чистое поле link_post =
+      // "4Z65U4" (как пишет панель). Тап должен открыть детали поста,
       // найденного по post_id, а не браузер.
       final c = await container(
         profile: const StudentProfile(completed: true),
@@ -845,13 +954,15 @@ void main() {
         ],
       );
       addTearDown(c.dispose);
+      // link_post — формат панели: чистый номер, без префикса.
       await c.read(localStoreProvider).saveSpotlightCache([
         {
           'id': 'b1',
           'title': 'Баннер на пост',
           'subtitle': null,
           'image_url': null,
-          'link_url': 'post:4Z65U4',
+          'link_url': '',
+          'link_post': '4Z65U4',
           'sort_order': 1,
         },
       ]);
@@ -1682,9 +1793,9 @@ void main() {
   group('Организатор', () {
     testWidgets('страницы организаций вернулись в док; подпись в деталях',
         (tester) async {
-      // Профили организаций вернули в док (когда появятся учётки
-      // организаций — схема сменится). В деталях организатор — подпись,
-      // карточка не ведёт в профиль с поста.
+      // Организации — раздел «Ещё» (в доке 4 вкладки, до учёток
+      // организаций доку не место). В деталях организатор ведёт
+      // в профиль организации.
       final c = await container(
         profile: const StudentProfile(completed: true),
         cache: [
@@ -1705,8 +1816,8 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      // В доке есть вкладка «Организации».
-      expect(find.byIcon(Icons.apartment_rounded), findsOneWidget);
+      // В доке НЕТ вкладки «Организации» — она в «Ещё».
+      expect(find.byIcon(Icons.apartment_rounded), findsNothing);
 
       await tester.tap(find.text('Стажировка в Яндексе'));
       await tester.pumpAndSettle();

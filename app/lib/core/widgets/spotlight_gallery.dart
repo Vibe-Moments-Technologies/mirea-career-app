@@ -168,32 +168,24 @@ class _SpotlightGalleryState extends State<SpotlightGallery> {
 }
 
 /// Карточка витрины: обложка, заголовок, подпись. Тап ведёт по ссылке, если
-/// администратор её задал: обычный URL — в браузер, "post:XXXXXX" —
-/// в детали поста через [onOpenPost].
+/// администратор её задал: пост-ссылка (link_post или "post:" в link_url) —
+/// в детали поста через [onOpenPost], обычный URL — в браузер.
 class _Card extends StatelessWidget {
   const _Card({required this.banner, this.onOpenPost});
 
   final SpotlightBanner banner;
   final void Function(String publicId)? onOpenPost;
 
-  /// "post:4Z65U4" → "4Z65U4", иначе null.
-  static String? _postRef(String link) {
-    if (!link.startsWith('post:')) return null;
-    final id = link.substring(5).trim();
-    return id.isEmpty ? null : id;
-  }
-
   Future<void> _open() async {
-    final link = banner.linkUrl;
-    if (link == null || link.isEmpty) return;
-
-    // Пост-ссылка: экран поста, не браузер.
-    final postRef = _postRef(link);
+    // Пост-ссылка (в любом формате): экран поста, не браузер.
+    final postRef = banner.linkPostId;
     if (postRef != null) {
       onOpenPost?.call(postRef);
       return;
     }
 
+    final link = banner.linkUrl;
+    if (link == null || link.isEmpty) return;
     final uri = Uri.tryParse(link);
     if (uri == null) return;
     await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -202,7 +194,8 @@ class _Card extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
-    final hasLink = (banner.linkUrl ?? '').isNotEmpty;
+    final hasLink =
+        banner.linkPostId != null || (banner.linkUrl ?? '').isNotEmpty;
 
     return Container(
       decoration: BoxDecoration(

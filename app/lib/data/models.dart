@@ -14,6 +14,7 @@ class SpotlightBanner {
     this.subtitle,
     this.imageUrl,
     this.linkUrl,
+    this.linkPost,
     this.sortOrder = 0,
   });
 
@@ -23,6 +24,26 @@ class SpotlightBanner {
   final String? imageUrl;
   final String? linkUrl;
   final int sortOrder;
+
+  /// Ссылка на пост: публичный номер (post_id), если баннер ведёт
+  /// на внутренний экран.
+  ///
+  /// Два источника в БД: консоль может писать чистый номер в `link_post`
+  /// или строку "post:XXXXXX" в `link_url`. Приложение понимает оба —
+  /// иначе тап по баннеру молча ничего не делал.
+  String? get linkPostId {
+    final link = linkUrl;
+    if (link != null && link.startsWith('post:')) {
+      final id = link.substring(5).trim();
+      if (id.isNotEmpty) return id;
+    }
+    final direct = linkPost;
+    if (direct != null && direct.trim().isNotEmpty) return direct.trim();
+    return null;
+  }
+
+  /// Прямое поле link_post (чистый номер поста, без префикса).
+  final String? linkPost;
 
   static SpotlightBanner? tryParse(Object? json) {
     if (json is! Map) return null;
@@ -35,6 +56,7 @@ class SpotlightBanner {
       subtitle: json['subtitle'] as String?,
       imageUrl: json['image_url'] as String?,
       linkUrl: json['link_url'] as String?,
+      linkPost: json['link_post'] as String?,
       sortOrder: (json['sort_order'] as num?)?.toInt() ?? 0,
     );
   }
@@ -46,6 +68,7 @@ class SpotlightBanner {
         'subtitle': subtitle,
         'image_url': imageUrl,
         'link_url': linkUrl,
+        'link_post': linkPost,
         'sort_order': sortOrder,
       };
 }

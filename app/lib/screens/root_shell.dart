@@ -9,7 +9,6 @@ import 'favorites/favorites_screen.dart';
 import 'home/home_screen.dart';
 import 'more/more_screen.dart';
 import 'onboarding/onboarding_screen.dart';
-import 'org/organizations_screen.dart';
 
 /// Корневой экран: контент во весь экран + парящий док поверх.
 ///
@@ -41,16 +40,13 @@ class _RootShellState extends ConsumerState<RootShell>
     value: 1,
   );
 
-  /// Раздел «Организации» вернулся по просьбе пользователя: карточки
-  /// организаций (профили) остались в приложении, исчезнут только
-  /// когда снова появится полноценная схема «учётки организаций».
-  /// «Сохранённое» — иконка-закладка, не звезда: там не только
-  /// избранное, но и заполненные анкеты.
+  /// 4 вкладки. Организации — раздел «Ещё»: карточки организаций в
+  /// приложении остались, но до появления учёток организаций им не
+  /// место в доке (запрос пользователя).
   static const _items = <DockItem>[
     DockItem(Icons.home_rounded, 'Главная'),
     DockItem(Icons.calendar_month_rounded, 'Календарь'),
     DockItem(Icons.bookmark_rounded, 'Сохранённое'),
-    DockItem(Icons.apartment_rounded, 'Организации'),
     DockItem(Icons.person_rounded, 'Ещё'),
   ];
 
@@ -103,7 +99,6 @@ class _RootShellState extends ConsumerState<RootShell>
               HomeScreen(),
               CalendarScreen(),
               SavedScreen(),
-              OrganizationsScreen(),
               MoreScreen(),
             ],
           ),

@@ -110,9 +110,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final banners = ref.watch(spotlightProvider);
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
 
+    // Пустой профиль: лента — ровно ПЯТЬ карточек (плюс карточка-
+    // приглашение настроить профиль): дальше листать нечего, смысл
+    // ленты появляется после опроса. Настроенный: 5 + подгрузка по 5.
+    final personalized = profile.hasAnswers;
+    final limit = personalized ? _visibleCount : 5;
+
     // Посты ленты с клиентскими фильтрами поверх серверного ответа,
     // показанные порционно (догрузка по 5 при прокрутке).
-    final posts = _clientFiltered(feed.posts).take(_visibleCount).toList();
+    final posts = _clientFiltered(feed.posts).take(limit).toList();
     final totalPosts = _clientFiltered(feed.posts).length;
 
     return Scaffold(
@@ -203,10 +209,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           },
                         ),
                 ),
-                // Догрузка по 5: когда лента дошла до конца показанного,
-                // под скроллом лежит индикатор «ещё» — подъезд к нему
-                // открывает следующую пятёрку.
-                if (!feed.loading && posts.length < totalPosts)
+                // Догрузка по 5 (только настроенной ленте): пустой профиль
+                // видит пять карточек и CTA «настроить» — листать дальше
+                // нечего, персонализация и делает ленту.
+                if (!feed.loading &&
+                    personalized &&
+                    posts.length < totalPosts)
                   SliverPadding(
                     padding: EdgeInsets.fromLTRB(pad, 10, pad, 0),
                     sliver: SliverToBoxAdapter(
@@ -221,9 +229,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ),
                 // Хвост ленты: в «Для вас»/«Опросы» — карточка-CTA
                 // «Это всё» размером с обычную карточку; во «Все» — только
-                // строка-подпись о конце списка.
-                if (!feed.loading && posts.length == totalPosts &&
-                    posts.isNotEmpty) ...[
+                // строка-подпись о конце списка. Пустой профиль видит
+                // пять карточек — хвост показывает способ открыть все.
+                if (!feed.loading &&
+                    posts.isNotEmpty &&
+                    (posts.length == totalPosts || !personalized)) ...[
                   if (_tab != 'all')
                     SliverPadding(
                       padding: EdgeInsets.fromLTRB(pad, 10, pad, 0),
