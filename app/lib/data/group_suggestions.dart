@@ -8,7 +8,10 @@ import 'app_http_client.dart';
 ///
 /// GET https://schedule-of.mirea.ru/schedule/api/search?match=ИКБО&limit=20
 /// Сервер ищет подстроку по всем типам целей сразу (группы, преподаватели,
-/// аудитории) — фильтруем только группы.
+/// аудитории) и возвращает записи вида:
+///   {"id": 729, "targetTitle": "ИКБО-10-23", "scheduleTarget": 1, …}
+/// Группы — это scheduleTarget == 1; название — targetTitle (fullTitle
+/// у групп совпадает с targetTitle).
 ///
 /// API требует User-Agent; при его отсутствии сервер отвечает ошибкой.
 /// Подсказки вспомогательные: нет сети или API изменился — поле просто
@@ -37,13 +40,14 @@ class GroupSuggestions {
 
       final json = jsonDecode(utf8.decode(bytes));
       final data = (json['data'] as List? ?? const []);
-      // В выдаче вперемешку группы/преподаватели/аудитории.
+      // В выдаче вперемешку группы/преподаватели/аудитории:
+      // группы = scheduleTarget 1, название = targetTitle.
       final groups = [
         for (final e in data)
           if (e is Map &&
-              e['type'] == 'group' &&
-              e['name'] is String)
-            e['name'] as String,
+              e['scheduleTarget'] == 1 &&
+              e['targetTitle'] is String)
+            e['targetTitle'] as String,
       ];
       // Не более 5 подсказок: строка подсказок короткая.
       return groups.take(5).toList();

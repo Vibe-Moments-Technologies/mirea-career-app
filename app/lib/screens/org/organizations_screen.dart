@@ -84,6 +84,7 @@ class _OrganizationsScreenState extends ConsumerState<OrganizationsScreen> {
                 ref.read(organizationsProvider.notifier).refresh(),
             child: PinnedHeaderScreen(
               title: 'Организации',
+              showBack: true,
               actions: [
                 HeaderAction(
                   icon: Icons.tune_rounded,

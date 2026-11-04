@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import 'app_scroll.dart';
+import 'glass_back_button.dart';
 
 /// Шаблон страницы с закреплённой шапкой.
 ///
@@ -24,9 +25,15 @@ class PinnedHeaderScreen extends StatelessWidget {
     this.onRefresh,
     this.bottom = 8,
     this.controller,
+    this.showBack = false,
   });
 
   final String title;
+
+  /// Показать кнопку «назад» слева от заголовка: для ПОДСТРАНИЦ
+  /// (организации из «Ещё»), не вкладок дока. Кнопка стеклянная —
+  /// контент под ней прокручивается, как на деталях поста.
+  final bool showBack;
 
   /// Кнопки справа от заголовка (поиск, фильтры).
   final List<Widget> actions;
@@ -64,6 +71,7 @@ class PinnedHeaderScreen extends StatelessWidget {
           delegate: _HeaderDelegate(
             title: title,
             actions: actions,
+            showBack: showBack,
             topInset: top,
             bottom: bottom,
             background: bg,
@@ -97,6 +105,7 @@ class _HeaderDelegate extends SliverPersistentHeaderDelegate {
   _HeaderDelegate({
     required this.title,
     required this.actions,
+    required this.showBack,
     required this.topInset,
     required this.bottom,
     required this.background,
@@ -104,6 +113,7 @@ class _HeaderDelegate extends SliverPersistentHeaderDelegate {
 
   final String title;
   final List<Widget> actions;
+  final bool showBack;
 
   /// Safe area сверху: непрозрачная зона над заголовком.
   final double topInset;
@@ -135,6 +145,10 @@ class _HeaderDelegate extends SliverPersistentHeaderDelegate {
               height: _kHeaderRow,
               child: Row(
                 children: [
+                  if (showBack) ...[
+                    const GlassBackButton(),
+                    const SizedBox(width: 8),
+                  ],
                   Expanded(child: ScreenTitle(title)),
                   for (final a in actions) a,
                 ],
@@ -157,7 +171,8 @@ class _HeaderDelegate extends SliverPersistentHeaderDelegate {
       old.title != title ||
       old.background != background ||
       old.bottom != bottom ||
-      old.topInset != topInset;
+      old.topInset != topInset ||
+      old.showBack != showBack;
 }
 
 /// Неприлипающая полоса вкладок: уезжает при прокрутке.

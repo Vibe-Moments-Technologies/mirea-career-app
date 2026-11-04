@@ -463,7 +463,8 @@ class _Pill extends StatelessWidget {
 ///
 /// Два смысловых блока дат (запрос): «Приём заявок до» (end_date —
 /// дедлайн регистрации/анкеты) и «Проведение» (start_date, с диапазоном
-/// нескольких дней). Остальное — формат, кампус, для кого — рядом.
+/// нескольких дней). Формат НЕ дублируем — он в мета-строке чипов
+/// сверху. Остальное: кампус, для кого, направления.
 class _FactsPanel extends StatelessWidget {
   const _FactsPanel({required this.post});
   final Post post;
@@ -487,8 +488,6 @@ class _FactsPanel extends StatelessWidget {
           'Проведение',
           range ?? dateWithTime(post.startDate!),
         ),
-      if (Catalogs.formats[post.format] != null)
-        _Fact(_formatIcon(post.format), 'Формат', Catalogs.formats[post.format]!),
       if (post.campuses.isNotEmpty)
         _Fact(
           Icons.place_rounded,
@@ -528,12 +527,6 @@ class _FactsPanel extends StatelessWidget {
       ),
     );
   }
-
-  IconData _formatIcon(String format) => switch (format) {
-        'online' => Icons.videocam_rounded,
-        'hybrid' => Icons.sync_alt_rounded,
-        _ => Icons.location_city_rounded,
-      };
 }
 
 class _Fact extends StatelessWidget {

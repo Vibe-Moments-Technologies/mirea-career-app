@@ -1455,9 +1455,10 @@ void main() {
 
       // Подписи фактов (рендерятся капсом) — новое разделение дат:
       // «Приём заявок до» (дедлайн) и «Проведение» (период события).
+      // Формата тут НЕТ: он в мета-строке чипов сверху.
       expect(find.text('ПРИЁМ ЗАЯВОК ДО'), findsOneWidget);
       expect(find.text('ПРОВЕДЕНИЕ'), findsOneWidget);
-      expect(find.text('ФОРМАТ'), findsOneWidget);
+      expect(find.text('ФОРМАТ'), findsNothing);
       expect(find.text('КАМПУС'), findsOneWidget);
       expect(find.text('ДЛЯ КОГО'), findsOneWidget);
       expect(find.text('Вернадского, 78'), findsWidgets);
@@ -1581,6 +1582,23 @@ void main() {
             type: 'event',
             startDate: DateTime.now().add(const Duration(days: 35)),
           ),
+          // Идущее СЕЙЧАС: началось вчера, заканчивается через неделю —
+          // в календаре (жалоба «календарь пуст, пока идёт опрос»).
+          samplePost(
+            id: 'ev3',
+            title: 'Идёт сейчас',
+            type: 'survey',
+            startDate: DateTime.now().subtract(const Duration(days: 1)),
+            endDate: DateTime.now().add(const Duration(days: 7)),
+          ),
+          // Завершившееся (и по start, и по end) — не попадает.
+          samplePost(
+            id: 'old',
+            title: 'Уже прошло',
+            type: 'event',
+            startDate: DateTime.now().subtract(const Duration(days: 10)),
+            endDate: DateTime.now().subtract(const Duration(days: 5)),
+          ),
           // Без даты — в календарь не попадает.
           samplePost(id: 'nod', title: 'Без даты', type: 'vacancy'),
         ],
@@ -1597,6 +1615,8 @@ void main() {
       // События на месте, отсортированы по датам.
       expect(find.text('Событие впереди'), findsOneWidget);
       expect(find.text('Событие через месяц'), findsOneWidget);
+      expect(find.text('Идёт сейчас'), findsOneWidget);
+      expect(find.text('Уже прошло'), findsNothing);
       expect(find.text('Без даты'), findsNothing);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });

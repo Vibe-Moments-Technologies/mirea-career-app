@@ -38,14 +38,17 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   Widget build(BuildContext context) {
     final feed = ref.watch(feedProvider);
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
+    final now = DateTime.now();
 
-    // Предстоящие и идущие сейчас события с датой начала, по
-    // возрастанию даты. Свежезавершённые (до недели) не показываем:
-    // календарь — про «что впереди», прошедшее остаётся в ленте.
+    // Предстоящие (start в будущем) И идущие сейчас (start в прошлом,
+    // но end в будущем — опрос/длинное мероприятие). Завершившиеся
+    // не показываем: прошедшее остаётся в ленте и архиве.
     final events = feed.posts
-        .where((p) =>
-            p.startDate != null &&
-            p.startDate!.isAfter(DateTime.now().subtract(const Duration(days: 1))))
+        .where((p) {
+          if (p.startDate == null) return false;
+          if (p.startDate!.isAfter(now)) return true;
+          return p.endDate != null && p.endDate!.isAfter(now);
+        })
         .toList()
       ..sort((a, b) => a.startDate!.compareTo(b.startDate!));
 
