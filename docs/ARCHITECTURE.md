@@ -4,94 +4,87 @@
 
 | Слой | Решение | Почему |
 |---|---|---|
-| Мобильное приложение | **Flutter 3.4x stable** (Dart ≥3.9), `supabase_flutter: ^2.17.2` | Один UI-код на iOS/Android, самый быстрый путь к «красивому» MVP, официальный SDK Supabase с realtime. 3.0.0-dev не берём — только stable. KMP/Compose отклонён: на iOS шероховатости анимаций, меньше готовых iOS-подобных компонентов. |
-| Бэкенд | **Supabase** (Postgres + Auth + RLS + Realtime + Storage + RPC) | Не пишем свой сервер вообще: API, авторизация, права и файловое хранилище — из коробки. |
-| Веб-админка | **Vite + TypeScript** (без фреймворка-гиганта; UI — на чистом TS + CSS, состояние — минимальное), `@supabase/supabase-js` | Презентационный инструмент на 3 экрана. React/Flutter Web — лишний вес для демо. |
-| Локальное хранилище | `shared_preferences` (профиль-опрос, viewed ids, очередь счётчиков) + JSON-кэш ленты в том же SP | Не заводим Hive/Isar/Drift: данных мало (профиль + список UUID + кэш). `ponytail:` если кэш ленты вырастет или понадобится сложный офлайн — переход на Isar. |
-| CI | Отсутствует на MVP | Сборки локальные / TestFlight-Internal по необходимости. |
+| Мобильное приложение | **Flutter stable** (Dart), REST через `app_http_client.dart` | Один UI-код на iOS/Android. Supabase SDK выкинут при переезде на PocketBase: чтение — анонимный REST, SDK не нужен. |
+| Бэкенд | **PocketBase v0.28+** на VDS `vmt-mireacareer.l1ratch.ru` (nginx → 127.0.0.1:8090, TLS на nginx) | Свой API, авторизация и права (API Rules) без своего сервера. Схема и правила доступа — в `.agent-docs/database-guide.md` (секреты, в git не входит). |
+| Веб-консоль | **Vite + TypeScript**, чистый fetch к REST PocketBase | Без SDK и фреймворков: 14 файлов, один клиент `src/pb.ts`. |
+| Локальное хранилище приложения | `shared_preferences`: профиль-опрос, viewed ids, очередь счётчиков, кэш ленты | Данных мало, ORM не нужен. |
+| CI | Отсутствует на MVP | Сборки локальные. |
 
 Репозиторий — монорепо:
 
 ```
 MIREA-Career/
 ├── docs/            # TZ, ARCHITECTURE, DATABASE, UI, ADMIN, ROADMAP
-├── supabase/
-│   ├── migrations/  # 0001_init.sql, 0002_rls.sql, 0003_rpc.sql, 0004_seed_demo.sql
-│   └── config.toml
-├── app/             # Flutter-приложение
-└── admin/           # Vite+TS веб-админка
+├── .agent-docs/     # справка по живой БД PocketBase (секреты; в .gitignore)
+├── supabase/        # архив миграций старой схемы (Postgres) — история, не применяется
+├── app/             # Flutter-приложение студента
+└── admin/           # Vite+TS веб-консоль (в git не входит)
 ```
 
-## 2. Структура Flutter-приложения
+## 2. Учётные записи и права (решение от 27.10.2026)
 
-Feature-first, но без слоёной лазаньи — на MVP достаточно трёх уровней: `data` (Supabase + локальное хранилище) → `state` (Riverpod-провайдеры) → `screens` (виджеты).
+**Сейчас: один администратор.** Консоль работает под единственным суперпользователем
+PocketBase (`_superusers`); ролевой модели нет — профилей, модерации и команд
+новая схема не содержит. Публикация поста — напрямую администратором
+(статусы `draft`/`published`), без цепочки согласований.
 
-```
-app/lib/
-├── main.dart
-├── core/
-│   ├── theme/          # design-tokens: цвета, радиусы, тени, типографика (docs/UI.md)
-│   ├── widgets/        # GlassDock, HeroCarousel, PostCard, FilterSheet, Chip…
-│   └── utils/          # debounce, formatters
-├── data/
-│   ├── supabase_client.dart
-│   ├── posts_repo.dart       # fetch/filter/realtime-поток posts+organizations
-│   ├── local_store.dart      # профиль, избранное, viewed ids, pending-счётчики
-│   └── metrics.dart          # fire-and-forget RPC + локальная очередь повторов
-├── state/
-│   ├── feed_provider.dart    # лента, фильтры, «Для вас»-скоринг
-│   ├── profile_provider.dart # результат опроса
-│   └── favorites_provider.dart
-└── screens/
-    ├── onboarding/     # 4 шага опроса
-    ├── home/           # Главная
-    ├── catalog/        # Каталог (Вуз/Партнёры + фильтры)
-    ├── favorites/
-    ├── more/           # Другое + редактирование профиля
-    └── post/           # Карточка
-```
-
-Состояние — **Riverpod** (единственная новая зависимость помимо supabase_flutter и url_launcher). Без bloc/getx: для четырёх вкладок достаточно.
+**Расширение (когда появятся реальные требования):** auth-коллекция
+(например `editors`) с полями `role` + `organization`, права — через API Rules
+PocketBase вида `post.organization = @request.auth.organization`. Это штатный
+механизм, отдельный сервер не пишем. До этого момента ролевой код не заводим.
 
 ## 3. Потоки данных
 
 ### Чтение ленты (аноним)
-1. `anon`-ключ → Supabase REST: `posts?status=eq.published&select=*,organizations(name,logo_url,type)`, сортировка `priority_weight desc, published_at desc`, фильтр по `published_at <= now()`.
-2. Ответ кэшируется в SP (JSON). Старт приложения рисует кэш мгновенно, сеть обновляет поверх.
-3. Realtime-подписка на INSERT/UPDATE таблицы `posts` → новая опубликованная карточка появляется в ленте без pull-to-refresh (это же — магия для презентации).
+1. Приложение → `GET /api/collections/posts/records?filter=status="published" && published_at<=@now && (end_date>@now||end_date="")&expand=organization`.
+   Права на стороне PocketBase: аноним видит только опубликованное и наступившее; архив — `end_date<@now`.
+2. Ответ кэшируется локально (SP): старт рисует кэш, сеть обновляет поверх.
+3. Фильтры (вкладки, типы, поиск) — серверные filter-параметры (`@now` без кавычек; multi-value через OR, не через запятые).
 
-### Фильтрация
-Все фильтры MVP выполняются **на клиенте** по уже загруженной ленте: типы, кампус/институт — совпадение с `target_campuses`/`target_institutes` (пустой массив = для всех), теги — пересечение, компания — `organization_id`, формат — `format`, поиск — по `title` + теги. Серверный `select` применяется только когда строк станет > ~1000. `ponytail:` клиентская фильтрация; при росте каталога — перенести в RPC/View с пагинацией.
+### Витрина главной
+`spotlight_banners` — отдельная таблица, к постам отношения не имеет. Анониму
+отдаются только `is_active = true`; порядок — `sort_order`.
 
-### Скоринг «Для вас» (полностью локальный)
-```
-score = 3·campus_match + 3·institute_match + 2·|tags ∩ profile.tags| + priority_weight
-        (+1 если target_all)
-```
-Посты со score > 0 и не из избранного — в секцию «Для вас», отсортированные по score. Веса — константы в `feed_provider.dart`, калибруются на демо-данных.
+### Счётчики (решено)
+`views_count`/`favorites_count` инкрементируются **серверно, из хука PocketBase**
+(`pb_hooks/metrics.pb.js`, задеплоен на VDS): приложение анонимно вызывает
+- `POST /api/metrics/view/{postId}` — просмотр; заголовок `X-Visitor-Id` (id
+  устройства из SP) дедуплицирует: 1 просмотр на посетителя;
+- `POST /api/metrics/favorite` с телом `{ post_id, delta }`, delta = ±1 —
+  клэмп на нуле.
 
-### Счётчики (запись от анонима)
-Аноним **не имеет** UPDATE на `posts` (закрыто RLS). Инкременты — только через `security definer` RPC:
-- Открытие карточки: если `post_id ∉ viewed_ids` → `increment_post_views(id)`, id пишется в SP.
-- Избранное ±: `modify_post_favorites(id, ±1)` немедленно; при офлайне — в локальную очередь, повторяется при старте/восстановлении сети.
+Дедупликация — служебная таблица `metric_events` (видна только хуку), чистка
+старых строк — ночной cron. Прямой PATCH постов остаётся закрытым для анонима.
+Стороне приложения остаётся дописать ~5 строк в TODO-заглушках
+`posts_repo.dart` (incrementViews/modifyFavorites) — POST и fire-and-forget.
+Внешние аналитики (Umami/Plausible) тут не нужны: они считают посещения
+страниц сайта, а не показы конкретных карточек.
 
-### Публикация (автор → модерация → приложение)
-Запись/смена статуса — прямыми UPDATE/INSERT в таблицы под RLS (см. DATABASE.md): право на переход статуса зашито в политику, а не в клиентский код. Клиент админки может попытаться поставить `published` — Postgres отклонит, если ты не main_moderator.
+### Консоль
+Вход суперпользователя (`auth-with-password`, токен в localStorage), дальше
+CRUD через REST. Производные статусы считаются из дат: `published_at > now` =
+отложен, `end_date < now` = архив. Счётчики консоль только читает и не
+сбрасывает: PATCH шлёт лишь изменённые поля.
 
 ## 4. Медиа
 
-Supabase Storage, bucket `media` (публичный на чтение). Загрузка — из админки (`supabase-js.storage.upload`), в БД хранится `image_url` (публичный URL). Ограничение на клиенте: ≤ 5 МБ, jpg/png/webp. `ponytail:` без серверной валидации и ресайза; CDN/ресайз — когда появятся реальные нагрузки.
+Файлы — в самих записях PocketBase: `posts.image` (file), `spotlight_banners.image`
+(file); URL — `/api/files/{collection}/{record_id}/{filename}`.
+`organizations.logo_url` — **url-поле** (ссылка), файлом туда грузить нельзя.
+Загрузка из консоли — multipart отдельным PATCH после сохранения JSON-полей.
 
-## 5. Конфигурация и окружения
+## 5. Конфигурация
 
-- Один проект Supabase на MVP. `SUPABASE_URL` + `SUPABASE_ANON_KEY` — во Flutter через `--dart-define`, в админке через `.env`.
-- Секретные ключи (`service_role`) в клиентах не появляются никогда. Единственный носитель — Supabase SQL Editor для первичной настройки.
+- `admin/.env`: `VITE_PB_URL=https://vmt-mireacareer.l1ratch.ru`.
+- Приложение: базовый URL передаётся в `PostsRepo`.
+- Пароль суперпользователя — только в `.agent-docs/database-guide.md` (gitignore), в коде и сборках его нет.
 
-## 6. Ключевые риски и решения
+## 6. Ключевые риски
 
 | Риск | Решение |
 |---|---|
-| Накрутка счётчиков анонимами | RPC + дедупликация просмотров на устройстве; favorites — идемпотентный дельта-вызов с `greatest(0, …)`. Полноценный антифрод — после MVP. |
-| Утечка неопубликованного через anon-ключ | RLS: `published` + дата публикации ≤ now(); всё остальное — только роли авторов/модераторов. Проверка отдельным smoke-тестом (запрос anon-ключом должен вернуть только published). |
-| iOS-релиз без Mac/аккаунта на момент демо | Демонстрация через Android-эмулятор/устройство + админка в браузере; iOS-сборка — отдельным поздним этапом, код к этому готов. |
-| Реальные данные МИРЭА (кампусы, институты) | На MVP — seed-скрипт с правдоподобным списком (Вернадского 78/86, Стромынка; ИИТ, ИИИ, ИТХТ…), заменяется справочниками позже. |
+| Счётчики | Решено: хук `pb_hooks/metrics.pb.js` (см. §3), инкременты серверные. |
+| Накрутка счётчиков | Дедупликация на устройстве; полноценный антифрод — после MVP. |
+| Кириллица ломается при заливке данных через PowerShell/curl | Писать JSON в файл (UTF-8 без BOM) и `--data-binary @file` (guide §4.2); REST из браузера/Node безопасен. |
+| Утечка неопубликованного | API Rules: list/view только `published` + `published_at <= @now`; черновики видны лишь суперпользователю. |
+| iOS-релиз без Mac/аккаунта | Демо через Android + консоль в браузере. |
