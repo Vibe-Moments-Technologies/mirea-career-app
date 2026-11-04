@@ -129,10 +129,12 @@ jobs:
 
   build_ipa:
     name: 🍏 Build iOS Unsigned IPA (dev)
-    # macos-13 (Intel): 4.11.2026 у GitHub перегружены arm64-раннеры —
-    # «job was not acquired by Runner of type hosted», три сборки подряд
-    # отменялись без раннера. Intel-пул свободнее, сборка та же.
-    runs-on: macos-13
+    # macos-26: 04.11.2026 стандартные пулы (macos-latest=arm64, macos-13)
+    # у GitHub перегружены — джобы часами висели в очереди и отменялись
+    # без раннера («job was not acquired by Runner of type hosted»).
+    # Пул macos-26 свободен (живая проверка: раннер выдан за 2 секунды)
+    # и даёт свежий Xcode; Flutter-проект собирается на нём без правок.
+    runs-on: macos-26
     needs: resolve
     env:
       SENTRY_ENV: preview
