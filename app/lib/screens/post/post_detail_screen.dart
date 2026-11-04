@@ -7,7 +7,9 @@ import '../../core/app_route.dart';
 import '../../core/format.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/glass_back_button.dart';
+import '../../core/widgets/markdown_body.dart';
 import '../../core/widgets/post_image.dart';
+import '../../data/app_http_client.dart';
 import '../../data/catalogs.dart';
 import '../../data/models.dart';
 import '../../state/providers.dart';
@@ -193,34 +195,121 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
 }
 
 /// Обложка с затемнением под кнопки шапки.
-class _Cover extends StatelessWidget {
+///
+/// Если у поста есть галерея — свайп-слайдер: обложка первым слайдом,
+/// дальше файлы gallery. Одна картинка (или пустая галерея) — просто
+/// обложка, без точек и свайпа.
+class _Cover extends StatefulWidget {
   const _Cover({required this.post});
   final Post post;
 
   @override
+  State<_Cover> createState() => _CoverState();
+}
+
+class _CoverState extends State<_Cover> {
+  PageController? _controller;
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final post = widget.post;
+    final urls = post.galleryUrls;
+
+    // Одна или ноль картинок — прежняя обложка: фото → буквенная заглушка.
+    if (urls.length <= 1) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          PostCover(
+            post: post,
+            size: null,
+            borderRadius: BorderRadius.zero,
+            letter: true,
+          ),
+          const _CoverShade(),
+        ],
+      );
+    }
+
+    _controller ??= PageController();
+
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Та же обложка, что в ленте и витрине: фото → буквенная заглушка.
-        PostCover(
-          post: post,
-          size: null,
-          borderRadius: BorderRadius.zero,
-          letter: true,
-        ),
-        const DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0x66000000), Color(0x11000000)],
+        PageView.builder(
+          controller: _controller,
+          itemCount: urls.length,
+          itemBuilder: (_, i) => AppNetworkImage(
+            url: urls[i],
+            fit: BoxFit.cover,
+            placeholder: PostCover(
+              post: post,
+              size: null,
+              borderRadius: BorderRadius.zero,
+              letter: true,
             ),
+            errorWidget: PostCover(
+              post: post,
+              size: null,
+              borderRadius: BorderRadius.zero,
+              letter: true,
+            ),
+          ),
+        ),
+        const _CoverShade(),
+        // Точки-индикаторы поверх затемнения: видны и на светлом слайде.
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 12,
+          child: AnimatedBuilder(
+            animation: _controller!,
+            builder: (_, _) {
+              final page = _controller!.page?.round() ?? 0;
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  for (var i = 0; i < urls.length; i++)
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                      width: i == page ? 18 : 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: i == page ? Colors.white : Colors.white54,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
         ),
       ],
     );
   }
+}
+
+/// Затемнение обложки под кнопки шапки.
+class _CoverShade extends StatelessWidget {
+  const _CoverShade();
+
+  @override
+  Widget build(BuildContext context) => const DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0x66000000), Color(0x11000000)],
+          ),
+        ),
+      );
 }
 
 /// Строка над заголовком: тип предложения и срочность.
@@ -446,7 +535,8 @@ class _Organizer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final name = post.organizationName?.trim() ?? '';
+    // Организация, иначе author_name (посты без организации из консоли).
+    final name = post.authorLabel?.trim() ?? '';
 
     // Профили организаций временно убраны из приложения: организатор
     // указывается админом при создании карточки и служит подписью,
@@ -612,61 +702,18 @@ class _ApplyButton extends StatelessWidget {
       );
 }
 
-/// Описание: абзацы и списки из HTML-редактора PocketBase.
+/// Описание поста: Markdown из консоли.
 ///
-/// Поле `description` в БД — тип editor, то есть HTML. Раньше текст
-/// выводился как есть, и любая разметка админа показывалась студенту
-/// тегами. Полноценный рендер HTML не нужен: достаточно снять теги,
-/// превратив блочные в переносы строк, и распаковать базовые сущности.
-/// ponytail: без flutter_html — пакет ради трёх тегов не стоит,
-/// а свой преобразователь здесь на двадцать строк.
+/// Консоль пишет описания в Markdown (**жирный**, списки, заголовки,
+/// ссылки). Раньше поле было HTML-редактором и разметку приходилось
+/// снимать; теперь рендерим честно. ponytail: без flutter_markdown —
+/// свой рендер на ~80 строк держит стиль приложения.
 class _Description extends StatelessWidget {
   const _Description({required this.text});
   final String text;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (final p in _toParagraphs(text))
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Text(p, style: AppText.body.copyWith(height: 1.45)),
-          ),
-      ],
-    );
-  }
-
-  /// HTML → список абзацев.
-  static List<String> _toParagraphs(String html) {
-    var s = html
-        // <br> — перенос внутри абзаца
-        .replaceAll(RegExp(r'<\s*br\s*/?>', caseSensitive: false), '\n')
-        // конец блока — граница абзаца: два переноса, иначе соседние <p>
-        // сливались в один Text и абзацы не разделялись
-        .replaceAll(
-          RegExp(r'</\s*(p|div|li|ul|ol|h[1-6]|blockquote)\s*>',
-              caseSensitive: false),
-          '\n\n',
-        )
-        .replaceAll(RegExp(r'<\s*li[^>]*>', caseSensitive: false), '\n• ')
-        // остальные теги просто снимаем
-        .replaceAll(RegExp(r'<[^>]*>'), '');
-
-    s = s
-        .replaceAll('&nbsp;', ' ')
-        .replaceAll('&amp;', '&')
-        .replaceAll('&lt;', '<')
-        .replaceAll('&gt;', '>')
-        .replaceAll('&quot;', '"')
-        .replaceAll('&#39;', "'")
-        .replaceAll('**', '');
-
-    return s
-        .split(RegExp(r'\n\s*\n'))
-        .map((p) => p.trim())
-        .where((p) => p.isNotEmpty)
-        .toList();
+    return MarkdownBody(text: text);
   }
 }

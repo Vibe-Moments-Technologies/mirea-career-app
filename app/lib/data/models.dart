@@ -158,8 +158,12 @@ class Post {
     this.organizationContactEmail,
     this.organizationContactPhone,
     this.organizationContactName,
+    this.publicId,
+    this.authorName,
+    this.gallery = const [],
     this.externalLink,
     this.imageUrl,
+    this.galleryUrls = const [],
     this.startDate,
     this.endDate,
     this.publishedAt,
@@ -181,9 +185,24 @@ class Post {
   final String organizationId;
   final String title;
   final String description;
-  final String type; // event | vacancy | internship | scholarship | project
+  final String type; // internship | vacancy | event | survey (+легаси)
   final String format; // online | offline | hybrid
+
+  /// Строка, не enum: консоль добавляет значения (draft, pending_review,
+  /// rejected, withdrawn…) раньше, чем приложение успевает обновиться.
+  /// Приложение показывает только published — остальное просто не доезжает.
   final String status;
+
+  /// Публичный номер поста (6 символов, вида 4Z65U4): по нему баннеры
+  /// ссылаются на посты (link_url = "post:XXXXXX") и его видит студент.
+  final String? publicId;
+
+  /// Автор поста, если организация не указана: консоль позволяет
+  /// посты без организации — тогда подпись автора вместо её названия.
+  final String? authorName;
+
+  /// Имена файлов галереи (до 8): слайдер на экране поста за обложкой.
+  final List<String> gallery;
   final String? organizationName;
   final String? organizationType;
   final String? organizationLogoUrl;
@@ -194,6 +213,10 @@ class Post {
   final String? organizationContactName;
   final String? externalLink;
   final String? imageUrl;
+
+  /// Полные URL галереи (обложка + gallery): собирает репозиторий,
+  /// зная базу и record id. Пустая галерея → только обложка.
+  final List<String> galleryUrls;
   final DateTime? startDate;
   final DateTime? endDate;
   final DateTime? publishedAt;
@@ -211,6 +234,10 @@ class Post {
   final String? formSuccessText;
 
   bool get isPartner => organizationType == 'partner';
+
+  /// Имя, которым подписываем автора поста: организация, иначе author_name.
+  /// Пусто — «Организатор не указан» на месте подписи.
+  String? get authorLabel => organizationName ?? authorName;
 
   /// Опросник, привязанный к посту: открывается вместо внешней ссылки.
   FormDefinition? get form => formId == null || formDefinition == null
@@ -283,6 +310,9 @@ class Post {
       type: json['type'] as String? ?? 'event',
       format: json['format'] as String? ?? 'offline',
       status: json['status'] as String? ?? 'published',
+      publicId: _nonEmpty(json['post_id']),
+      authorName: _nonEmpty(json['author_name']),
+      gallery: _strList(json['gallery']),
       organizationName: org?.name,
       organizationType: org?.type,
       organizationLogoUrl: org?.logoUrl,
@@ -293,6 +323,7 @@ class Post {
       organizationContactName: org?.contactName,
       externalLink: json['external_link'] as String?,
       imageUrl: imageUrl,
+      galleryUrls: _strList(json['gallery_urls']),
       startDate: _date(json['start_date']),
       endDate: _date(json['end_date']),
       publishedAt: _date(json['published_at']),
@@ -333,6 +364,10 @@ class Post {
         },
         'external_link': externalLink,
         'image': imageUrl,
+        'post_id': publicId,
+        'author_name': authorName,
+        'gallery': gallery,
+        'gallery_urls': galleryUrls,
         'start_date': startDate?.toIso8601String(),
         'end_date': endDate?.toIso8601String(),
         'published_at': publishedAt?.toIso8601String(),
@@ -367,6 +402,9 @@ class Post {
         type: type,
         format: format,
         status: status,
+        publicId: publicId,
+        authorName: authorName,
+        gallery: gallery,
         organizationName: organizationName,
         organizationType: organizationType,
         organizationLogoUrl: organizationLogoUrl,
@@ -377,6 +415,7 @@ class Post {
         organizationContactName: organizationContactName,
         externalLink: externalLink,
         imageUrl: imageUrl,
+        galleryUrls: galleryUrls,
         startDate: startDate,
         endDate: endDate,
         publishedAt: publishedAt,
@@ -393,4 +432,10 @@ class Post {
         formDefinition: formDefinition,
         formSuccessText: formSuccessText,
       );
+
+  static String? _nonEmpty(Object? v) {
+    if (v is! String) return null;
+    final t = v.trim();
+    return t.isEmpty ? null : t;
+  }
 }

@@ -146,7 +146,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(0, 8, 0, 12),
-                      child: SpotlightGallery(banners: banners),
+                      child: SpotlightGallery(
+                        banners: banners,
+                        onOpenPost: _openByPublicId,
+                      ),
                     ),
                   ),
                 if (_filters.activeCount > 0)
@@ -270,6 +273,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   void _open(Post post) {
     FocusManager.instance.primaryFocus?.unfocus();
+    Navigator.of(context).push(
+      appRoute(context, PostDetailScreen(post: post)),
+    );
+  }
+
+  /// Баннер с пост-ссылкой (post:XXXXXX): пост ищется по публичному
+  /// номеру и открывается стандартным экраном деталей.
+  Future<void> _openByPublicId(String publicId) async {
+    FocusManager.instance.primaryFocus?.unfocus();
+
+    final post = await ref.read(postsRepoProvider).fetchPostByPublicId(publicId);
+    if (!mounted) return;
+    if (post == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Пост недоступен')),
+      );
+      return;
+    }
     Navigator.of(context).push(
       appRoute(context, PostDetailScreen(post: post)),
     );

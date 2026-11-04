@@ -24,15 +24,24 @@ int spotlightIndex(int page, int count) {
 /// администратор в консоли (`spotlight_banners`), поэтому баннер не попадает
 /// в ленту и не требует помечать обычную карточку «приоритетной».
 ///
+/// Баннер может ссылаться на пост по публичному номеру: link_url =
+/// "post:4Z65U4". Такие тапы не уходят в браузер — [onOpenPost] получает
+/// номер, и хост-экран открывает детали поста (запрос по post_id).
+///
 /// Если слайдов нет, витрина не строится — пустой блок выше ленты только
 /// отнимал бы экран.
 class SpotlightGallery extends StatefulWidget {
   const SpotlightGallery({
     super.key,
     required this.banners,
+    this.onOpenPost,
   });
 
   final List<SpotlightBanner> banners;
+
+  /// Пост-ссылка баннера (link_url = "post:XXXXXX"): хост открывает
+  /// экран поста по публичному номеру.
+  final void Function(String publicId)? onOpenPost;
 
   @override
   State<SpotlightGallery> createState() => _SpotlightGalleryState();
@@ -125,7 +134,10 @@ class _SpotlightGalleryState extends State<SpotlightGallery> {
               // Одинаковые боковые поля у всех карточек: размер не зависит
               // от позиции, поэтому активная не «дышит».
               padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: _Card(banner: widget.banners[spotlightIndex(i, count)]),
+              child: _Card(
+                banner: widget.banners[spotlightIndex(i, count)],
+                onOpenPost: widget.onOpenPost,
+              ),
             ),
           ),
         ),
@@ -156,15 +168,32 @@ class _SpotlightGalleryState extends State<SpotlightGallery> {
 }
 
 /// Карточка витрины: обложка, заголовок, подпись. Тап ведёт по ссылке, если
-/// администратор её задал.
+/// администратор её задал: обычный URL — в браузер, "post:XXXXXX" —
+/// в детали поста через [onOpenPost].
 class _Card extends StatelessWidget {
-  const _Card({required this.banner});
+  const _Card({required this.banner, this.onOpenPost});
 
   final SpotlightBanner banner;
+  final void Function(String publicId)? onOpenPost;
+
+  /// "post:4Z65U4" → "4Z65U4", иначе null.
+  static String? _postRef(String link) {
+    if (!link.startsWith('post:')) return null;
+    final id = link.substring(5).trim();
+    return id.isEmpty ? null : id;
+  }
 
   Future<void> _open() async {
     final link = banner.linkUrl;
     if (link == null || link.isEmpty) return;
+
+    // Пост-ссылка: экран поста, не браузер.
+    final postRef = _postRef(link);
+    if (postRef != null) {
+      onOpenPost?.call(postRef);
+      return;
+    }
+
     final uri = Uri.tryParse(link);
     if (uri == null) return;
     await launchUrl(uri, mode: LaunchMode.externalApplication);

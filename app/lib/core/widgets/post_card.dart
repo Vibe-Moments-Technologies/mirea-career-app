@@ -94,10 +94,10 @@ class PostCard extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    if ((post.organizationName ?? '').trim().isNotEmpty) ...[
+                    if ((post.authorLabel ?? '').trim().isNotEmpty) ...[
                       const SizedBox(height: 4),
                       Text(
-                        post.organizationName!.trim(),
+                        post.authorLabel!.trim(),
                         style: AppText.footnote
                             .copyWith(color: AppColors.secondaryLight),
                         maxLines: 1,

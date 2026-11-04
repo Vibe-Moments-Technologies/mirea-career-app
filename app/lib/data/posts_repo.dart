@@ -123,11 +123,15 @@ class PostsRepo {
   }
 
   /// Список организаций: отдельный запрос, а не сборка из ленты.
+  ///
+  /// hidden и system не показываем: hidden — служебная маскировка,
+  /// system («Администрация проекта») — техническая организация консоли.
   Future<List<Organization>> fetchOrganizations() async {
     if (isOffline) return const [];
 
+    final filter = Uri.encodeComponent('(type!="hidden" && type!="system")');
     final url = '$_baseUrl/api/collections/organizations/records'
-        '?filter=type!="hidden"'
+        '?filter=$filter'
         '&sort=name'
         '&perPage=100';
 
@@ -300,6 +304,32 @@ class PostsRepo {
     }
   }
 
+  /// Пост по публичному номеру (post_id вида 4Z65U4).
+  ///
+  /// Так баннеры ссылаются на посты (link_url = "post:XXXXXX"): студент
+  /// видит номер, но внутренний record id не знает. Ищем по filter,
+  /// раскрывая организацию и анкету — как в ленте.
+  /// null = не найден или сети нет.
+  Future<Post?> fetchPostByPublicId(String publicId) async {
+    if (isOffline) return null;
+
+    final filter = Uri.encodeComponent('post_id="$publicId"');
+    final url = '$_baseUrl/api/collections/posts/records'
+        '?filter=$filter'
+        '&expand=organization,form'
+        '&perPage=1';
+
+    final bytes = await AppHttpClient.instance.fetchBytes(url);
+    if (bytes == null) return null;
+    try {
+      final json = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+      final items = json['items'] as List<dynamic>? ?? [];
+      return items.map(_parsePost).whereType<Post>().firstOrNull;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // ---------- Парсинг ----------
 
   Post? _parsePost(Object? json) {
@@ -320,6 +350,14 @@ class PostsRepo {
       imageUrl = '$_baseUrl/api/files/posts/$id/$imageField';
     }
 
+    // Галерея: обложка первым слайдом + файлы gallery за ней.
+    // Пустая галерея → список из одной обложки (или пустой, если и её нет).
+    final galleryFiles = _strList(json['gallery']);
+    final galleryUrls = [
+      ?imageUrl,
+      for (final f in galleryFiles) '$_baseUrl/api/files/posts/$id/$f',
+    ];
+
     return Post(
       id: id,
       organizationId: json['organization'] as String? ?? org?.id ?? '',
@@ -328,6 +366,9 @@ class PostsRepo {
       type: json['type'] as String? ?? 'event',
       format: json['format'] as String? ?? 'offline',
       status: json['status'] as String? ?? 'published',
+      publicId: _nonEmpty(json['post_id']),
+      authorName: _nonEmpty(json['author_name']),
+      gallery: galleryFiles,
       organizationName: org?.name,
       organizationType: org?.type,
       organizationLogoUrl: org?.logoUrl,
@@ -338,6 +379,9 @@ class PostsRepo {
       organizationContactName: org?.contactName,
       externalLink: json['external_link'] as String?,
       imageUrl: imageUrl,
+      galleryUrls: json['gallery_urls'] is List
+          ? _strList(json['gallery_urls'])
+          : galleryUrls,
       startDate: _date(json['start_date']),
       endDate: _date(json['end_date']),
       publishedAt: _date(json['published_at']),
@@ -383,6 +427,12 @@ class PostsRepo {
 
   static DateTime? _date(Object? v) =>
       v is String ? DateTime.tryParse(v) : null;
+
+  static String? _nonEmpty(Object? v) {
+    if (v is! String) return null;
+    final t = v.trim();
+    return t.isEmpty ? null : t;
+  }
 }
 
 /// Конфигурация PocketBase.

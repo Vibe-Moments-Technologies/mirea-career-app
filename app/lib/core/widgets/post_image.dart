@@ -69,7 +69,7 @@ class _Placeholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
-    final initial = _initialOf(post.organizationName);
+    final initial = _initialOf(post.authorLabel);
 
     return ColoredBox(
       color: AppColors.placeholder(brightness),
@@ -79,10 +79,7 @@ class _Placeholder extends StatelessWidget {
                 initial,
                 style: AppText.title.copyWith(
                   color: AppColors.secondaryLight,
-                  fontSize:
-                      post.organizationName != null && initial.length > 1
-                          ? 18
-                          : 26,
+                  fontSize: 26,
                 ),
               )
             : Icon(_iconForType(post.type),
