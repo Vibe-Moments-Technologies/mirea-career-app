@@ -1,6 +1,25 @@
 /// Модели данных, приходящие из Supabase. Чистые immutable-классы без кодогенерации.
 library;
 
+/// Институт из справочника БД (коллекция institutes).
+///
+/// Справочник настраивается панелью: состав, порядок и названия.
+/// code — стабильный идентификатор (его хранит профиль и посты);
+/// short — аббревиатура для плиток, title — полное название.
+class InstituteRef {
+  const InstituteRef({required this.code, required this.title, required this.short});
+  final String code;
+  final String title;
+  final String short;
+}
+
+/// Уровень обучения из справочника БД (коллекция levels).
+class LevelRef {
+  const LevelRef({required this.code, required this.title});
+  final String code;
+  final String title;
+}
+
 /// Слайд витрины главной.
 ///
 /// Отдельная сущность, а не пост: витрину наполняет администратор в консоли,

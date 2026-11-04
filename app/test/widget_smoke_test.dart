@@ -14,6 +14,7 @@ import 'package:mirea_career/data/local_store.dart';
 import 'package:mirea_career/data/metrics.dart';
 import 'package:mirea_career/data/models.dart';
 import 'package:mirea_career/data/posts_repo.dart';
+import 'package:mirea_career/screens/calendar/calendar_screen.dart';
 import 'package:mirea_career/screens/favorites/favorites_screen.dart';
 import 'package:mirea_career/screens/home/home_screen.dart';
 import 'package:mirea_career/screens/more/profile_screen.dart';
@@ -1565,7 +1566,7 @@ void main() {
   });
 
   group('Календарь', () {
-    testWidgets('события с датами — по месяцам, без даты не попадают',
+    testWidgets('сетка месяца, точка в дне события, тап показывает события дня',
         (tester) async {
       final c = await container(
         profile: const StudentProfile(completed: true),
@@ -1575,12 +1576,6 @@ void main() {
             title: 'Событие впереди',
             type: 'event',
             startDate: DateTime.now().add(const Duration(days: 3)),
-          ),
-          samplePost(
-            id: 'ev2',
-            title: 'Событие через месяц',
-            type: 'event',
-            startDate: DateTime.now().add(const Duration(days: 35)),
           ),
           // Идущее СЕЙЧАС: началось вчера, заканчивается через неделю —
           // в календаре (жалоба «календарь пуст, пока идёт опрос»).
@@ -1612,10 +1607,32 @@ void main() {
       await tester.tap(find.byIcon(Icons.calendar_month_rounded).last);
       await tester.pumpAndSettle();
 
-      // События на месте, отсортированы по датам.
-      expect(find.text('Событие впереди'), findsOneWidget);
-      expect(find.text('Событие через месяц'), findsOneWidget);
+      // Настоящая сетка: дни текущего месяца с ПН по ВС.
+      expect(find.text('ПН'), findsOneWidget);
+      expect(find.text('ВС'), findsOneWidget);
+
+      // Ближайшие события — под сеткой (сетка высокая). Карточки ЛЕНИВЫ:
+      // пока их нет в дереве — тянем сетку вверх, пока не появятся.
+      final calendarScrollable = find
+          .descendant(
+            of: find.byType(CalendarScreen),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      for (var i = 0; i < 10; i++) {
+        if (find.text('Идёт сейчас').evaluate().isNotEmpty) break;
+        await tester.drag(calendarScrollable, const Offset(0, -400));
+        await tester.pump(const Duration(milliseconds: 100));
+      }
       expect(find.text('Идёт сейчас'), findsOneWidget);
+
+      for (var i = 0; i < 10; i++) {
+        if (find.text('Событие впереди').evaluate().isNotEmpty) break;
+        await tester.drag(calendarScrollable, const Offset(0, -400));
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.text('Событие впереди'), findsOneWidget);
+      expect(find.text('Событие впереди'), findsOneWidget);
       expect(find.text('Уже прошло'), findsNothing);
       expect(find.text('Без даты'), findsNothing);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');

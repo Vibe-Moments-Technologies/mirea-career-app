@@ -226,21 +226,69 @@ class PostsRepo {
   /// value тега = его заголовок: профиль хранит строки, и правка
   /// переименования в панели применится к новым заполнениям.
   Future<List<String>> fetchInterests() async {
-    if (isOffline) return const [];
+    final titles = await _fetchTitles('interests', titleOnly: true);
+    return titles;
+  }
 
-    final url = '$_baseUrl/api/collections/interests/records'
+  /// Институты из БД (коллекция institutes): панель управляет составом
+  /// и порядком. Пусто/офлайн — пустой список, вызывающий берёт запас
+  /// из Catalogs.
+  Future<List<InstituteRef>> fetchInstitutes() async {
+    final rows = await _fetchCatalog('institutes');
+    return [
+      for (final r in rows)
+        if (r['code'] is String && r['title'] is String)
+          InstituteRef(
+            code: r['code'] as String,
+            title: r['title'] as String,
+            short: (r['short'] as String?) ?? r['code'] as String,
+          ),
+    ];
+  }
+
+  /// Уровни обучения из БД (коллекция levels).
+  Future<List<LevelRef>> fetchLevels() async {
+    final rows = await _fetchCatalog('levels');
+    return [
+      for (final r in rows)
+        if (r['code'] is String && r['title'] is String)
+          LevelRef(code: r['code'] as String, title: r['title'] as String),
+    ];
+  }
+
+  /// Общая выборка справочника: активные, по sort_order.
+  Future<List<Map<String, dynamic>>> _fetchCatalog(String collection) async {
+    if (isOffline) return const [];
+    final url = '$_baseUrl/api/collections/$collection/records'
         '?filter=is_active=true'
         '&sort=sort_order'
-        '&perPage=50';
-
+        '&perPage=100';
     final bytes = await AppHttpClient.instance.fetchBytes(url);
     if (bytes == null) return const [];
-
     try {
       final json = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
-      final items = json['items'] as List<dynamic>? ?? [];
       return [
-        for (final e in items)
+        for (final e in (json['items'] as List? ?? const []))
+          if (e is Map) Map<String, dynamic>.from(e),
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<List<String>> _fetchTitles(String collection,
+      {bool titleOnly = false}) async {
+    if (isOffline) return const [];
+    final url = '$_baseUrl/api/collections/$collection/records'
+        '?filter=is_active=true'
+        '&sort=sort_order'
+        '&perPage=100';
+    final bytes = await AppHttpClient.instance.fetchBytes(url);
+    if (bytes == null) return const [];
+    try {
+      final json = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+      return [
+        for (final e in (json['items'] as List? ?? const []))
           if (e is Map && e['title'] is String) e['title'] as String,
       ];
     } catch (_) {

@@ -8,6 +8,7 @@ import '../../core/theme/app_theme.dart';
 import '../../data/catalogs.dart';
 import '../../data/group_suggestions.dart';
 import '../../data/local_store.dart';
+import '../../data/models.dart';
 import '../../state/providers.dart';
 
 /// Онбординг: welcome-экран + 6 вопросов по одному с анимацией смены.
@@ -528,7 +529,8 @@ class _StepDepartmentState extends State<_StepDepartment> {
 }
 
 /// Шаг 5: уровень + курс (подсказан группой, правится чипами).
-class _StepLevelAndCourse extends StatelessWidget {
+/// Уровень — из справочника БД (панель настраивает).
+class _StepLevelAndCourse extends ConsumerWidget {
   const _StepLevelAndCourse({
     required this.profile,
     required this.onChanged,
@@ -538,7 +540,11 @@ class _StepLevelAndCourse extends StatelessWidget {
   final ValueChanged<StudentProfile> onChanged;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final catalog = ref.watch(onboardingCatalogProvider).value;
+    final levels = catalog?.levels ??
+        [for (final l in Catalogs.levels) LevelRef(code: l.id, title: l.title)];
+
     // Вычисляем курс ЗАНОВО из группы: подпись «по группе выходит»
     // должна говорить про расчёт, а не про то, что человек уже выбрал.
     final fromGroup = StudentProfile.courseFromGroup(profile.group);
@@ -559,13 +565,13 @@ class _StepLevelAndCourse extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              for (final l in Catalogs.levels)
+              for (final l in levels)
                 ChoiceChip(
                   label: Text(l.title),
-                  selected: profile.level == l.id,
+                  selected: profile.level == l.code,
                   onSelected: (_) {
                     HapticFeedback.selectionClick();
-                    onChanged(profile.copyWith(level: l.id));
+                    onChanged(profile.copyWith(level: l.code));
                   },
                 ),
             ],
@@ -606,25 +612,33 @@ class _StepLevelAndCourse extends StatelessWidget {
   }
 }
 
-/// Шаг 2: институт — плитки.
-class _StepInstitute extends StatelessWidget {
+/// Шаг 2: институт — плитки из справочника БД (панель настраивает).
+class _StepInstitute extends ConsumerWidget {
   const _StepInstitute({required this.selected, required this.onPick});
   final String? selected;
   final ValueChanged<String> onPick;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final catalog = ref.watch(onboardingCatalogProvider).value;
+    final institutes = catalog?.institutes ??
+        [
+          // Запас до загрузки: как Catalogs, но через те же типы.
+          for (final i in Catalogs.institutes)
+            InstituteRef(code: i.id, title: i.title, short: i.short),
+        ];
+
     return _StepScaffold(
       title: 'Ваш институт',
       subtitle: 'Можно изменить в любой момент',
       child: Column(
         children: [
-          for (final i in Catalogs.institutes)
+          for (final i in institutes)
             _Tile(
               title: i.short,
               subtitle: i.title,
-              selected: selected == i.id,
-              onTap: () => onPick(i.id),
+              selected: selected == i.code,
+              onTap: () => onPick(i.code),
             ),
         ],
       ),

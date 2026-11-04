@@ -291,6 +291,34 @@ final interestsProvider = FutureProvider<List<String>>((ref) async {
   return remote.isNotEmpty ? remote : Catalogs.interests.map((i) => i.title).toList();
 });
 
+// ---------------- Справочники онбординга ----------------
+
+/// Справочники опроса из БД: институты (коллекция institutes) и уровни
+/// (levels) настраиваются панелью, интересы — interestsProvider.
+///
+/// Пусто/офлайн — запас из Catalogs: вопросы не должны пропадать
+/// из-за недоступности БД. Один провайдер на оба списка: они грузятся
+/// вместе при показе опроса.
+final onboardingCatalogProvider =
+    FutureProvider<({List<InstituteRef> institutes, List<LevelRef> levels})>(
+        (ref) async {
+  final repo = ref.watch(postsRepoProvider);
+  final remoteInstitutes = await repo.fetchInstitutes();
+  final remoteLevels = await repo.fetchLevels();
+
+  final institutes = remoteInstitutes.isNotEmpty
+      ? remoteInstitutes
+      : [
+          for (final i in Catalogs.institutes)
+            InstituteRef(code: i.id, title: i.title, short: i.short),
+        ];
+  final levels = remoteLevels.isNotEmpty
+      ? remoteLevels
+      : [for (final l in Catalogs.levels) LevelRef(code: l.id, title: l.title)];
+
+  return (institutes: institutes, levels: levels);
+});
+
 // ---------------- Избранное ----------------
 
 class FavoritesNotifier extends Notifier<List<String>> {

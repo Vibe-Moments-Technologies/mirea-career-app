@@ -330,11 +330,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Future<void> _openByPublicId(String publicId) async {
     FocusManager.instance.primaryFocus?.unfocus();
 
-    final post = await ref.read(postsRepoProvider).fetchPostByPublicId(publicId);
+    final repo = ref.read(postsRepoProvider);
+    final post = await repo.fetchPostByPublicId(publicId);
     if (!mounted) return;
     if (post == null) {
+      // Разные причины — разные сообщения: «нет сети» и «пост удалили»
+      // лечатся по-разному, а единое «недоступен» скрывало бы баг.
+      final offline = repo.isOffline;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Пост недоступен')),
+        SnackBar(
+          content: Text(
+            offline
+                ? 'Нет соединения — попробуйте ещё раз'
+                : 'Пост $publicId не найден',
+          ),
+        ),
       );
       return;
     }
