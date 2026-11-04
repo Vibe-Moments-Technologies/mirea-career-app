@@ -4,11 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/dock_visibility.dart';
 import '../core/widgets/glass_dock.dart';
 import '../state/providers.dart';
-import 'calendar/calendar_screen.dart';
 import 'favorites/favorites_screen.dart';
 import 'home/home_screen.dart';
 import 'more/more_screen.dart';
 import 'onboarding/onboarding_screen.dart';
+import 'services/services_screen.dart';
 
 /// Корневой экран: контент во весь экран + парящий док поверх.
 ///
@@ -40,12 +40,12 @@ class _RootShellState extends ConsumerState<RootShell>
     value: 1,
   );
 
-  /// 4 вкладки. Организации — раздел «Ещё»: карточки организаций в
-  /// приложении остались, но до появления учёток организаций им не
-  /// место в доке (запрос пользователя).
+  /// 4 вкладки. Календарь убран (запрос): событие с датой видно в
+  /// ленте и деталях карточки. Вместо него — «Сервисы»: заглушка
+  /// до появления сервисов вуза. Организации — раздел «Ещё».
   static const _items = <DockItem>[
     DockItem(Icons.home_rounded, 'Главная'),
-    DockItem(Icons.calendar_month_rounded, 'Календарь'),
+    DockItem(Icons.widgets_rounded, 'Сервисы'),
     DockItem(Icons.bookmark_rounded, 'Сохранённое'),
     DockItem(Icons.person_rounded, 'Ещё'),
   ];
@@ -108,7 +108,7 @@ class _RootShellState extends ConsumerState<RootShell>
             index: _index,
             children: const [
               HomeScreen(),
-              CalendarScreen(),
+              ServicesScreen(),
               SavedScreen(),
               MoreScreen(),
             ],
