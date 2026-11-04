@@ -5,14 +5,20 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/markdown_body.dart';
 import '../../data/models.dart';
 
-/// Рендер анкеты в стиле приложения: одна страница со всеми вопросами.
+/// Рендер анкеты в стиле приложения.
 ///
 /// survey_kit пробовали: поэтапный визард с нативными RadioListTile
 /// не встроился в дизайн без борьбы с каждым виджетом (свои Scaffold,
 /// свой MaterialApp, свой appbar, Lottie). Определение анкеты — наш JSON
 /// в БД, поэтому рендерим сами: поля как в онбординге, выбор — плитками
-/// как институты, галочки — как в фильтрах. Всё в одном экране со скроллом:
-/// студент видит объём анкеты сразу, а не тыкает «Далее» десять раз.
+/// как институты, галочки — как в фильтрах.
+///
+/// **Постраничный режим (контракт 6.5, шаг pagebreak):** разделитель
+/// делит опросник на экраны — «заполнил один, нажал «Далее», открылся
+/// следующий». Внутри страницы — скролл всех её вопросов. Анкета без
+/// pagebreak — одна страница, как раньше. Кнопка на последней странице
+/// — «Отправить анкету», на промежуточных — «Далее» (нажимается, когда
+/// обязательные вопросы страницы заполнены).
 ///
 /// Поддерживаемые типы вопросов (answerFormat.type, контракт 6.5 справки):
 ///  text      — поле (hint, maxLines 1|5);
@@ -24,8 +30,10 @@ import '../../data/models.dart';
 ///  integer   — числовое поле;
 ///  student   — блок полей профиля (fields: fio/group/institute/…),
 ///              подставляется [studentPrefill], ответ — объект;
-///  pagebreak — разделитель секций (линия + отступ, не вопрос);
-///  note      — текст без ввода (info), в answers не попадает.
+///              подстановка считается ответом — не нужно «трогать» поле;
+///  pagebreak — разделитель СТРАНИЦ (вопросы до/после — разные экраны);
+///  note      — текст автора анкеты без поля ввода, Markdown, в answers
+///              не попадает. Тоже без answerFormat (легаси-заметки).
 class FormView extends StatefulWidget {
   const FormView({
     super.key,
@@ -38,9 +46,9 @@ class FormView extends StatefulWidget {
 
   final FormDefinition form;
 
-  /// Нажата кнопка «Отправить». Валидация уже пройдена.
-  /// Ошибка отправки (false от репозитория) сбрасывается в UI
-  /// снэкбаром — состояние ответов при этом сохраняется.
+  /// Нажата кнопка «Отправить» (последняя страница). Валидация уже
+  /// пройдена. Ошибка отправки (false от репозитория) сбрасывается
+  /// в UI снэкбаром — состояние ответов при этом сохраняется.
   final void Function(Map<String, dynamic> answers) onSubmit;
 
   final bool submitting;
@@ -59,6 +67,9 @@ class FormView extends StatefulWidget {
 
 class _FormViewState extends State<FormView> {
   final Map<String, dynamic> _answers = {};
+
+  /// Номер текущей страницы (pagebreak делит шаги на экраны).
+  int _page = 0;
 
   // ---------- Шаги ----------
 
@@ -101,6 +112,29 @@ class _FormViewState extends State<FormView> {
     };
   }
 
+  // ---------- Страницы (pagebreak) ----------
+
+  /// Шаги, разбитые pagebreak'ами на страницы. Анкета без разделителей —
+  /// одна страница из всех шагов. Заголовки pagebreak'а не теряем:
+  /// pagebreak с текстом («Этап 2: о себе») — заголовок новой страницы.
+  List<List<Map<String, dynamic>>> get _pages {
+    final pages = <List<Map<String, dynamic>>>[<Map<String, dynamic>>[]];
+    for (final step in _steps) {
+      if ((_answerFormat(step)?['type'] as String?) == 'pagebreak') {
+        pages.add(<Map<String, dynamic>>[]);
+        continue;
+      }
+      pages.last.add(step);
+    }
+    // Пустые хвосты не оставляем: подряд идущие pagebreak'ы.
+    return pages.where((p) => p.isNotEmpty).toList();
+  }
+
+  List<Map<String, dynamic>> get _pageSteps =>
+      _pages.isEmpty ? const [] : _pages[_page.clamp(0, _pages.length - 1)];
+
+  bool get _isLastPage => _page >= _pages.length - 1;
+
   // ---------- Валидация ----------
 
   /// Ответ на шаг: String (text/single/bool/date/time), num (scale),
@@ -121,11 +155,8 @@ class _FormViewState extends State<FormView> {
   /// Student-шаг обязателен ЦЕЛИКОМ (контракт 6.5: у student всегда
   /// isMandatory), но заполняется постепенно: считаем заполненным, когда
   /// хотя бы одно поле введено — окончательную полноту проверит кнопка.
-  bool get _allFilled =>
-      _steps.every(_stepFilled) && _studentStepsComplete();
-
-  bool _studentStepsComplete() {
-    for (final step in _steps) {
+  bool _studentStepsComplete(List<Map<String, dynamic>> steps) {
+    for (final step in steps) {
       if ((_answerFormat(step)?['type'] as String?) != 'student') continue;
       final v = _answers[step['id']];
       if (v is! Map) return false;
@@ -135,6 +166,14 @@ class _FormViewState extends State<FormView> {
     }
     return true;
   }
+
+  /// Текущая страница заполнена достаточно для перехода дальше.
+  bool get _pageFilled =>
+      _pageSteps.every(_stepFilled) && _studentStepsComplete(_pageSteps);
+
+  /// Анкета целиком (последняя страница) — можно отправлять.
+  bool get _allFilled =>
+      _steps.every(_stepFilled) && _studentStepsComplete(_steps);
 
   void _submit() {
     if (!_allFilled || widget.submitting) return;
@@ -152,17 +191,42 @@ class _FormViewState extends State<FormView> {
     widget.onSubmit(payload);
   }
 
+  void _setAnswer(String id, dynamic value) =>
+      setState(() => _answers[id] = value);
+
   // ---------- Сборка ----------
 
   @override
+  void initState() {
+    super.initState();
+    // Подстановка профиля в student-шаги — СРАЗУ в ответы (баг dev.77:
+    // поле выглядело заполненным, но ответ был пуст, пока не «трогал»
+    // поле руками). Значения профиля — честный ответ.
+    for (final step in _steps) {
+      if ((_answerFormat(step)?['type'] as String?) != 'student') continue;
+      final fields = (_answerFormat(step)?['fields'] as List?)
+              ?.whereType<String>()
+              .toList() ??
+          const <String>[];
+      final id = step['id'] as String?;
+      if (id == null) continue;
+      final pre = <String, dynamic>{};
+      for (final f in fields) {
+        final v = widget.studentPrefill[f];
+        if (v != null && v.trim().isNotEmpty) pre[f] = v;
+      }
+      if (pre.isNotEmpty) _answers[id] = pre;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final steps = _steps;
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
 
     return Column(
       children: [
         Expanded(
-          child: steps.isEmpty
+          child: _pageSteps.isEmpty
               ? Center(
                   child: Text(
                     'Анкета пуста',
@@ -171,15 +235,16 @@ class _FormViewState extends State<FormView> {
                   ),
                 )
               : ListView(
+                  key: ValueKey('form-page-$_page'),
                   padding: EdgeInsets.fromLTRB(pad, 18, pad, 24),
                   children: [
-                    for (var i = 0; i < steps.length; i++) ...[
+                    for (var i = 0; i < _pageSteps.length; i++) ...[
                       _Question(
-                        index: i,
-                        step: steps[i],
-                        label: _label(steps[i]),
-                        answerFormat: _answerFormat(steps[i]),
-                        value: _answerOf(steps[i]['id'] as String? ?? ''),
+                        index: _numbering(i),
+                        step: _pageSteps[i],
+                        label: _label(_pageSteps[i]),
+                        answerFormat: _answerFormat(_pageSteps[i]),
+                        value: _answerOf(_pageSteps[i]['id'] as String? ?? ''),
                         prefill: widget.studentPrefill,
                         onChanged: _setAnswer,
                       ),
@@ -188,11 +253,9 @@ class _FormViewState extends State<FormView> {
                   ],
                 ),
         ),
-        // Кнопка отправки — закреплена внизу: всегда на виду, но не
-        // перекрывает контент (в отличие от floatingActionButton).
-        // Под ней — сколько студентов уже прошли анкету: подпись
-        // относится к действию «отправить», поэтому стоит у кнопки,
-        // а не в шапке.
+        // Кнопка — закреплена внизу: на промежуточных страницах «Далее»,
+        // на последней — «Отправить анкету». Под ней — сколько студентов
+        // уже прошли анкету: подпись относится к отправке.
         SafeArea(
           top: false,
           child: Padding(
@@ -200,11 +263,36 @@ class _FormViewState extends State<FormView> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (_pages.length > 1) ...[
+                  // Прогресс точками: сколько страниц позади.
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      for (var i = 0; i < _pages.length; i++)
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          margin: const EdgeInsets.symmetric(horizontal: 3),
+                          width: i == _page ? 16 : 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: i == _page
+                                ? Theme.of(context).colorScheme.primary
+                                : AppColors.separator(context),
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                ],
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
-                    onPressed:
-                        _allFilled && !widget.submitting ? _submit : null,
+                    onPressed: (_isLastPage
+                            ? _allFilled
+                            : _pageFilled) && !widget.submitting
+                        ? (_isLastPage ? _submit : _nextPage)
+                        : null,
                     style: FilledButton.styleFrom(
                       minimumSize: const Size.fromHeight(52),
                       shape: RoundedRectangleBorder(
@@ -218,10 +306,10 @@ class _FormViewState extends State<FormView> {
                             child:
                                 CircularProgressIndicator(strokeWidth: 2.4),
                           )
-                        : const Text('Отправить анкету'),
+                        : Text(_isLastPage ? 'Отправить анкету' : 'Далее'),
                   ),
                 ),
-                if (widget.responsesCount != null) ...[
+                if (widget.responsesCount != null && _isLastPage) ...[
                   const SizedBox(height: 8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -245,8 +333,24 @@ class _FormViewState extends State<FormView> {
     );
   }
 
-  void _setAnswer(String id, dynamic value) =>
-      setState(() => _answers[id] = value);
+  void _nextPage() {
+    if (!_pageFilled) return;
+    HapticFeedback.selectionClick();
+    setState(() => _page++);
+  }
+
+  /// Номер вопроса на странице: сквозная нумерация по анкете — вопросы
+  /// на 2-й странице не начинаются с «1.» заново (контекст не теряется).
+  int _numbering(int indexOnPage) {
+    var n = 0;
+    for (var p = 0; p < _pages.length; p++) {
+      for (final s in _pages[p]) {
+        if (_isQuestion(s)) n++;
+        if (p == _page && identical(s, _pageSteps[indexOnPage])) return n - 1;
+      }
+    }
+    return indexOnPage; // fallback (не должно случиться)
+  }
 }
 
 /// Один вопрос анкеты: подпись + поле соответствующего типа.
@@ -279,7 +383,9 @@ class _Question extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final type = answerFormat?['type'] as String? ?? 'text';
+    // Шаг БЕЗ answerFormat — заметка (легаси): текст без поля ввода,
+    // как note. Баг dev.77: дефолт 'text' рисовал под ней поле ввода.
+    final type = answerFormat?['type'] as String? ?? 'note';
 
     // pagebreak: разделитель секций — линия с отступами, не вопрос.
     if (type == 'pagebreak') {
@@ -803,9 +909,14 @@ class _TextAnswerFieldState extends State<_TextAnswerField> {
       controller: _controller,
       maxLines: widget.maxLines,
       minLines: 1,
-      keyboardType: widget.maxLines > 1
-          ? TextInputType.multiline
-          : TextInputType.number,
+      // Клавиатура по содержимому: обычные поля — текст (ФИО, группа,
+      // ответ), числовая — только числовым полям. Баг dev.77: все
+      // однострочные открывали числовую.
+      keyboardType: widget.digitsOnly
+          ? TextInputType.number
+          : (widget.maxLines > 1
+              ? TextInputType.multiline
+              : TextInputType.text),
       inputFormatters: widget.digitsOnly
           ? [FilteringTextInputFormatter.digitsOnly]
           : null,

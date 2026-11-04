@@ -314,10 +314,12 @@ void main() {
       await tester.tap(find.byIcon(Icons.widgets_rounded).last);
       await tester.pumpAndSettle();
 
-      expect(find.text('Сервисы'), findsOneWidget);
-      // Заглушка: заголовок-обещание и «статус».
-      expect(find.text('Статус: в разработке'), findsOneWidget);
+      // Заглушка по центру: заголовок-обещание и значок вкладки дока.
       expect(find.textContaining('Сервисов пока нет'), findsOneWidget);
+      expect(find.byIcon(Icons.widgets_rounded), findsWidgets);
+      // Строка «Статус:» и блок команд убраны (запрос владельца).
+      expect(find.textContaining('Статус'), findsNothing);
+      expect(find.textContaining('services --'), findsNothing);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
 
@@ -1354,6 +1356,12 @@ void main() {
       expect(find.text('Иванов Иван Иванович'), findsOneWidget);
       expect(find.text('ИКБО-01-23'), findsOneWidget);
 
+      // Подстановка = ответ: после выбора обязательного dropdown'а
+      // «Далее» активна БЕЗ «трогания» полей student (баг dev.77:
+      // подстановка считалась невведенной).
+      final nextBtn = find.text('Далее');
+      expect(nextBtn, findsOneWidget);
+
       // Шкала-звёзды: 5 звёзд (иконки звёзд есть).
       expect(find.byIcon(Icons.star_outline_rounded), findsWidgets);
       // Звёзды кликабельны: тап по первой — она становится заполненной.
@@ -1375,21 +1383,27 @@ void main() {
       await tester.tap(find.text('Новичок').last);
       await tester.pump();
 
-      // note и pagebreak — без полей ввода; заметка ниже — докручиваем
-      // (ленивый список строит только видимое).
-      await tester.scrollUntilVisible(
-        find.text('Спасибо за участие!'),
-        200,
-        scrollable: find
-            .descendant(
-              of: find.byType(FormScreen),
-              matching: find.byType(Scrollable),
-            )
-            .first,
-      );
-      await tester.pump();
+      // Обязательные выбраны (level), student заполнен ПОДСТАНОВКОЙ —
+      // «Далее» активна без ручного ввода в поля студента.
+      final nextEnabled = tester
+          .widget<FilledButton>(
+            find.ancestor(of: nextBtn, matching: find.byType(FilledButton)),
+          )
+          .onPressed;
+      expect(nextEnabled, isNotNull,
+          reason: 'подстановка профиля должна сразу считаться ответом');
+
+      // pagebreak ДЕЛИТ анкету на страницы: заметка «Спасибо» — на
+      // второй. Кнопка «Далее» перекидывает туда (баг dev.77: разделитель
+      // игнорировался, всё скроллилось одной страницей).
+      await tester.tap(nextBtn);
+      await tester.pumpAndSettle();
       expect(find.text('Спасибо за участие!'), findsOneWidget);
+      // Заметка — без поля ввода (легаси-заметки без answerFormat — тоже).
+      expect(find.byType(TextField), findsNothing);
+      // Последняя страница — кнопка «Отправить анкету».
       expect(find.text('Отправить анкету'), findsOneWidget);
+      expect(find.text('Далее'), findsNothing);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
 
