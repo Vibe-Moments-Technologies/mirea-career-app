@@ -181,6 +181,16 @@ class FormHistoryStore {
 
   bool hasForPost(String postId) => _byPost.containsKey(postId);
 
+  /// Опросы без поста (раздел «Опросы»): история по formId.
+  FormSubmission? forForm(String formId) {
+    for (final s in _byPost.values) {
+      if (s.formId == formId) return s;
+    }
+    return null;
+  }
+
+  bool hasForForm(String formId) => forForm(formId) != null;
+
   Future<void> add(FormSubmission submission) async {
     _byPost[submission.postId] = submission;
     await _save();

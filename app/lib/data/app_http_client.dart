@@ -79,11 +79,17 @@ class AppHttpClient {
   ///
   /// [visitorId] — анонимный идентификатор устройства для маршрутов
   /// метрик (X-Visitor-Id): по нему сервер дедуплицирует просмотры.
+  ///
+  /// [readBody] — прочитать тело ответа (JSON) и передать в
+  /// [onResponse]. Нужен для различения ошибок сервера: хук
+  /// «один ответ с устройства» отвечает 400 с текстом «Вы уже
+  /// отвечали…», а сеть без тела — просто false.
   Future<bool> postJson(
     String url,
     Map<String, dynamic> body, {
     Duration timeout = const Duration(seconds: 15),
     String? visitorId,
+    void Function(int statusCode, Map<String, dynamic> json)? onResponse,
   }) async {
     try {
       final request = await _client.postUrl(Uri.parse(url)).timeout(timeout);
@@ -93,6 +99,22 @@ class AppHttpClient {
       }
       request.write(jsonEncode(body));
       final response = await request.close().timeout(timeout);
+      if (onResponse != null) {
+        try {
+          final text = await response.transform(utf8.decoder).join();
+          if (text.trim().startsWith('{')) {
+            onResponse(
+              response.statusCode,
+              Map<String, dynamic>.from(jsonDecode(text) as Map),
+            );
+          } else {
+            onResponse(response.statusCode, const {});
+          }
+          return response.statusCode >= 200 && response.statusCode < 300;
+        } catch (_) {
+          return response.statusCode >= 200 && response.statusCode < 300;
+        }
+      }
       // Вычитываем тело, чтобы соединение вернулось в пул.
       await response.drain<void>();
       return response.statusCode >= 200 && response.statusCode < 300;

@@ -142,6 +142,18 @@ class Organization {
 /// isMandatory}]}`. Формат совместим с прежним survey_kit-определением,
 /// но рендерится собственным [FormView] в стиле приложения.
 /// Хранится в отдельной коллекции `forms` и приходит в посте
+/// Чем закончилась отправка анкеты.
+enum FormSubmitResult {
+  /// Ушло, сервер записал.
+  ok,
+
+  /// Хук «один ответ с устройства» отклонил: 400 «Вы уже отвечали…».
+  duplicate,
+
+  /// Сети нет или сервер недоступен: повторить позже.
+  networkError,
+}
+
 /// через `expand.form`.
 class FormDefinition {
   const FormDefinition({
@@ -149,6 +161,8 @@ class FormDefinition {
     required this.title,
     required this.definition,
     this.successText,
+    this.kind,
+    this.oneResponsePerDevice = false,
   });
 
   final String id;
@@ -159,6 +173,19 @@ class FormDefinition {
 
   /// Текст после отправки: показываем на экране «готово».
   final String? successText;
+
+  /// Тип анкеты (поле forms.kind консоли):
+  ///  ''/null → 'application' — из карточки поста (легаси);
+  ///  'survey' — опрос из раздела «Опросы», не анонимный;
+  ///  'anon_survey' — то же, анонимный: вопросы о студенте запрещены.
+  final String? kind;
+
+  /// «Один ответ с устройства»: хук вернёт 400 «Вы уже отвечали…»
+  /// при повторной отправке (forms.one_response_per_device).
+  final bool oneResponsePerDevice;
+
+  /// Анонимный опрос?
+  bool get isAnonSurvey => kind == 'anon_survey';
 
   static FormDefinition? tryParse(Object? json) {
     if (json is! Map) return null;
@@ -172,6 +199,8 @@ class FormDefinition {
       title: title,
       definition: Map<String, dynamic>.from(definition),
       successText: json['success_text'] as String?,
+      kind: (json['kind'] as String?)?.trim(),
+      oneResponsePerDevice: json['one_response_per_device'] == true,
     );
   }
 
@@ -180,6 +209,8 @@ class FormDefinition {
         'title': title,
         'definition': definition,
         'success_text': successText,
+        'kind': kind,
+        'one_response_per_device': oneResponsePerDevice,
       };
 
   /// Текст вопроса шага: первый text-блок в content.

@@ -423,6 +423,14 @@ class FormHistoryNotifier extends Notifier<List<FormSubmission>> {
     }
     return null;
   }
+
+  /// Опросы без поста (раздел «Опросы»): история по formId.
+  FormSubmission? forForm(String formId) {
+    for (final s in state) {
+      if (s.formId == formId) return s;
+    }
+    return null;
+  }
 }
 
 final formSubmissionsProvider =
@@ -437,3 +445,18 @@ final hasSubmittedProvider = Provider.family<bool, String>(
       .watch(formSubmissionsProvider)
       .any((s) => s.postId == postId),
 );
+
+/// Отвечал ли студент на форму (по formId): опросы раздела «Опросы»
+/// живут без поста — блокировка повторного входа идёт по форме.
+final hasSubmittedFormProvider = Provider.family<bool, String>(
+  (ref, formId) => ref
+      .watch(formSubmissionsProvider)
+      .any((s) => s.formId == formId),
+);
+
+/// Опросы раздела «Опросы» (forms.kind = survey/anon_survey):
+/// список с ленты главной, обновляется pull-to-refresh.
+final surveyFormsProvider =
+    FutureProvider<List<FormDefinition>>((ref) async {
+  return ref.watch(postsRepoProvider).fetchSurveyForms();
+});

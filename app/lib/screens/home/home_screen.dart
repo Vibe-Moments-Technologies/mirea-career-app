@@ -18,6 +18,7 @@ import '../../data/models.dart';
 import '../../state/feed_filters.dart';
 import '../../state/feed_query.dart';
 import '../../state/providers.dart';
+import '../form/form_screen.dart';
 import '../onboarding/onboarding_screen.dart';
 import '../post/post_detail_screen.dart';
 
@@ -78,6 +79,50 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// Посты ленты с клиентскими фильтрами поверх серверного ответа.
   List<Post> _clientFiltered(List<Post> posts) =>
       applyFilters(posts, _filters);
+
+  /// Вкладка «Опросы»: формы kind = survey/anon_survey из БД.
+  ///
+  /// Это НЕ посты: опросы живут без карточки (контракт 6.4 справки),
+  /// вход — этот список. Анонимность — метка на карточке, ответы
+  /// блокируются по formId (повтор — снэкбар от сервера).
+  List<Widget> _surveySlivers(double pad) {
+    final surveys = ref.watch(surveyFormsProvider);
+    final forms = surveys.value ?? const <FormDefinition>[];
+
+    return [
+      if (surveys.isLoading)
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(pad, 8, pad, 0),
+          sliver: SliverList.separated(
+            itemCount: 3,
+            separatorBuilder: (_, _) => const SizedBox(height: 10),
+            itemBuilder: (_, _) => const PostCardSkeleton(),
+          ),
+        )
+      else if (forms.isEmpty)
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(pad, 24, pad, 0),
+          sliver: const SliverToBoxAdapter(
+            child: ListTail(isEmpty: true, footer: 'Активных опросов нет'),
+          ),
+        )
+      else
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(pad, 8, pad, 0),
+          sliver: SliverList.separated(
+            itemCount: forms.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 10),
+            itemBuilder: (context, i) => _SurveyCard(form: forms[i]),
+          ),
+        ),
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(pad, 16, pad, AppInsets.scrollBottom(context)),
+          child: const SizedBox.shrink(),
+        ),
+      ),
+    ];
+  }
 
   void _closeSearch() {
     // снять фокус: иначе клавиатура остаётся висеть поверх закрытого поля
@@ -166,6 +211,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       ),
                     ),
                   ),
+                // Вкладка «Опросы»: не посты, а формы из БД (kind =
+                // survey/anon_survey). Живут без карточки поста.
+                if (_tab == 'survey') ..._surveySlivers(pad),
                 if (_filters.activeCount > 0)
                   SliverToBoxAdapter(
                     child: _ActiveFiltersBar(
@@ -176,15 +224,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       },
                     ),
                   ),
-                SliverPadding(
-                  padding: EdgeInsets.fromLTRB(pad, 8, pad, 0),
-                  sliver: feed.loading
-                      ? SliverList.separated(
-                          itemCount: 4,
-                          separatorBuilder: (_, _) => const SizedBox(height: 10),
-                          itemBuilder: (_, _) => const PostCardSkeleton(),
-                        )
-                      : SliverList.separated(
+                // Лента постов — на вкладках «Для вас»/«Все». «Опросы»
+                // рисует свой список форм (_surveySlivers выше).
+                if (_tab != 'survey')
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(pad, 8, pad, 0),
+                    sliver: feed.loading
+                        ? SliverList.separated(
+                            itemCount: 4,
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(height: 10),
+                            itemBuilder: (_, _) => const PostCardSkeleton(),
+                          )
+                        : SliverList.separated(
                           // Приглашение настроить профиль — первой карточкой
                           // ЛЕНТЫ (не баннером над ней): на уровне постов.
                           itemCount: posts.length +
@@ -208,11 +260,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             );
                           },
                         ),
-                ),
+                  ),
+                // Догрузка по 5 (только настроенной ленте): пустой профиль
+                // видит пять карточек и CTA «настроить» — листать дальше
                 // Догрузка по 5 (только настроенной ленте): пустой профиль
                 // видит пять карточек и CTA «настроить» — листать дальше
                 // нечего, персонализация и делает ленту.
-                if (!feed.loading &&
+                if (_tab != 'survey' &&
+                    !feed.loading &&
                     personalized &&
                     posts.length < totalPosts)
                   SliverPadding(
@@ -227,11 +282,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       ),
                     ),
                   ),
-                // Хвост ленты: в «Для вас»/«Опросы» — карточка-CTA
+                // Хвост ленты: в «Для вас» — карточка-CTA
                 // «Это всё» размером с обычную карточку; во «Все» — только
                 // строка-подпись о конце списка. Пустой профиль видит
                 // пять карточек — хвост показывает способ открыть все.
-                if (!feed.loading &&
+                if (_tab != 'survey' &&
+                    !feed.loading &&
                     posts.isNotEmpty &&
                     (posts.length == totalPosts || !personalized)) ...[
                   if (_tab != 'all')
@@ -257,21 +313,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       ),
                     ),
                 ],
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      pad,
-                      16,
-                      pad,
-                      AppInsets.scrollBottom(context),
+                if (_tab != 'survey')
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        pad,
+                        16,
+                        pad,
+                        AppInsets.scrollBottom(context),
+                      ),
+                      child: feed.loading
+                          ? const SizedBox.shrink()
+                          : (posts.isEmpty
+                              ? const ListTail(isEmpty: true)
+                              : const SizedBox.shrink()),
                     ),
-                    child: feed.loading
-                        ? const SizedBox.shrink()
-                        : (posts.isEmpty
-                            ? const ListTail(isEmpty: true)
-                            : const SizedBox.shrink()),
                   ),
-                ),
               ],
             ),
           ),
@@ -734,6 +791,116 @@ class _OfflineBanner extends StatelessWidget {  const _OfflineBanner();
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Карточка опроса на вкладке «Опросы»: форма из БД, не пост.
+///
+/// Метка анонимности (контракт 6.4): «Анонимный» / «Не анонимный» —
+/// до входа видно, подставляются ли данные профиля. Отвеченные —
+/// приглушены с чипом «Отвечено»: повторный вход покажет снимок.
+class _SurveyCard extends ConsumerWidget {
+  const _SurveyCard({required this.form});
+  final FormDefinition form;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final answered = ref.watch(hasSubmittedFormProvider(form.id));
+    final anon = form.isAnonSurvey;
+
+    return Material(
+      color: scheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        side: BorderSide(color: AppColors.separator(context)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => Navigator.of(context).push(
+          appRoute(context, FormScreen(form: form)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: (answered ? AppColors.secondaryLight : scheme.primary)
+                      .withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(AppRadius.field),
+                ),
+                child: Icon(
+                  answered
+                      ? Icons.task_alt_rounded
+                      : Icons.poll_rounded,
+                  size: 22,
+                  color: answered ? AppColors.secondaryLight : scheme.primary,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      form.title,
+                      style: AppText.cardTitle.copyWith(
+                        color: answered ? AppColors.secondaryLight : null,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(
+                          anon
+                              ? Icons.visibility_off_rounded
+                              : Icons.visibility_rounded,
+                          size: 12,
+                          color: AppColors.secondaryLight,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          anon ? 'Анонимный' : 'Не анонимный',
+                          style: AppText.caption
+                              .copyWith(color: AppColors.secondaryLight),
+                        ),
+                        if (answered) ...[
+                          const SizedBox(width: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppColors.success.withValues(alpha: 0.14),
+                              borderRadius:
+                                  BorderRadius.circular(AppRadius.pill),
+                            ),
+                            child: Text(
+                              'Отвечено',
+                              style: AppText.caption.copyWith(
+                                color: AppColors.success,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(Icons.chevron_right_rounded,
+                  size: 20, color: AppColors.secondaryLight),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -230,6 +230,32 @@ class PostsRepo {
     return titles;
   }
 
+  /// Опросы раздела «Опросы»: активные формы с kind = survey/anon_survey.
+  ///
+  /// Пустой kind = application (заявка из карточки поста) — сюда не
+  /// попадает. Каждая метка «анонимный»/«не анонимный» — поле kind.
+  Future<List<FormDefinition>> fetchSurveyForms() async {
+    if (isOffline) return const [];
+
+    final filter = Uri.encodeComponent('(kind="survey" || kind="anon_survey")');
+    // sort нет: у forms нет системного created (ловушка 6.8 справки),
+    // порядок задаёт панель своими полями — здесь порядок ответа.
+    final url = '$_baseUrl/api/collections/forms/records'
+        '?filter=$filter'
+        '&perPage=50';
+
+    final bytes = await AppHttpClient.instance.fetchBytes(url);
+    if (bytes == null) return const [];
+
+    try {
+      final json = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+      final items = json['items'] as List<dynamic>? ?? [];
+      return items.map(FormDefinition.tryParse).whereType<FormDefinition>().toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
   /// Институты из БД (коллекция institutes): панель управляет составом
   /// и порядком. Пусто/офлайн — пустой список, вызывающий берёт запас
   /// из Catalogs.
@@ -340,15 +366,19 @@ class PostsRepo {
   ///
   /// Отправляем и device_id: анонимный «кто» без персональных данных —
   /// по нему админ видит дубли, а мы считаем уникальных респондентов.
-  Future<bool> submitFormResponse({
+  ///
+  /// [result] — чем закончилось: ок / дубль (хук «один ответ с
+  /// устройства» вернул 400 «Вы уже отвечали…») / ошибка сети.
+  Future<FormSubmitResult> submitFormResponse({
     required String formId,
     String? postId,
     required Map<String, dynamic> answers,
     required String deviceId,
   }) async {
-    if (isOffline) return false;
+    if (isOffline) return FormSubmitResult.networkError;
 
-    return AppHttpClient.instance.postJson(
+    var duplicate = false;
+    final ok = await AppHttpClient.instance.postJson(
       '$_baseUrl/api/collections/form_responses/records',
       {
         'form': formId,
@@ -356,7 +386,20 @@ class PostsRepo {
         'answers': answers,
         'device_id': deviceId,
       },
+      onResponse: (code, json) {
+        // Хук form-once.pb.js: 400 + сообщение «Вы уже отвечали…».
+        // Различаем от прочих 400: текст сообщения приходит в поле
+        // message (формат PocketBase ApiError).
+        final msg = '${json['message'] ?? ''}';
+        if (code == 400 && msg.toLowerCase().contains('уже отвечал')) {
+          duplicate = true;
+        }
+      },
     );
+    if (ok) return FormSubmitResult.ok;
+    return duplicate
+        ? FormSubmitResult.duplicate
+        : FormSubmitResult.networkError;
   }
 
   /// Сколько студентов уже заполнили анкету.

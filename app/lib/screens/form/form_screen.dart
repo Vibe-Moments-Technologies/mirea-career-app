@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../data/catalogs.dart';
 import '../../data/form_history.dart';
 import '../../data/models.dart';
 import '../../state/providers.dart';
@@ -57,6 +58,26 @@ class _FormScreenState extends ConsumerState<FormScreen> {
   /// профиль в рамках экрана меняться не должен.
   Map<String, dynamic>? _strippedDefinition;
   Map<String, String> _prefilled = {};
+
+  /// Подстановка для student-шага: значения профиля по ключам полей
+  /// (fio/group/institute/department/course). Пустое значение — поле
+  /// студент заполняет руками (контракт 6.5 справки).
+  Map<String, String> _studentPrefill({bool isAnon = false}) {
+    if (isAnon) return const {}; // анонимный опрос: профиль не подставляем
+    final profile = ref.read(profileProvider);
+    final instituteTitle = profile.institute == null
+        ? ''
+        : (Catalogs.instituteTitle(profile.institute) == 'Институт не указан'
+            ? ''
+            : Catalogs.instituteTitle(profile.institute));
+    return {
+      if (profile.fullName != null) 'fio': profile.fullName!,
+      if (profile.group != null) 'group': profile.group!,
+      if (instituteTitle.isNotEmpty) 'institute': instituteTitle,
+      if (profile.department != null) 'department': profile.department!,
+      if (profile.course != null) 'course': '${profile.course}',
+    };
+  }
 
   /// Сколько студентов уже заполнили анкету (хук PocketBase).
   int? _responsesCount;
@@ -125,7 +146,7 @@ class _FormScreenState extends ConsumerState<FormScreen> {
       successText: widget.form.successText,
     );
 
-    final ok = await ref.read(postsRepoProvider).submitFormResponse(
+    final result = await ref.read(postsRepoProvider).submitFormResponse(
           formId: form.id,
           postId: widget.postId,
           answers: answers,
@@ -133,7 +154,16 @@ class _FormScreenState extends ConsumerState<FormScreen> {
         );
 
     if (!mounted) return;
-    if (!ok) {
+    if (result == FormSubmitResult.duplicate) {
+      // Хук «один ответ с устройства»: сервер отклонил повтор. Худший
+      // вариант — молча показать «не удалось»: студент бы тыкал снова.
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Вы уже отвечали на эту анкету.')),
+      );
+      return;
+    }
+    if (result != FormSubmitResult.ok) {
       setState(() => _submitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -205,10 +235,17 @@ class _FormScreenState extends ConsumerState<FormScreen> {
     // Уже заполнено раньше (файл истории на устройстве): блокируем
     // повтор — иначе админ увидит дубли ответов. Показываем снимок:
     // когда отправлено и что ответили.
+    //
+    // Поиск по ДВУМ ключам: из поста (postId) и просто по форме —
+    // опросы раздела «Опросы» живут без поста, их история только
+    // по formId.
     final existing = _submitted ??
-        (widget.postId != null && ref.watch(hasSubmittedProvider(widget.postId!))
+        (widget.postId != null &&
+                ref.watch(hasSubmittedProvider(widget.postId!))
             ? ref.read(formSubmissionsProvider.notifier).forPost(widget.postId!)
-            : null);
+            : ref.watch(hasSubmittedFormProvider(form.id))
+                ? ref.read(formSubmissionsProvider.notifier).forForm(form.id)
+                : null);
 
     if (existing != null) {
       return _DoneScreen(
@@ -232,10 +269,14 @@ class _FormScreenState extends ConsumerState<FormScreen> {
           title: form.title,
           definition: definition,
           successText: form.successText,
+          kind: form.kind,
+          oneResponsePerDevice: form.oneResponsePerDevice,
         ),
         onSubmit: _onSubmit,
         submitting: _submitting,
         responsesCount: _responsesCount,
+        studentPrefill:
+            _studentPrefill(isAnon: form.isAnonSurvey),
       ),
     );
   }

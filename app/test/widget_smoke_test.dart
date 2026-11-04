@@ -16,6 +16,7 @@ import 'package:mirea_career/data/models.dart';
 import 'package:mirea_career/data/posts_repo.dart';
 import 'package:mirea_career/screens/calendar/calendar_screen.dart';
 import 'package:mirea_career/screens/favorites/favorites_screen.dart';
+import 'package:mirea_career/screens/form/form_screen.dart';
 import 'package:mirea_career/screens/home/home_screen.dart';
 import 'package:mirea_career/screens/more/profile_screen.dart';
 import 'package:mirea_career/screens/onboarding/onboarding_screen.dart';
@@ -81,13 +82,55 @@ class _CachedRepo extends PostsRepo {
       .toList();
 
   @override
-  Future<bool> submitFormResponse({
+  Future<FormSubmitResult> submitFormResponse({
     required String formId,
     String? postId,
     required Map<String, dynamic> answers,
     required String deviceId,
   }) async =>
-      true;
+      FormSubmitResult.ok;
+
+  /// Опросы раздела «Опросы»: тестовый «сервер» отдаёт фиксированный
+  /// список (не анонимный + анонимный).
+  @override
+  Future<List<FormDefinition>> fetchSurveyForms() async => [
+        const FormDefinition(
+          id: 'srv1',
+          title: 'Опрос о столовых',
+          definition: {
+            'type': 'ordered',
+            'steps': [
+              {
+                'id': 'q1',
+                'isMandatory': true,
+                'content': [
+                  {'type': 'text', 'text': 'Всё ли вам нравится?'}
+                ],
+                'answerFormat': {'type': 'bool'},
+              },
+            ],
+          },
+          kind: 'survey',
+        ),
+        const FormDefinition(
+          id: 'srv2',
+          title: 'Анонимный опрос',
+          definition: {
+            'type': 'ordered',
+            'steps': [
+              {
+                'id': 'q1',
+                'isMandatory': true,
+                'content': [
+                  {'type': 'text', 'text': 'Оцените сервис'}
+                ],
+                'answerFormat': {'type': 'scale', 'scaleMin': 1, 'scaleMax': 5},
+              },
+            ],
+          },
+          kind: 'anon_survey',
+        ),
+      ];
 
   /// Справочники для тестов чистки профиля и онбординга: как в БД.
   final dbInstitutes = <InstituteRef>[
@@ -607,6 +650,33 @@ void main() {
       // Профили организаций временно убраны: вкладок по источнику нет.
       expect(find.text('От вуза'), findsNothing);
       expect(find.text('Партнёры'), findsNothing);
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
+
+    testWidgets('вкладка «Опросы» — формы из БД с метками анонимности',
+        (tester) async {
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [samplePost()],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Открываем вкладку «Опросы» (сегмент в шапке).
+      await tester.tap(find.text('Опросы'));
+      await tester.pumpAndSettle();
+
+      // Формы из fetchSurveyForms тестового «сервера»: не посты.
+      expect(find.text('Опрос о столовых'), findsOneWidget);
+      expect(find.text('Анонимный опрос'), findsOneWidget);
+      // Метки анонимности — до входа в анкету.
+      expect(find.text('Анонимный'), findsOneWidget);
+      expect(find.text('Не анонимный'), findsOneWidget);
+      // Посты ленты на этой вкладке не показываются.
+      expect(find.text('Осенняя ярмарка вакансий'), findsNothing);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
 
@@ -1152,6 +1222,143 @@ void main() {
       expect(find.text('Анкета стажёра'), findsOneWidget);
       expect(find.text('Как вас зовут?'), findsOneWidget);
       expect(find.text('Уже прошли: 7'), findsOneWidget);
+      expect(find.text('Отправить анкету'), findsOneWidget);
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
+
+    testWidgets('новые типы вопросов: student, шкала-звёзды, dropdown, pagebreak, note',
+        (tester) async {
+      // Полный контракт 6.5: student-блок с подстановкой профиля,
+      // шкала звёздами, single-drevólkы, разделитель и заметка.
+      final form = {
+        'id': 'frm3',
+        'title': 'Анкета с новыми типами',
+        'kind': 'application',
+        'definition': {
+          'type': 'ordered',
+          'id': 'test_form3',
+          'steps': [
+            {
+              'id': 'student_data',
+              'isMandatory': true,
+              'content': [
+                {'type': 'text', 'text': 'Данные о студенте'},
+              ],
+              'answerFormat': {
+                'type': 'student',
+                'fields': ['fio', 'group', 'course'],
+              },
+            },
+            {
+              'id': 'rate',
+              'content': [
+                {'type': 'text', 'text': 'Оцените мероприятие'},
+              ],
+              'answerFormat': {
+                'type': 'scale',
+                'scaleMin': 1,
+                'scaleMax': 5,
+                'style': 'stars',
+              },
+            },
+            {
+              'id': 'level',
+              'isMandatory': true,
+              'content': [
+                {'type': 'text', 'text': 'Выберите уровень'},
+              ],
+              'answerFormat': {
+                'type': 'single',
+                'style': 'dropdown',
+                'textChoices': [
+                  {'text': 'Новичок', 'value': 'junior'},
+                  {'text': 'Опытный', 'value': 'senior'},
+                ],
+              },
+            },
+            {
+              'id': 'break',
+              'content': [
+                {'type': 'text', 'text': 'Раздел'},
+              ],
+              'answerFormat': {'type': 'pagebreak'},
+            },
+            {
+              'id': 'note1',
+              'content': [
+                {'type': 'text', 'text': 'Спасибо за участие!'},
+              ],
+              'answerFormat': {'type': 'note'},
+            },
+          ],
+        },
+      };
+
+      final c = await container(
+        profile: const StudentProfile(
+          completed: true,
+          fullName: 'Иванов Иван Иванович',
+          group: 'ИКБО-01-23',
+        ),
+        cache: [
+          samplePost(id: 'a', title: 'Мероприятие с анкетой', form: form),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Мероприятие с анкетой'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Заполнить анкету'));
+      await tester.pumpAndSettle();
+
+      // Student-блок: поля с подписями, ФИО и группа подставлены из
+      // профиля (видны в полях сразу).
+      expect(find.text('Данные о студенте'), findsOneWidget);
+      expect(find.text('ФИО'), findsOneWidget);
+      expect(find.text('Группа'), findsOneWidget);
+      expect(find.text('Курс'), findsOneWidget);
+      expect(find.text('Иванов Иван Иванович'), findsOneWidget);
+      expect(find.text('ИКБО-01-23'), findsOneWidget);
+
+      // Шкала-звёзды: 5 звёзд (иконки звёзд есть).
+      expect(find.byIcon(Icons.star_outline_rounded), findsWidgets);
+      // Звёзды кликабельны: тап по первой — она становится заполненной.
+      await tester.tap(find.byIcon(Icons.star_outline_rounded).first);
+      await tester.pump();
+      expect(find.byIcon(Icons.star_rounded), findsOneWidget);
+
+      // Dropdown: тап по ПОЛЮ (не по label вопроса) открывает меню.
+      final dropdownField = find
+          .descendant(
+            of: find.byType(FormScreen),
+            matching: find.byType(DropdownButtonFormField<String>),
+          )
+          .first;
+      await tester.tap(dropdownField);
+      await tester.pumpAndSettle();
+      expect(find.text('Новичок'), findsOneWidget);
+      expect(find.text('Опытный'), findsOneWidget);
+      await tester.tap(find.text('Новичок').last);
+      await tester.pump();
+
+      // note и pagebreak — без полей ввода; заметка ниже — докручиваем
+      // (ленивый список строит только видимое).
+      await tester.scrollUntilVisible(
+        find.text('Спасибо за участие!'),
+        200,
+        scrollable: find
+            .descendant(
+              of: find.byType(FormScreen),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.pump();
+      expect(find.text('Спасибо за участие!'), findsOneWidget);
       expect(find.text('Отправить анкету'), findsOneWidget);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
