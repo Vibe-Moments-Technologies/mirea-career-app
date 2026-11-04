@@ -18,6 +18,7 @@ import 'package:mirea_career/screens/favorites/favorites_screen.dart';
 import 'package:mirea_career/screens/home/home_screen.dart';
 import 'package:mirea_career/screens/more/profile_screen.dart';
 import 'package:mirea_career/screens/onboarding/onboarding_screen.dart';
+import 'package:mirea_career/screens/org/org_screen.dart';
 import 'package:mirea_career/screens/root_shell.dart';
 import 'package:mirea_career/state/feed_query.dart';
 import 'package:mirea_career/state/providers.dart';
@@ -718,7 +719,7 @@ void main() {
       await tester.pump();
 
       for (final icon in [
-        Icons.star_rounded,
+        Icons.bookmark_rounded,
         Icons.person_rounded,
         Icons.home_rounded,
       ]) {
@@ -1341,10 +1342,10 @@ void main() {
       await tester.tap(find.text('День карьеры'));
       await tester.pumpAndSettle();
 
-      // Подписи фактов (рендерятся капсом) — главное отличие новой панели
-      // от прежних обезличенных чипов.
-      expect(find.text('КОГДА'), findsOneWidget);
-      expect(find.text('ЗАКАНЧИВАЕТСЯ'), findsOneWidget);
+      // Подписи фактов (рендерятся капсом) — новое разделение дат:
+      // «Приём заявок до» (дедлайн) и «Проведение» (период события).
+      expect(find.text('ПРИЁМ ЗАЯВОК ДО'), findsOneWidget);
+      expect(find.text('ПРОВЕДЕНИЕ'), findsOneWidget);
       expect(find.text('ФОРМАТ'), findsOneWidget);
       expect(find.text('КАМПУС'), findsOneWidget);
       expect(find.text('ДЛЯ КОГО'), findsOneWidget);
@@ -1451,9 +1452,47 @@ void main() {
     });
   });
 
-  group('Избранное', () {
-    testWidgets('в избранном приоритетные не выделяются', (tester) async {
+  group('Календарь', () {
+    testWidgets('события с датами — по месяцам, без даты не попадают',
+        (tester) async {
       final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [
+          samplePost(
+            id: 'ev1',
+            title: 'Событие впереди',
+            type: 'event',
+            startDate: DateTime.now().add(const Duration(days: 3)),
+          ),
+          samplePost(
+            id: 'ev2',
+            title: 'Событие через месяц',
+            type: 'event',
+            startDate: DateTime.now().add(const Duration(days: 35)),
+          ),
+          // Без даты — в календарь не попадает.
+          samplePost(id: 'nod', title: 'Без даты', type: 'vacancy'),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.calendar_month_rounded).last);
+      await tester.pumpAndSettle();
+
+      // События на месте, отсортированы по датам.
+      expect(find.text('Событие впереди'), findsOneWidget);
+      expect(find.text('Событие через месяц'), findsOneWidget);
+      expect(find.text('Без даты'), findsNothing);
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
+  });
+
+  group('Избранное', () {
+    testWidgets('в избранном приоритетные не выделяются', (tester) async {      final c = await container(
         profile: const StudentProfile(completed: true),
         cache: [samplePost(id: 'a', title: 'Приоритетная', featured: true)],
       );
@@ -1464,7 +1503,7 @@ void main() {
       await tester.pumpWidget(wrap(c, const RootShell()));
       await tester.pump();
 
-      await tester.tap(find.byIcon(Icons.star_rounded).last);
+      await tester.tap(find.byIcon(Icons.bookmark_rounded).last);
       await tester.pumpAndSettle();
 
       // Карточка на месте и выглядит как любая другая: приоритет на ней
@@ -1491,7 +1530,7 @@ void main() {
 
       await tester.pumpWidget(wrap(c, const RootShell()));
       await tester.pump();
-      await tester.tap(find.byIcon(Icons.star_rounded).last);
+      await tester.tap(find.byIcon(Icons.bookmark_rounded).last);
       await tester.pumpAndSettle();
 
       // На избранном нет свайпа-обновления. Проверяем ВНУТРИ вкладки:
@@ -1672,11 +1711,17 @@ void main() {
       await tester.tap(find.text('Стажировка в Яндексе'));
       await tester.pumpAndSettle();
 
-      // Организатор — карточка-подпись: имени нет ссылки на профиль,
-      // шеврона-стрелки нет.
+      // Организатор — карточка-ссылка: есть шеврон, тап открывает
+      // профиль организации.
       expect(find.text('Яндекс'), findsOneWidget);
       expect(find.text('Компания-партнёр'), findsOneWidget);
-      expect(find.byIcon(Icons.chevron_right_rounded), findsNothing);
+      expect(find.byIcon(Icons.chevron_right_rounded), findsOneWidget);
+
+      await tester.tap(find.text('Яндекс'));
+      await tester.pumpAndSettle();
+
+      // Открылся профиль организации.
+      expect(find.byType(OrgScreen), findsOneWidget);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
   });
@@ -1720,7 +1765,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Док → «Сохранённое» → свитчер «Анкеты».
-      await tester.tap(find.byIcon(Icons.star_rounded).last);
+      await tester.tap(find.byIcon(Icons.bookmark_rounded).last);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Анкеты'));
       await tester.pumpAndSettle();
@@ -1751,7 +1796,7 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.star_rounded).last);
+      await tester.tap(find.byIcon(Icons.bookmark_rounded).last);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Анкеты'));
       await tester.pumpAndSettle();

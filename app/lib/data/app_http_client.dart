@@ -29,12 +29,17 @@ class AppHttpClient {
   final Map<String, Uint8List> _imageCache = {};
 
   /// Загружает байты по URL.
+  ///
+  /// [userAgent] — внешний API расписания вуза требует нестандартный UA
+  /// и отвечает ошибкой на пустой/дефолтный.
+  ///
   /// Результат кэшируется в памяти: повторные вызовы для того же URL
   /// возвращают байты мгновенно, без HTTP-запроса.
   /// При ошибке делает одну повторную попытку.
   Future<Uint8List?> fetchBytes(
     String url, {
     Duration timeout = const Duration(seconds: 15),
+    String? userAgent,
   }) async {
     // Кэш: если уже загружали — возвращаем сразу.
     final cached = _imageCache[url];
@@ -44,6 +49,9 @@ class AppHttpClient {
       try {
         final request =
             await _client.getUrl(Uri.parse(url)).timeout(timeout);
+        if (userAgent != null) {
+          request.headers.set(HttpHeaders.userAgentHeader, userAgent);
+        }
         final response = await request.close().timeout(timeout);
         if (response.statusCode != 200) continue;
         final chunks = <int>[];

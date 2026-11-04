@@ -132,10 +132,18 @@ class ProfileScreen extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 20),
-          Text(
-            'Данные профиля хранятся только на этом устройстве.',
-            style: AppText.caption.copyWith(color: AppColors.secondaryLight),
-            textAlign: TextAlign.center,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'Профиль нужен, чтобы персонализировать ленту и подставлять '
+              'ФИО и группу в анкеты. Всё хранится локально, на этом '
+              'устройстве, без аккаунта — в никуда не отправляется. '
+              'Просмотры и избранное уходят на сервер обезличенно: '
+              'без имени и идентификаторов, только счётчики.',
+              style: AppText.footnote
+                  .copyWith(color: AppColors.secondaryLight, height: 1.5),
+              textAlign: TextAlign.center,
+            ),
           ),
         ],
       ),

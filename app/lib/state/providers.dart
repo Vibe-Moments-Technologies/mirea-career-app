@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../data/catalogs.dart';
 import '../data/form_history.dart';
 import '../data/local_store.dart';
 import '../data/metrics.dart';
@@ -277,6 +278,18 @@ class SpotlightNotifier extends Notifier<List<SpotlightBanner>> {
 
 final spotlightProvider =
     NotifierProvider<SpotlightNotifier, List<SpotlightBanner>>(SpotlightNotifier.new);
+
+// ---------------- Интересы ----------------
+
+/// Теги для онбординга из БД (коллекция interests, настраивается панелью).
+///
+/// Пусто (нет сети/коллекция пуста) — встроенный набор из Catalogs:
+/// опрос не должен терять вопросы из-за недоступности БД.
+final interestsProvider = FutureProvider<List<String>>((ref) async {
+  final repo = ref.watch(postsRepoProvider);
+  final remote = await repo.fetchInterests();
+  return remote.isNotEmpty ? remote : Catalogs.interests.map((i) => i.title).toList();
+});
 
 // ---------------- Избранное ----------------
 

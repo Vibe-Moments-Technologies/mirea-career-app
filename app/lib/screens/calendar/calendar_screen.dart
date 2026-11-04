@@ -39,7 +39,8 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     final feed = ref.watch(feedProvider);
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
 
-    // Будущие и идущие сейчас события с датой начала, по возрастанию:
+    // Предстоящие и идущие сейчас события с датой начала, по
+    // возрастанию даты. Свежезавершённые (до недели) не показываем:
     // календарь — про «что впереди», прошедшее остаётся в ленте.
     final events = feed.posts
         .where((p) =>

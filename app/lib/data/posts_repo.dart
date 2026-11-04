@@ -221,6 +221,33 @@ class PostsRepo {
     }
   }
 
+  /// Теги интересов: настраиваются из веб-панели (коллекция interests).
+  ///
+  /// value тега = его заголовок: профиль хранит строки, и правка
+  /// переименования в панели применится к новым заполнениям.
+  Future<List<String>> fetchInterests() async {
+    if (isOffline) return const [];
+
+    final url = '$_baseUrl/api/collections/interests/records'
+        '?filter=is_active=true'
+        '&sort=sort_order'
+        '&perPage=50';
+
+    final bytes = await AppHttpClient.instance.fetchBytes(url);
+    if (bytes == null) return const [];
+
+    try {
+      final json = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+      final items = json['items'] as List<dynamic>? ?? [];
+      return [
+        for (final e in items)
+          if (e is Map && e['title'] is String) e['title'] as String,
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
   /// Инкремент счётчика просмотров.
   ///
   /// Дедупликация на СЕРВЕРЕ (хук pb_hooks/metrics.pb.js): маршрут помнит

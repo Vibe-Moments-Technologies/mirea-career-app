@@ -1,9 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../data/catalogs.dart';
+import '../../data/group_suggestions.dart';
 import '../../data/local_store.dart';
+import '../../state/providers.dart';
 
 /// Онбординг: welcome-экран + 6 вопросов по одному с анимацией смены.
 ///
@@ -41,7 +46,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       widget.onDone(_p.copyWith(completed: true));
       return;
     }
-    widget.onDone(_p.copyWith(completed: true));
+    // Курс: если не выбрали вручную — фиксируем вычисленный из группы,
+    // чтобы в профиле сразу стояло верное значение.
+    final course =
+        _p.course ?? StudentProfile.courseFromGroup(_p.group);
+    widget.onDone(_p.copyWith(completed: true, course: course));
   }
 
   void _next() {
@@ -132,31 +141,37 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               padding: EdgeInsets.fromLTRB(pad, 0, pad, 16),
               child: Row(
                 children: [
-                  if (effectiveStep > 0 && !_isEditing)
-                    TextButton(
-                      onPressed: () => _finish(skip: true),
-                      child: const Text('Пропустить'),
-                    )
-                  else if (effectiveStep > 0)
-                    TextButton(onPressed: _back, child: const Text('Назад')),
-                  const Spacer(),
-                  if (effectiveStep == 0 && !_isEditing)
+                  // Welcome: «Позже» на одной линии с «Начать опрос»,
+                  // а не под текстом.
+                  if (effectiveStep == 0 && !_isEditing) ...[
+                    TextButton(onPressed: onSkipLater, child: const Text('Позже')),
+                    const Spacer(),
                     FilledButton(
                       onPressed: _next,
                       style: _pillButton,
                       child: const Text('Начать опрос'),
-                    )
-                  else if (effectiveStep == 0)
+                    ),
+                  ] else if (effectiveStep == 0) ...[
+                    const Spacer(),
                     TextButton(
                       onPressed: () => widget.onDone(_p),
                       child: const Text('Закрыть'),
-                    )
-                  else
+                    ),
+                  ] else ...[
+                    if (!_isEditing)
+                      TextButton(
+                        onPressed: () => _finish(skip: true),
+                        child: const Text('Пропустить'),
+                      )
+                    else
+                      TextButton(onPressed: _back, child: const Text('Назад')),
+                    const Spacer(),
                     FilledButton(
                       onPressed: _next,
                       style: _pillButton,
                       child: Text(effectiveStep == _questions ? 'Готово' : 'Далее'),
                     ),
+                  ],
                 ],
               ),
             ),
@@ -172,6 +187,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           borderRadius: BorderRadius.circular(AppRadius.pill),
         ),
       );
+
+  /// «Позже» на welcome: выйти, не начав опрос.
+  void onSkipLater() => _finish(skip: true);
 
   /// Экран по номеру шага. Ключ — номер шага: AnimatedSwitcher меняет
   /// детей по ключу.
@@ -190,8 +208,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   ),
                 2 => _StepInstitute(
                     selected: _p.institute,
-                    onPick: (v) => setState(
-                        () => _p = _p.copyWith(institute: v)),
+                    onPick: (v) {
+                      setState(() => _p = _p.copyWith(institute: v));
+                      // Выбор плитки — сразу дальше: не заставляем жать
+                      // «Далее» (пауза, чтобы увидеть отметку выбора).
+                      if (!_isEditing) {
+                        Future.delayed(const Duration(milliseconds: 220), () {
+                          if (mounted) _next();
+                        });
+                      }
+                    },
                   ),
                 3 => _StepDepartment(
                     institute: _p.institute,
@@ -257,28 +283,25 @@ class _Welcome extends StatelessWidget {
               style: AppText.largeTitle.copyWith(fontSize: 34)),
           const SizedBox(height: 14),
           Text(
-            '«Карьера РТУ МИРЭА» — вакансии, стажировки и события вуза '
-            'и компаний-партнёров — в одном приложении, без регистрации.',
+            'Это «Карьера РТУ МИРЭА» — все вакансии, стажировки и события '
+            'университета в одном приложении. Регистрация не нужна.',
             style: AppText.body.copyWith(height: 1.5),
           ),
           const SizedBox(height: 22),
           Text(
-            'Пройдите короткий опрос — и лента подстроится под вас: '
-            'институт, курс и интересы учитываются в подборе «Для вас». '
-            'ФИО и группу запоминать не обязательно, но удобно: анкеты '
-            'мероприятий заполнятся сами.',
+            'Ответьте на несколько вопросов — и главная лента станет вашей: '
+            'приложение будет показывать сначала то, что подходит вашему '
+            'институту, курсу и интересам.',
             style: AppText.footnote
                 .copyWith(color: AppColors.secondaryLight, height: 1.5),
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 12),
           Text(
-            'Не хотите — пропустите все или часть вопросов: вернуться '
-            'к ним можно в любой момент в профиле.',
+            'Любой вопрос можно пропустить и ответить позже — '
+            'профиль легко дополнить в разделе «Ещё».',
             style: AppText.footnote
                 .copyWith(color: AppColors.secondaryLight, height: 1.5),
           ),
-          const SizedBox(height: 28),
-          TextButton(onPressed: onSkip, child: const Text('Позже')),
         ],
       ),
     );
@@ -346,6 +369,7 @@ class _StepIdentityState extends State<_StepIdentity> {
       child: TextField(
         controller: _name,
         onChanged: (_) => _sync(),
+        autofocus: true,
         textCapitalization: TextCapitalization.words,
         decoration: _fieldDecoration(context, 'Фамилия Имя Отчество'),
       ),
@@ -353,7 +377,7 @@ class _StepIdentityState extends State<_StepIdentity> {
   }
 }
 
-/// Шаг 4: группа — с объяснением пользы и автокурсом.
+/// Шаг 4: группа — капс, живые подсказки из API вуза, автокурс.
 class _StepGroup extends StatefulWidget {
   const _StepGroup({required this.profile, required this.onChanged});
   final StudentProfile profile;
@@ -367,8 +391,15 @@ class _StepGroupState extends State<_StepGroup> {
   late final _group =
       TextEditingController(text: widget.profile.group ?? '');
 
+  /// Подсказки групп: живой поиск по API расписания вуза.
+  /// debounced — не на каждый символ.
+  List<String> _suggestions = [];
+  int _requestSeq = 0;
+  Timer? _debounce;
+
   @override
   void dispose() {
+    _debounce?.cancel();
     _group.dispose();
     super.dispose();
   }
@@ -376,13 +407,29 @@ class _StepGroupState extends State<_StepGroup> {
   void _sync() {
     final value = _group.text.trim();
     widget.onChanged(
-      widget.profile.copyWith(
-        group: value.isEmpty ? null : value,
-        // Курс пересчитываем из года в номере группы, если его ещё
-        // не правили вручную (следующий шаг предложит поправить).
-        course: StudentProfile.courseFromGroup(value),
-      ),
+      // Курс НЕ пишем здесь: его считает (и даёт поправить) следующий
+      // шаг — иначе редактирование группы затирает ручной выбор курса.
+      widget.profile.copyWith(group: value.isEmpty ? null : value),
     );
+
+    // Подсказки: с задержкой, чтобы не спрашивать на каждый символ.
+    _debounce?.cancel();
+    if (value.length < 2) {
+      if (_suggestions.isNotEmpty) setState(() => _suggestions = []);
+      return;
+    }
+    _debounce = Timer(const Duration(milliseconds: 250), _loadSuggestions);
+  }
+
+  Future<void> _loadSuggestions() async {
+    final seq = ++_requestSeq;
+    final results = await GroupSuggestions.search(_group.text);
+    // Пришёл не последний запрос — результат устарел.
+    if (!mounted || seq != _requestSeq) return;
+    // Выбранная группа не должна предлагать сама себя.
+    final fresh =
+        results.where((g) => g != _group.text.trim()).toList();
+    setState(() => _suggestions = fresh);
   }
 
   @override
@@ -392,17 +439,48 @@ class _StepGroupState extends State<_StepGroup> {
       subtitle: 'Группа — самая полезная часть профиля: подставляется '
           'в анкеты автоматически, а по году в номере мы вычислим курс '
           'и предложим то, что подходит вашей программе.',
-      child: TextField(
-        controller: _group,
-        onChanged: (_) => _sync(),
-        decoration: _fieldDecoration(context, 'Например, ИКБО-01-23'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _group,
+            onChanged: (_) => _sync(),
+            autofocus: true,
+            // Номера групп — капсом: ИКБО-01-23.
+            textCapitalization: TextCapitalization.characters,
+            inputFormatters: [
+              TextInputFormatter.withFunction((oldValue, newValue) =>
+                  newValue.copyWith(text: newValue.text.toUpperCase())),
+            ],
+            decoration: _fieldDecoration(context, 'Например, ИКБО-01-23'),
+          ),
+          if (_suggestions.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final g in _suggestions)
+                  ActionChip(
+                    label: Text(g),
+                    onPressed: () {
+                      _group.text = g;
+                      _sync();
+                      // Подсказка выбрана — убираем список.
+                      setState(() => _suggestions = []);
+                    },
+                  ),
+              ],
+            ),
+          ],
+        ],
       ),
     );
   }
 }
 
-/// Шаг 3: кафедра — чипы из справочника института + свободный ввод.
-class _StepDepartment extends StatelessWidget {
+/// Шаг 3: кафедра — просто поле ввода с примером-подсказкой.
+class _StepDepartment extends StatefulWidget {
   const _StepDepartment({
     required this.institute,
     required this.selected,
@@ -414,40 +492,36 @@ class _StepDepartment extends StatelessWidget {
   final ValueChanged<String?> onChanged;
 
   @override
-  Widget build(BuildContext context) {
-    final departments =
-        Catalogs.departments[institute] ?? const <String>[];
+  State<_StepDepartment> createState() => _StepDepartmentState();
+}
 
+class _StepDepartmentState extends State<_StepDepartment> {
+  late final _text = TextEditingController(text: widget.selected ?? '');
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return _StepScaffold(
       title: 'Кафедра',
-      subtitle: departments.isEmpty
-          ? 'Выберите институт на предыдущем шаге — предложим кафедры. '
-              'Или впишите свою.'
-          : 'Уточняет подбор внутри института. Не нашли свою — впишите.',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final d in departments)
-                ChoiceChip(
-                  label: Text(d),
-                  selected: selected == d,
-                  onSelected: (_) {
-                    HapticFeedback.selectionClick();
-                    onChanged(selected == d ? null : d);
-                  },
-                ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            onChanged: (v) => onChanged(v.trim().isEmpty ? null : v.trim()),
-            decoration: _fieldDecoration(context, 'Своя кафедра'),
-          ),
+      subtitle: 'Уточняет подбор внутри института. Пропустите, если '
+          'не помните точно.',
+      child: TextField(
+        controller: _text,
+        onChanged: (v) =>
+            widget.onChanged(v.trim().isEmpty ? null : v.trim()),
+        autofocus: true,
+        textCapitalization: TextCapitalization.characters,
+        inputFormatters: [
+          // Кафедры в МИРЭА пишутся капсом: КБ-11. Форматируем на лету.
+          TextInputFormatter.withFunction((oldValue, newValue) =>
+              newValue.copyWith(text: newValue.text.toUpperCase())),
         ],
+        decoration: _fieldDecoration(context, 'Например, КБ-11'),
       ),
     );
   }
@@ -465,14 +539,17 @@ class _StepLevelAndCourse extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final suggested = profile.course;
+    // Вычисляем курс ЗАНОВО из группы: подпись «по группе выходит»
+    // должна говорить про расчёт, а не про то, что человек уже выбрал.
+    final fromGroup = StudentProfile.courseFromGroup(profile.group);
+    final semester = _semesterLabel();
 
     return _StepScaffold(
       title: 'Уровень и курс',
-      subtitle: suggested != null
-          ? 'По группе выходит $suggested-й курс — если что-то не так, '
-              'поправьте.'
-          : 'Курс не удалось угадать по группе — выберите вручную.',
+      subtitle: fromGroup != null
+          ? 'По вашей группе получается $fromGroup-й курс '
+              '($semester) — если что-то не так, поправьте.'
+          : 'Курс не удалось определить по группе — выберите вручную.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -503,7 +580,7 @@ class _StepLevelAndCourse extends StatelessWidget {
               for (var i = 1; i <= 6; i++)
                 ChoiceChip(
                   label: Text('$i'),
-                  selected: profile.course == i,
+                  selected: (profile.course ?? fromGroup) == i,
                   onSelected: (_) {
                     HapticFeedback.selectionClick();
                     onChanged(profile.copyWith(course: i));
@@ -511,9 +588,21 @@ class _StepLevelAndCourse extends StatelessWidget {
                 ),
             ],
           ),
+          const SizedBox(height: 8),
+          Text(
+            'Сейчас идёт $semester.',
+            style: AppText.footnote
+                .copyWith(color: AppColors.secondaryLight),
+          ),
         ],
       ),
     );
+  }
+
+  /// Осенний семестр — с 1 сентября по 31 января, весенний — с 1 февраля.
+  static String _semesterLabel() {
+    final m = DateTime.now().month;
+    return (m >= 9 || m == 1) ? '1-й семестр' : '2-й семестр';
   }
 }
 
@@ -543,14 +632,17 @@ class _StepInstitute extends StatelessWidget {
   }
 }
 
-/// Шаг 6: интересы.
-class _StepInterests extends StatelessWidget {
+/// Шаг 6: интересы — теги из БД (коллекция interests, панель настраивает).
+class _StepInterests extends ConsumerWidget {
   const _StepInterests({required this.selected, required this.onToggle});
   final List<String> selected;
   final ValueChanged<String> onToggle;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final titles = ref.watch(interestsProvider).value ??
+        Catalogs.interests.map((i) => i.title).toList();
+
     return _StepScaffold(
       title: 'Что вам интересно?',
       subtitle: 'Выберите несколько — подбор «Для вас» подстроится',
@@ -558,13 +650,13 @@ class _StepInterests extends StatelessWidget {
         spacing: 10,
         runSpacing: 10,
         children: [
-          for (final t in Catalogs.interests)
+          for (final t in titles)
             ChoiceChip(
-              label: Text(t.title),
-              selected: selected.contains(t.id),
+              label: Text(t),
+              selected: selected.contains(t),
               onSelected: (_) {
                 HapticFeedback.selectionClick();
-                onToggle(t.id);
+                onToggle(t);
               },
             ),
         ],

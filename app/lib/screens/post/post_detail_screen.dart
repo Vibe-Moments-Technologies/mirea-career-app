@@ -14,6 +14,7 @@ import '../../data/catalogs.dart';
 import '../../data/models.dart';
 import '../../state/providers.dart';
 import '../form/form_screen.dart';
+import '../org/org_screen.dart';
 
 /// Экран деталей события.
 ///
@@ -120,7 +121,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
             ),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
-                _TypeRow(post: post),
+                _MetaRow(post: post),
                 const SizedBox(height: 12),
                 Text(post.title,
                     style: AppText.largeTitle.copyWith(fontSize: 28)),
@@ -128,8 +129,8 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                 _Organizer(post: post),
                 // Действие сразу после организатора: к этому моменту студент
                 // уже знает, кто предлагает, — и может откликнуться, не
-                // листая описание. Внизу экрана кнопка терялась за текстом.
-                // Анкета (если привязана) открывается вместо внешней ссылки.
+                // листая описание. Анкета (если привязана) открывается
+                // вместо внешней ссылки.
                 if (form != null)
                   _ApplyButton(
                     label: applyLabel,
@@ -184,8 +185,6 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                     ],
                   ),
                 ],
-                const SizedBox(height: 26),
-                _Stats(post: post),
               ]),
             ),
           ),
@@ -314,16 +313,26 @@ class _CoverShade extends StatelessWidget {
 }
 
 /// Строка над заголовком: тип предложения и срочность.
-class _TypeRow extends StatelessWidget {
-  const _TypeRow({required this.post});
+/// Широкая мета-строка: тип · формат · просмотры · избранное · анкеты.
+///
+/// Всё мелкими значками со значением в один ряд (переносится на вторую
+/// строку на узких экранах) — читается как «паспорт» карточки,
+/// не перегружая верх (запрос: чипы наверху, статистика — сюда же).
+class _MetaRow extends ConsumerWidget {
+  const _MetaRow({required this.post});
   final Post post;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final brightness = Theme.of(context).brightness;
     final urgent = urgencyLabel(post.endDate);
     final past = pastLabel(post.endDate);
+    // Счётчики — из ленты: там мгновенно отражаются изменения.
+    final live = ref.watch(feedProvider).posts.firstWhere(
+          (p) => p.id == post.id,
+          orElse: () => post,
+        );
 
     return Wrap(
       spacing: 8,
@@ -359,8 +368,14 @@ class _TypeRow extends StatelessWidget {
             ],
           ),
         ),
-        // Срочность — только когда дедлайн близко; для завершившегося —
-        // спокойная серая плашка «завершилось N дней назад».
+        if (Catalogs.formats[post.format] != null)
+          _Pill(
+            icon: _formatIcon(post.format),
+            text: Catalogs.formats[post.format]!,
+            color: AppColors.secondaryLight,
+          ),
+        // Срочность — только при близком дедлайне; завершившееся —
+        // спокойная серая плашка.
         if (urgent != null)
           _Pill(icon: Icons.bolt_rounded, text: urgent, color: AppColors.warning)
         else if (past != null)
@@ -369,7 +384,47 @@ class _TypeRow extends StatelessWidget {
             text: past,
             color: AppColors.secondaryLight,
           ),
+        _CountPill(
+            icon: Icons.visibility_rounded, value: live.viewsCount),
+        _CountPill(icon: Icons.star_rounded, value: live.favoritesCount),
       ],
+    );
+  }
+
+  IconData _formatIcon(String format) => switch (format) {
+        'online' => Icons.videocam_rounded,
+        'hybrid' => Icons.sync_alt_rounded,
+        _ => Icons.location_city_rounded,
+      };
+}
+
+/// Значок-счётчик: просмотры, избранное — с числом.
+class _CountPill extends StatelessWidget {
+  const _CountPill({required this.icon, required this.value});
+  final IconData icon;
+  final int value;
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = AppColors.secondaryLight;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: muted.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: muted),
+          const SizedBox(width: 5),
+          Text('$value',
+              style: AppText.caption.copyWith(
+                color: muted,
+                fontWeight: FontWeight.w600,
+              )),
+        ],
+      ),
     );
   }
 }
@@ -404,10 +459,11 @@ class _Pill extends StatelessWidget {
       );
 }
 
-/// Панель «Ключевое»: факты с подписями, а не обезличенные чипы.
+/// Панель информации о событии.
 ///
-/// Пустые факты не показываются вовсе: строка «Кампус: не указан» учит
-/// читателя пропускать панель целиком, а нужно обратное.
+/// Два смысловых блока дат (запрос): «Приём заявок до» (end_date —
+/// дедлайн регистрации/анкеты) и «Проведение» (start_date, с диапазоном
+/// нескольких дней). Остальное — формат, кампус, для кого — рядом.
 class _FactsPanel extends StatelessWidget {
   const _FactsPanel({required this.post});
   final Post post;
@@ -416,15 +472,20 @@ class _FactsPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final range = dateRange(post.startDate, post.endDate);
     final rows = <_Fact>[
-      // «Когда» имеет смысл только при указанном начале: иначе дата окончания
-      // уже показана строкой «Заканчивается» и дублировалась бы.
-      if (post.startDate != null && range != null)
-        _Fact(Icons.event_rounded, 'Когда', range),
+      // «Приём заявок/регистрации до» — end_date в роли дедлайна:
+      // для мероприятий это край подачи, для вакансий — край отклика.
       if (post.endDate != null)
         _Fact(
           Icons.hourglass_bottom_rounded,
-          'Заканчивается',
+          'Приём заявок до',
           dateWithTime(post.endDate!),
+        ),
+      // «Проведение» — период самого события (может быть несколько дней).
+      if (post.startDate != null)
+        _Fact(
+          Icons.event_rounded,
+          'Проведение',
+          range ?? dateWithTime(post.startDate!),
         ),
       if (Catalogs.formats[post.format] != null)
         _Fact(_formatIcon(post.format), 'Формат', Catalogs.formats[post.format]!),
@@ -528,7 +589,7 @@ class _SectionTitle extends StatelessWidget {
       );
 }
 
-/// Организатор: карточка-ссылка на его профиль.
+/// Организатор: карточка-ссылка на профиль организации.
 class _Organizer extends StatelessWidget {
   const _Organizer({required this.post});
   final Post post;
@@ -538,42 +599,53 @@ class _Organizer extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     // Организация, иначе author_name (посты без организации из консоли).
     final name = post.authorLabel?.trim() ?? '';
+    // Профиль открываем только для настоящей организации: author_name —
+    // просто подпись без карточки в БД.
+    final org = post.organization;
 
-    // Профили организаций временно убраны из приложения: организатор
-    // указывается админом при создании карточки и служит подписью,
-    // а не ссылкой. Когда вернём профили — сюда вернётся InkWell.
     return Material(
       color: scheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppRadius.card),
         side: BorderSide(color: AppColors.separator(context)),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          children: [
-            _OrgAvatar(initial: name),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name.isEmpty ? 'Организатор не указан' : name,
-                    style: AppText.headline,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    post.isPartner ? 'Компания-партнёр' : 'Подразделение вуза',
-                    style: AppText.footnote
-                        .copyWith(color: AppColors.secondaryLight),
-                  ),
-                ],
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: org == null
+            ? null
+            : () => Navigator.of(context).push(
+                  appRoute(context, OrgScreen(organization: org)),
+                ),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              _OrgAvatar(initial: name),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name.isEmpty ? 'Организатор не указан' : name,
+                      style: AppText.headline,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      post.isPartner ? 'Компания-партнёр' : 'Подразделение вуза',
+                      style: AppText.footnote
+                          .copyWith(color: AppColors.secondaryLight),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+              if (org != null)
+                Icon(Icons.chevron_right_rounded,
+                    color: AppColors.secondaryLight),
+            ],
+          ),
         ),
       ),
     );
@@ -605,64 +677,6 @@ class _OrgAvatar extends StatelessWidget {
         style: AppText.title
             .copyWith(color: AppColors.secondaryLight, fontSize: 19),
       ),
-    );
-  }
-}
-
-/// Счётчики — справочная информация в конце страницы.
-class _Stats extends ConsumerWidget {
-  const _Stats({required this.post});
-  final Post post;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Счётчики берём из ленты: там же мгновенно отражаются изменения.
-    final live = ref.watch(feedProvider).posts.firstWhere(
-          (p) => p.id == post.id,
-          orElse: () => post,
-        );
-
-    return Row(
-      children: [
-        _StatItem(
-          icon: Icons.visibility_rounded,
-          value: live.viewsCount,
-          label: plural(live.viewsCount, 'просмотр', 'просмотра', 'просмотров'),
-        ),
-        const SizedBox(width: 24),
-        _StatItem(
-          icon: Icons.star_rounded,
-          value: live.favoritesCount,
-          label: 'в избранном',
-        ),
-      ],
-    );
-  }
-}
-
-class _StatItem extends StatelessWidget {
-  const _StatItem(
-      {required this.icon, required this.value, required this.label});
-  final IconData icon;
-  final int value;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final muted = AppColors.secondaryLight;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 17, color: muted),
-        const SizedBox(width: 6),
-        Text('$value',
-            style: AppText.footnote.copyWith(
-              color: muted,
-              fontWeight: FontWeight.w600,
-            )),
-        const SizedBox(width: 4),
-        Text(label, style: AppText.footnote.copyWith(color: muted)),
-      ],
     );
   }
 }

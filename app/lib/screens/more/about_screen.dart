@@ -103,12 +103,11 @@ class AboutScreen extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           SettingsGroup(
-            footer: 'Данные профиля не покидают устройство. '
-                'Просмотры и добавления в избранное передаются обезличенно — '
-                'без идентификаторов пользователя.',
             children: [
               SettingsTile(
-                icon: Icons.verified_outlined,
+                // Значок «обновить»: строка выглядит как действие —
+                // и станет им, когда появится система контроля версий.
+                icon: Icons.refresh_rounded,
                 title: 'Версия',
                 subtitle: '$_appVersion ($_appBuild)',
                 onTap: () {},

@@ -44,10 +44,12 @@ class _RootShellState extends ConsumerState<RootShell>
   /// Раздел «Организации» вернулся по просьбе пользователя: карточки
   /// организаций (профили) остались в приложении, исчезнут только
   /// когда снова появится полноценная схема «учётки организаций».
+  /// «Сохранённое» — иконка-закладка, не звезда: там не только
+  /// избранное, но и заполненные анкеты.
   static const _items = <DockItem>[
     DockItem(Icons.home_rounded, 'Главная'),
     DockItem(Icons.calendar_month_rounded, 'Календарь'),
-    DockItem(Icons.star_rounded, 'Сохранённое'),
+    DockItem(Icons.bookmark_rounded, 'Сохранённое'),
     DockItem(Icons.apartment_rounded, 'Организации'),
     DockItem(Icons.person_rounded, 'Ещё'),
   ];
