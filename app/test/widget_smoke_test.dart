@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mirea_career/core/theme/app_theme.dart';
@@ -246,6 +247,14 @@ Widget wrap(
       container: c,
       child: MaterialApp(
         theme: buildAppTheme(Brightness.light).copyWith(platform: platform),
+        // Локализация пикеров: как в main.dart — иначе showDatePicker
+        // с locale ru падает assertion'ом MaterialLocalizations.
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: const [Locale('ru')],
         home: child,
       ),
     );
@@ -1360,6 +1369,55 @@ void main() {
       await tester.pump();
       expect(find.text('Спасибо за участие!'), findsOneWidget);
       expect(find.text('Отправить анкету'), findsOneWidget);
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
+
+    testWidgets('пикер даты открывается: локализация ru на месте',
+        (tester) async {
+      // Регрессия dev.76: showDatePicker с locale ru падал красным
+      // экраном «Looking up a localized message» — в MaterialApp не
+      // были подключены flutter_localizations.
+      final form = {
+        'id': 'frmD',
+        'title': 'Анкета с датой',
+        'definition': {
+          'type': 'ordered',
+          'steps': [
+            {
+              'id': 'when',
+              'isMandatory': true,
+              'content': [
+                {'type': 'text', 'text': 'Когда вам удобно?'},
+              ],
+              'answerFormat': {'type': 'date'},
+            },
+          ],
+        },
+      };
+
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [
+          samplePost(id: 'a', title: 'Событие с датой', form: form),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Событие с датой'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Заполнить анкету'));
+      await tester.pumpAndSettle();
+
+      // Поле-кнопка даты: тап открывает пикер БЕЗ исключения.
+      await tester.tap(find.text('Выберите дату'));
+      await tester.pumpAndSettle();
+
+      // Пикер построен: заголовок MaterialLocalizations (ru) на месте.
+      expect(find.text('ОК'), findsOneWidget);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
 

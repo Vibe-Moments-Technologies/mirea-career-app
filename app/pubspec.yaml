@@ -9,6 +9,12 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # Локализация Material-пикеров (showDatePicker): без этой пары
+  # locale: Locale('ru') у пикера роняет интерфейс «Looking up a
+  # localized message».
+  flutter_localizations:
+    sdk: flutter
+  intl: any
   flutter_riverpod: ^3.4.3
   # Папки приложения на устройстве (история анкет: form_history.json
   # в getApplicationSupportDirectory).

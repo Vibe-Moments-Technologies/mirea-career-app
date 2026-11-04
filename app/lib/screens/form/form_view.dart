@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/markdown_body.dart';
 import '../../data/models.dart';
 
 /// Рендер анкеты в стиле приложения: одна страница со всеми вопросами.
@@ -288,22 +289,11 @@ class _Question extends StatelessWidget {
       );
     }
 
-    // note / шаг без answerFormat: просто текст, без поля.
+    // note / шаг без answerFormat: текст автора анкеты без поля ввода.
+    // Форматируется в Markdown — тот же рендер, что у описаний постов.
     if (type == 'note') {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (label.isNotEmpty)
-            Text(label, style: AppText.body.copyWith(height: 1.5)),
-          if (description.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              description,
-              style: AppText.footnote
-                  .copyWith(color: AppColors.secondaryLight, height: 1.4),
-            ),
-          ],
-        ],
+      return MarkdownBody(
+        text: label.isNotEmpty ? label : description,
       );
     }
 
@@ -392,67 +382,26 @@ class _Question extends StatelessWidget {
         (id.toLowerCase().contains('fio') ||
             id.toLowerCase().contains('name'));
 
-    return TextField(
-      controller: TextEditingController(text: value as String? ?? '')
-        ..selection = TextSelection.collapsed(
-            offset: (value as String? ?? '').length),
+    return _TextAnswerField(
+      key: ValueKey('tf-$index-$id'),
+      initial: value as String? ?? '',
       maxLines: maxLines,
-      minLines: 1,
-      keyboardType: maxLines > 1
-          ? TextInputType.multiline
-          : TextInputType.text,
-      textCapitalization:
-          capitalize ? TextCapitalization.words : TextCapitalization.none,
+      hint: hint,
+      capitalize: capitalize,
       onChanged: (v) => onChanged(id, v),
-      decoration: InputDecoration(
-        hintText: hint,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadius.field),
-          borderSide: BorderSide(color: AppColors.separator(context)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadius.field),
-          borderSide: BorderSide(color: AppColors.separator(context)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadius.field),
-          borderSide: BorderSide(
-              color: Theme.of(context).colorScheme.primary, width: 1.5),
-        ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      ),
     );
   }
 
   // ---------- Числовое поле ----------
 
   Widget _buildInteger(BuildContext context) {
-    return TextField(
-      controller: TextEditingController(text: '${value ?? ''}')
-        ..selection =
-            TextSelection.collapsed(offset: '${value ?? ''}'.length),
-      keyboardType: TextInputType.number,
-      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+    return _TextAnswerField(
+      key: ValueKey('int-$index-$id'),
+      initial: value == null ? '' : '$value',
+      maxLines: 1,
+      hint: (answerFormat?['hint'] as String?) ?? '0',
+      digitsOnly: true,
       onChanged: (v) => onChanged(id, v),
-      decoration: InputDecoration(
-        hintText: (answerFormat?['hint'] as String?) ?? '0',
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadius.field),
-          borderSide: BorderSide(color: AppColors.separator(context)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadius.field),
-          borderSide: BorderSide(color: AppColors.separator(context)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadius.field),
-          borderSide: BorderSide(
-              color: Theme.of(context).colorScheme.primary, width: 1.5),
-        ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      ),
     );
   }
 
@@ -780,25 +729,92 @@ class _Question extends StatelessWidget {
     final label = _studentLabels[field] ?? field;
     final current = '${answers[field] ?? prefill[field] ?? ''}';
 
-    return TextField(
-      controller: TextEditingController(text: current)
-        ..selection = TextSelection.collapsed(offset: current.length),
-      keyboardType:
-          field == 'course' ? TextInputType.number : TextInputType.text,
-      inputFormatters: field == 'course'
-          ? [FilteringTextInputFormatter.digitsOnly]
-          : null,
-      textCapitalization: field == 'fio' || field == 'institute'
-          ? TextCapitalization.words
-          : TextCapitalization.characters,
+    return _TextAnswerField(
+      key: ValueKey('student-$index-$field'),
+      initial: current,
+      maxLines: 1,
+      hint: label,
+      capitalize: field == 'fio' || field == 'institute',
+      digitsOnly: field == 'course',
       onChanged: (v) {
         // Ответ шага — объект по ключам полей (контракт 6.5).
         final next = Map<String, dynamic>.from(answers);
         next[field] = v;
         onChanged(id, next);
       },
+    );
+  }
+}
+
+/// Текстовое/числовое поле ответа со СТАБИЛЬНЫМ контроллером.
+///
+/// Раньше TextEditingController создавался в build на каждый rebuild:
+/// при двух вопросах с одинаковым id (как в тестовой анкете: «текст» и
+/// «текст») ответ общий, и каждый rebuild пересоздавал контроллеры —
+/// ввод в одном поле «печатался» и во втором. Теперь контроллер живёт
+/// в State и синхронизируется извне только при РЕАЛЬНОМ изменении
+/// (подстановка из профиля), не затирая каретку при вводе.
+class _TextAnswerField extends StatefulWidget {
+  const _TextAnswerField({
+    super.key,
+    required this.initial,
+    required this.maxLines,
+    required this.hint,
+    required this.onChanged,
+    this.capitalize = false,
+    this.digitsOnly = false,
+  });
+
+  final String initial;
+  final int maxLines;
+  final String hint;
+  final ValueChanged<String> onChanged;
+  final bool capitalize;
+  final bool digitsOnly;
+
+  @override
+  State<_TextAnswerField> createState() => _TextAnswerFieldState();
+}
+
+class _TextAnswerFieldState extends State<_TextAnswerField> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.initial);
+
+  @override
+  void didUpdateWidget(_TextAnswerField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Внешнее значение изменилось (не наш ввод) — подтягиваем: это
+    // подстановка профиля или смена варианта. Свой ввод не затираем.
+    if (widget.initial != oldWidget.initial &&
+        widget.initial != _controller.text) {
+      _controller.text = widget.initial;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      maxLines: widget.maxLines,
+      minLines: 1,
+      keyboardType: widget.maxLines > 1
+          ? TextInputType.multiline
+          : TextInputType.number,
+      inputFormatters: widget.digitsOnly
+          ? [FilteringTextInputFormatter.digitsOnly]
+          : null,
+      textCapitalization: widget.capitalize
+          ? TextCapitalization.words
+          : TextCapitalization.none,
+      onChanged: widget.onChanged,
       decoration: InputDecoration(
-        labelText: label,
+        hintText: widget.hint,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.field),
           borderSide: BorderSide(color: AppColors.separator(context)),
