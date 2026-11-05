@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/markdown_body.dart';
 import '../../data/models.dart';
+import '../../state/providers.dart';
 
 /// Рендер анкеты в стиле приложения.
 ///
@@ -34,7 +36,7 @@ import '../../data/models.dart';
 ///  pagebreak — разделитель СТРАНИЦ (вопросы до/после — разные экраны);
 ///  note      — текст автора анкеты без поля ввода, Markdown, в answers
 ///              не попадает. Тоже без answerFormat (легаси-заметки).
-class FormView extends StatefulWidget {
+class FormView extends ConsumerStatefulWidget {
   const FormView({
     super.key,
     required this.form,
@@ -62,10 +64,10 @@ class FormView extends StatefulWidget {
   final Map<String, String> studentPrefill;
 
   @override
-  State<FormView> createState() => _FormViewState();
+  ConsumerState<FormView> createState() => _FormViewState();
 }
 
-class _FormViewState extends State<FormView> {
+class _FormViewState extends ConsumerState<FormView> {
   final Map<String, dynamic> _answers = {};
 
   /// Номер текущей страницы (pagebreak делит шаги на экраны).
@@ -246,6 +248,9 @@ class _FormViewState extends State<FormView> {
                         answerFormat: _answerFormat(_pageSteps[i]),
                         value: _answerOf(_pageSteps[i]['id'] as String? ?? ''),
                         prefill: widget.studentPrefill,
+                        // Институты для student-поля «institute»: выбор из
+                        // коллекции institutes, а не свободный текст.
+                        institutes: _instituteTitles,
                         onChanged: _setAnswer,
                       ),
                       const SizedBox(height: 18),
@@ -339,6 +344,14 @@ class _FormViewState extends State<FormView> {
     setState(() => _page++);
   }
 
+  /// Институты из справочника БД (коллекция institutes, запас офлайн).
+  /// Загружаются лениво: нужны только для student-поля «institute».
+  List<String> get _instituteTitles {
+    final list =
+        ref.watch(onboardingCatalogProvider).value?.institutes ?? const <InstituteRef>[];
+    return [for (final i in list) i.title];
+  }
+
   /// Номер вопроса на странице: сквозная нумерация по анкете — вопросы
   /// на 2-й странице не начинаются с «1.» заново (контекст не теряется).
   int _numbering(int indexOnPage) {
@@ -363,6 +376,7 @@ class _Question extends StatelessWidget {
     required this.value,
     required this.onChanged,
     this.prefill = const {},
+    this.institutes = const [],
   });
 
   final int index;
@@ -374,6 +388,10 @@ class _Question extends StatelessWidget {
 
   /// Профильные значения для student-шага.
   final Map<String, String> prefill;
+
+  /// Названия институтов из справочника БД: для student-поля
+  /// «institute» — выпадающий список вместо свободного текста.
+  final List<String> institutes;
 
   String get id => step['id'] as String? ?? 'q$index';
   bool get mandatory => step['isMandatory'] == true;
@@ -494,6 +512,8 @@ class _Question extends StatelessWidget {
       maxLines: maxLines,
       hint: hint,
       capitalize: capitalize,
+      // maxLength из answerFormat обрезает ввод (контракт 6.5).
+      maxLength: (answerFormat?['maxLength'] as num?)?.toInt(),
       onChanged: (v) => onChanged(id, v),
     );
   }
@@ -507,6 +527,9 @@ class _Question extends StatelessWidget {
       maxLines: 1,
       hint: (answerFormat?['hint'] as String?) ?? '0',
       digitsOnly: true,
+      // minValue/maxValue: ввод вне границ не проходит в ответ.
+      minValue: (answerFormat?['minValue'] as num?),
+      maxValue: (answerFormat?['maxValue'] as num?),
       onChanged: (v) => onChanged(id, v),
     );
   }
@@ -830,10 +853,41 @@ class _Question extends StatelessWidget {
     );
   }
 
+  /// Рекомендованные лимиты student-полей (контракт 6.6 справки):
+  /// ФИО ≤ 100, группа ≤ 10 (ХХХХ-00-00), кафедра ≤ 30. Курс/семестр:
+  /// поле одно на оба — верхняя граница 12 покрывает семестр.
+  static const _studentLimits = <String, int>{
+    'fio': 100,
+    'group': 10,
+    'department': 30,
+  };
+  static const _courseMin = 1, _courseMax = 12;
+
   Widget _studentField(
       BuildContext context, String field, Map<String, dynamic> answers) {
     final label = _studentLabels[field] ?? field;
     final current = '${answers[field] ?? prefill[field] ?? ''}';
+
+    // Институт — ВЫБОР из коллекции institutes (не текст): опечатки и
+    // «ИТ»/«Институт информационных технологий» в ответах убивают
+    // аналитику. Список пуст (офлайн-холодный старт) — поле текстом.
+    if (field == 'institute' && institutes.isNotEmpty) {
+      final items = [
+        for (final t in institutes)
+          DropdownMenuItem<String>(value: t, child: Text(t)),
+      ];
+      return DropdownButtonFormField<String>(
+        initialValue: items.any((i) => i.value == current) ? current : null,
+        items: items,
+        decoration: _fieldDecoration(context, label),
+        onChanged: (v) {
+          if (v == null) return;
+          final next = Map<String, dynamic>.from(answers);
+          next[field] = v;
+          onChanged(id, next);
+        },
+      );
+    }
 
     return _TextAnswerField(
       key: ValueKey('student-$index-$field'),
@@ -842,6 +896,9 @@ class _Question extends StatelessWidget {
       hint: label,
       capitalize: field == 'fio' || field == 'institute',
       digitsOnly: field == 'course',
+      maxLength: _studentLimits[field],
+      minValue: field == 'course' ? _courseMin : null,
+      maxValue: field == 'course' ? _courseMax : null,
       onChanged: (v) {
         // Ответ шага — объект по ключам полей (контракт 6.5).
         final next = Map<String, dynamic>.from(answers);
@@ -850,6 +907,27 @@ class _Question extends StatelessWidget {
       },
     );
   }
+
+  /// Единая рамка полей: outline + скругление как у всех полей анкеты.
+  InputDecoration _fieldDecoration(BuildContext context, String label) =>
+      InputDecoration(
+        hintText: label,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.field),
+          borderSide: BorderSide(color: AppColors.separator(context)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.field),
+          borderSide: BorderSide(color: AppColors.separator(context)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.field),
+          borderSide: BorderSide(
+              color: Theme.of(context).colorScheme.primary, width: 1.5),
+        ),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      );
 }
 
 /// Текстовое/числовое поле ответа со СТАБИЛЬНЫМ контроллером.
@@ -869,6 +947,9 @@ class _TextAnswerField extends StatefulWidget {
     required this.onChanged,
     this.capitalize = false,
     this.digitsOnly = false,
+    this.maxLength,
+    this.minValue,
+    this.maxValue,
   });
 
   final String initial;
@@ -877,6 +958,15 @@ class _TextAnswerField extends StatefulWidget {
   final ValueChanged<String> onChanged;
   final bool capitalize;
   final bool digitsOnly;
+
+  /// Лимит длины (контракт 6.5): обрезает ввод на уровне TextField —
+  /// длиннее физически не ввести.
+  final int? maxLength;
+
+  /// Границы для числовых полей: ввод за пределами НЕ проходит в
+  /// ответ (введённое значение отвергается, как незаполненное).
+  final num? minValue;
+  final num? maxValue;
 
   @override
   State<_TextAnswerField> createState() => _TextAnswerFieldState();
@@ -923,7 +1013,21 @@ class _TextAnswerFieldState extends State<_TextAnswerField> {
       textCapitalization: widget.capitalize
           ? TextCapitalization.words
           : TextCapitalization.none,
-      onChanged: widget.onChanged,
+      maxLength: widget.maxLength,
+      onChanged: (v) {
+        // Числовые границы: значение вне [min, max] — не ответ, поле
+        // считается незаполненным (кнопка «Далее» заблокирует переход).
+        if (widget.digitsOnly && v.isNotEmpty) {
+          final n = num.tryParse(v);
+          if (widget.minValue != null && n != null && n < widget.minValue!) {
+            return;
+          }
+          if (widget.maxValue != null && n != null && n > widget.maxValue!) {
+            return;
+          }
+        }
+        widget.onChanged(v);
+      },
       decoration: InputDecoration(
         hintText: widget.hint,
         border: OutlineInputBorder(

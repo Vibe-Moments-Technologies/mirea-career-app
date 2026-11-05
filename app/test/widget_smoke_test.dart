@@ -1456,6 +1456,131 @@ void main() {
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
 
+    testWidgets('лимиты полей: maxLength текста, границы integer, институт из БД',
+        (tester) async {
+      // Контракт 6.5/6.6: text.maxLength обрезает ввод, integer
+      // проверяет minValue/maxValue, институт в student — выбор из
+      // коллекции institutes (dropdown), а не свободный текст.
+      final form = {
+        'id': 'frmL',
+        'title': 'Анкета с лимитами',
+        'definition': {
+          'type': 'ordered',
+          'steps': [
+            {
+              'id': 'student_data',
+              'isMandatory': true,
+              'content': [
+                {'type': 'text', 'text': 'Данные о студенте'},
+              ],
+              'answerFormat': {
+                'type': 'student',
+                'fields': ['fio', 'group', 'institute', 'course'],
+              },
+            },
+            {
+              'id': 'short',
+              'isMandatory': true,
+              'content': [
+                {'type': 'text', 'text': 'Короткий ответ'},
+              ],
+              'answerFormat': {'type': 'text', 'maxLength': 5},
+            },
+            {
+              'id': 'num',
+              'isMandatory': true,
+              'content': [
+                {'type': 'text', 'text': 'Число 1–10'},
+              ],
+              'answerFormat': {
+                'type': 'integer',
+                'minValue': 1,
+                'maxValue': 10,
+              },
+            },
+          ],
+        },
+      };
+
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [
+          samplePost(id: 'a', title: 'Событие с лимитами', form: form),
+        ],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Событие с лимитами'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Заполнить анкету'));
+      await tester.pumpAndSettle();
+
+      // Student: институт — ВЫПАДАЮЩИЙ список (не текстовое поле), пункты
+      // из Catalogs-запаса (тест без сети → fallback справочника).
+      final dropdowns =
+          find.byType(DropdownButtonFormField<String>);
+      expect(dropdowns, findsOneWidget,
+          reason: 'институт должен быть выпадающим списком');
+      await tester.tap(dropdowns.first);
+      await tester.pumpAndSettle();
+      final iit = find.text('Институт информационных технологий');
+      expect(iit, findsOneWidget);
+      await tester.tap(iit);
+      await tester.pump();
+
+      // maxLength: поле «Короткий ответ» (после student-полей) хранит
+      // не больше 5 символов при попытке ввести 10.
+      var textFields = find.byType(TextField);
+      // fio, group, course (institute — dropdown), потом short, потом num:
+      // ленивый список строит видимое — прокручиваем к «Число 1–10».
+      await tester.scrollUntilVisible(
+        find.text('Число 1–10'),
+        200,
+        scrollable: find
+            .descendant(
+              of: find.byType(FormScreen),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      textFields = find.byType(TextField);
+      await tester.enterText(textFields.at(3), 'abcdefghij');
+      await tester.pump();
+      final typed = tester.widget<TextField>(textFields.at(3));
+      expect(typed.controller!.text.length, 5,
+          reason: 'maxLength=5 должен обрезать ввод');
+
+      // Integer-границы: 99 вне [1,10] — ответ не записан, «Отправить»
+      // остаётся заблокированной (обязательный вопрос «пуст»).
+      final intField = textFields.at(4);
+      await tester.enterText(intField, '99');
+      await tester.pump();
+      final sendBtn = tester.widget<FilledButton>(
+        find.ancestor(
+          of: find.text('Отправить анкету'),
+          matching: find.byType(FilledButton),
+        ),
+      );
+      expect(sendBtn.onPressed, isNull,
+          reason: 'ввод вне minValue/maxValue не должен считаться ответом');
+
+      await tester.enterText(intField, '7');
+      await tester.pump();
+      final sendBtn2 = tester.widget<FilledButton>(
+        find.ancestor(
+          of: find.text('Отправить анкету'),
+          matching: find.byType(FilledButton),
+        ),
+      );
+      expect(sendBtn2.onPressed, isNotNull,
+          reason: 'корректное число разблокирует отправку');
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
+
     testWidgets('ФИО и группа из профиля не спрашиваются повторно',
         (tester) async {
       // Анкета со стандартными id: шаг fio изымается (в профиле есть),
