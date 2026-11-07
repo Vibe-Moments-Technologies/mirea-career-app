@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_route.dart';
+import '../../core/format.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/collapsible_section.dart';
 import '../../core/widgets/filter_sheet.dart';
@@ -12,6 +13,7 @@ import '../../core/widgets/reveal_on_mount.dart';
 import '../../core/widgets/screen_header.dart';
 import '../../core/widgets/search_overlay.dart';
 import '../../core/widgets/spotlight_gallery.dart';
+import '../../data/app_http_client.dart';
 import '../../data/catalogs.dart';
 import '../../data/local_store.dart';
 import '../../data/models.dart';
@@ -83,11 +85,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// Вкладка «Опросы»: формы kind = survey/anon_survey из БД.
   ///
   /// Это НЕ посты: опросы живут без карточки (контракт 6.4 справки),
-  /// вход — этот список. Анонимность — метка на карточке, ответы
-  /// блокируются по formId (повтор — снэкбар от сервера).
+  /// вход — этот список. Просроченные (end_date прошла) убираются —
+  /// архив; закрытые вручную остаются с бейджем: у них есть итог,
+  /// который интересно посмотреть. Анонимность — метка на карточке,
+  /// ответы блокируются по formId (повтор — снэкбар от сервера).
   List<Widget> _surveySlivers(double pad) {
     final surveys = ref.watch(surveyFormsProvider);
-    final forms = surveys.value ?? const <FormDefinition>[];
+    final forms = (surveys.value ?? const <FormDefinition>[])
+        .where((f) => !f.isExpired)
+        .toList();
 
     return [
       if (surveys.isLoading)
@@ -855,12 +861,23 @@ class _OfflineBanner extends StatelessWidget {  const _OfflineBanner();
 
 /// Карточка опроса на вкладке «Опросы»: форма из БД, не пост.
 ///
-/// Метка анонимности (контракт 6.4): «Анонимный» / «Не анонимный» —
-/// до входа видно, подставляются ли данные профиля. Отвеченные —
-/// приглушены с чипом «Отвечено»: повторный вход покажет снимок.
+/// Выглядит как карточка поста (контракт 6.4, п.9): обложка `image`
+/// слева, справа — тип, заголовок, автор, срок. Тап сразу открывает
+/// опросник — экрана деталей у опроса нет.
+///
+/// Метка анонимности: «Анонимный» / «Не анонимный» — до входа видно,
+/// подставляются ли данные профиля. Срок завершения (`end_date`) —
+/// «до 15 ноября», близко к дедлайну — срочная плашка как у постов.
+/// Завершённый опрос (закрыт вручную или срок вышел) — приглушён
+/// с бейджем; тап открывает итог вместо формы. Отвеченные одноразовые —
+/// чип «Отвечено».
 class _SurveyCard extends ConsumerWidget {
   const _SurveyCard({required this.form});
   final FormDefinition form;
+
+  /// Размер превью — как у карточки поста: одинаковая геометрия,
+  /// лента опросов не выбивается из общего ритма.
+  static const double _thumb = 104;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -870,6 +887,8 @@ class _SurveyCard extends ConsumerWidget {
     final answered = form.oneResponsePerDevice &&
         ref.watch(hasSubmittedFormProvider(form.id));
     final anon = form.isAnonSurvey;
+    final finished = form.isFinished;
+    final dim = answered || finished;
 
     return Material(
       color: scheme.surface,
@@ -883,83 +902,273 @@ class _SurveyCard extends ConsumerWidget {
           appRoute(context, FormScreen(form: form)),
         ),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(14),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: (answered ? AppColors.secondaryLight : scheme.primary)
-                      .withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(AppRadius.field),
-                ),
-                child: Icon(
-                  answered
-                      ? Icons.task_alt_rounded
-                      : Icons.poll_rounded,
-                  size: 22,
-                  color: answered ? AppColors.secondaryLight : scheme.primary,
-                ),
+              _SurveyCover(
+                url: form.imageUrl,
+                dim: dim,
+                size: _thumb,
               ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Строка типа: «ОПРОС» + срочность/завершение — как
+                    // у постовой карточки (тип + плашка в одну строку).
+                    Row(
+                      children: [
+                        _SurveyTypeLabel(anon: anon),
+                        if (finished)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 8),
+                            child: _pill(
+                              context,
+                              icon: Icons.lock_rounded,
+                              text: 'Завершён',
+                              color: AppColors.secondaryLight,
+                            ),
+                          )
+                        else
+                          Flexible(
+                            child: _SurveyUrgency(end: form.endDate),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 7),
                     Text(
                       form.title,
-                      style: AppText.cardTitle.copyWith(
-                        color: answered ? AppColors.secondaryLight : null,
+                      style: AppText.headline.copyWith(
+                        color: dim ? AppColors.secondaryLight : null,
                       ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 4),
-                    Row(
+                    // Автор опроса (forms.author_name): компания или
+                    // человек, который составил опрос и отвечает за него.
+                    if ((form.authorName ?? '').trim().isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        form.authorName!.trim(),
+                        style: AppText.footnote
+                            .copyWith(color: AppColors.secondaryLight),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                    const SizedBox(height: 10),
+                    // Факты: анонимность, срок, «Отвечено» — одна строка
+                    // с переносом, как _Facts у постов.
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 5,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        Icon(
+                        _fact(
+                          context,
                           anon
                               ? Icons.visibility_off_rounded
                               : Icons.visibility_rounded,
-                          size: 12,
-                          color: AppColors.secondaryLight,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
                           anon ? 'Анонимный' : 'Не анонимный',
-                          style: AppText.caption
-                              .copyWith(color: AppColors.secondaryLight),
                         ),
-                        if (answered) ...[
-                          const SizedBox(width: 10),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: AppColors.success.withValues(alpha: 0.14),
-                              borderRadius:
-                                  BorderRadius.circular(AppRadius.pill),
-                            ),
-                            child: Text(
-                              'Отвечено',
-                              style: AppText.caption.copyWith(
-                                color: AppColors.success,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
+                        // Срок — только у открытых: «до 15 ноября».
+                        if (!finished && form.endDate != null)
+                          _fact(
+                            context,
+                            Icons.event_rounded,
+                            'до ${dateShort(form.endDate!)}',
                           ),
-                        ],
+                        if (answered)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.check_circle_rounded,
+                                  size: 14, color: AppColors.success),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Отвечено',
+                                style: AppText.caption.copyWith(
+                                  color: AppColors.success,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
                       ],
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              Icon(Icons.chevron_right_rounded,
-                  size: 20, color: AppColors.secondaryLight),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _fact(BuildContext context, IconData icon, String text) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: AppColors.secondaryLight),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              text,
+              style:
+                  AppText.caption.copyWith(color: AppColors.secondaryLight),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      );
+
+  Widget _pill(
+    BuildContext context, {
+    required IconData icon,
+    required String text,
+    required Color color,
+  }) =>
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 13, color: color),
+            const SizedBox(width: 4),
+            Text(
+              text,
+              style: AppText.caption.copyWith(
+                color: color,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
+/// Обложка опроса: картинка из forms.image или заглушка (иконка опроса
+/// на нейтральной поверхности) — галереи у опросов нет, одна картинка.
+class _SurveyCover extends StatelessWidget {
+  const _SurveyCover({required this.url, required this.dim, this.size});
+
+  final String? url;
+  final bool dim;
+  final double? size;
+
+  @override
+  Widget build(BuildContext context) {
+    final placeholder = ColoredBox(
+      color: AppColors.placeholder(Theme.of(context).brightness),
+      child: Center(
+        child: Icon(
+          Icons.poll_rounded,
+          color: dim
+              ? AppColors.secondaryLight
+              : Theme.of(context).colorScheme.primary,
+          size: 30,
+        ),
+      ),
+    );
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppRadius.thumb),
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: (url == null || url!.isEmpty)
+            ? placeholder
+            : AppNetworkImage(
+                url: url!,
+                fit: BoxFit.cover,
+                width: size,
+                height: size,
+                placeholder: placeholder,
+                errorWidget: placeholder,
+              ),
+      ),
+    );
+  }
+}
+
+/// «ОПРОС» / «АНОНИМНЫЙ ОПРОС» — точка + подпись, как тип у постов.
+class _SurveyTypeLabel extends StatelessWidget {
+  const _SurveyTypeLabel({required this.anon});
+  final bool anon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 7,
+          height: 7,
+          decoration: BoxDecoration(
+            color: AppColors.forPostType('survey',
+                Theme.of(context).brightness),
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          anon ? 'АНОНИМНЫЙ ОПРОС' : 'ОПРОС',
+          style: AppText.caption.copyWith(
+            color: AppColors.secondaryLight,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.4,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+  }
+}
+
+/// Плашка срочности опроса: «Осталось N дней» у дедлайна — та же
+/// логика, что у постов ([urgencyLabel]).
+class _SurveyUrgency extends StatelessWidget {
+  const _SurveyUrgency({required this.end});
+  final DateTime? end;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = urgencyLabel(end);
+    if (label == null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(left: 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: AppColors.warning.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.bolt_rounded, size: 13, color: AppColors.warning),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                label,
+                style: AppText.caption.copyWith(
+                  color: AppColors.warning,
+                  fontWeight: FontWeight.w600,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ),
       ),
     );

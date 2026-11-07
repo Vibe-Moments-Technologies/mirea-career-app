@@ -250,7 +250,11 @@ class PostsRepo {
     try {
       final json = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
       final items = json['items'] as List<dynamic>? ?? [];
-      return items.map(FormDefinition.tryParse).whereType<FormDefinition>().toList();
+      // baseUrl — для обложек опросов (forms.image → полный URL).
+      return items
+          .map((e) => FormDefinition.tryParse(e, baseUrl: _baseUrl))
+          .whereType<FormDefinition>()
+          .toList();
     } catch (_) {
       return const [];
     }
@@ -274,7 +278,10 @@ class PostsRepo {
     try {
       final json = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
       final items = json['items'] as List<dynamic>? ?? [];
-      return items.map(FormDefinition.tryParse).whereType<FormDefinition>().firstOrNull;
+      return items
+          .map((e) => FormDefinition.tryParse(e, baseUrl: _baseUrl))
+          .whereType<FormDefinition>()
+          .firstOrNull;
     } catch (_) {
       return null;
     }
@@ -392,7 +399,8 @@ class PostsRepo {
   /// по нему админ видит дубли, а мы считаем уникальных респондентов.
   ///
   /// [result] — чем закончилось: ок / дубль (хук «один ответ с
-  /// устройства» вернул 400 «Вы уже отвечали…») / ошибка сети.
+  /// устройства» вернул 400 «Вы уже отвечали…») / опрос завершён
+  /// (хук вернул 400 «Опрос завершён…») / ошибка сети.
   Future<FormSubmitResult> submitFormResponse({
     required String formId,
     String? postId,
@@ -402,6 +410,7 @@ class PostsRepo {
     if (isOffline) return FormSubmitResult.networkError;
 
     var duplicate = false;
+    var closed = false;
     final ok = await AppHttpClient.instance.postJson(
       '$_baseUrl/api/collections/form_responses/records',
       {
@@ -411,19 +420,24 @@ class PostsRepo {
         'device_id': deviceId,
       },
       onResponse: (code, json) {
-        // Хук form-once.pb.js: 400 + сообщение «Вы уже отвечали…».
-        // Различаем от прочих 400: текст сообщения приходит в поле
-        // message (формат PocketBase ApiError).
+        // Хук form-once.pb.js: 400 + сообщение. Различаем по тексту
+        // (формат PocketBase ApiError, поле message):
+        // «Вы уже отвечали…» — дубль, «Опрос завершён…» — закрыт
+        // вручную или срок вышел.
         final msg = '${json['message'] ?? ''}';
-        if (code == 400 && msg.toLowerCase().contains('уже отвечал')) {
-          duplicate = true;
+        if (code == 400) {
+          if (msg.toLowerCase().contains('уже отвечал')) {
+            duplicate = true;
+          } else if (msg.toLowerCase().contains('заверш')) {
+            closed = true;
+          }
         }
       },
     );
     if (ok) return FormSubmitResult.ok;
-    return duplicate
-        ? FormSubmitResult.duplicate
-        : FormSubmitResult.networkError;
+    if (duplicate) return FormSubmitResult.duplicate;
+    if (closed) return FormSubmitResult.closed;
+    return FormSubmitResult.networkError;
   }
 
   /// Сколько студентов уже заполнили анкету.

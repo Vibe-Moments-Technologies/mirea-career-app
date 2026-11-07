@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/markdown_body.dart';
 import '../../data/catalogs.dart';
 import '../../data/form_history.dart';
 import '../../data/models.dart';
@@ -51,6 +52,11 @@ class FormScreen extends ConsumerStatefulWidget {
 
 class _FormScreenState extends ConsumerState<FormScreen> {
   bool _submitting = false;
+
+  /// Сервер ответил «Опрос завершён» на отправку: форма закрыта,
+  /// показываем итог. Локальное состояние, потому что форма пришла
+  /// в виджет иммутабельной — перечитывать её с сервера избыточно.
+  bool _serverClosed = false;
 
   /// Определение с изъятыми автозаполняемыми шагами (готово к рендеру).
   ///
@@ -163,6 +169,19 @@ class _FormScreenState extends ConsumerState<FormScreen> {
       );
       return;
     }
+    if (result == FormSubmitResult.closed) {
+      // Опрос закрыли (или срок вышел), пока студент заполнял форму:
+      // сервер вернул 400 «Опрос завершён…». Перезапрашиваем форму —
+      // экран покажет итог вместо формы.
+      setState(() {
+        _submitting = false;
+        _serverClosed = true;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Опрос завершён — отвечать больше нельзя.')),
+      );
+      return;
+    }
     if (result != FormSubmitResult.ok) {
       setState(() => _submitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -231,6 +250,18 @@ class _FormScreenState extends ConsumerState<FormScreen> {
   @override
   Widget build(BuildContext context) {
     final form = widget.form;
+
+    // Жизненный цикл опроса (контракт 6.4): закрыт вручную в консоли
+    // или сервер отказал при отправке — вместо формы показываем итог
+    // (result_text), ответы не принимаются. Просроченный (end_date
+    // прошла) — то же: сервер всё равно вернёт 400.
+    if (form.isClosed || _serverClosed || form.isExpired) {
+      return _ClosedScreen(
+        formTitle: form.title,
+        resultText: form.resultText,
+        expired: form.isExpired && !form.isClosed && !_serverClosed,
+      );
+    }
 
     // Уже заполнено раньше (файл истории на устройстве): блокируем
     // повтор — иначе админ увидит дубли ответов. Показываем снимок:
@@ -376,6 +407,122 @@ class _DoneScreen extends StatelessWidget {
       '${dt.day.toString().padLeft(2, '0')}.'
       '${dt.month.toString().padLeft(2, '0')}.'
       '${dt.year}';
+}
+
+/// Экран завершённого опроса: итог вместо формы (контракт 6.4).
+///
+/// Два случая: закрыт вручную в консоли («Завершить и подвести итог» —
+/// показываем result_text) и срок вышел (end_date прошла — итога может
+/// не быть, показываем нейтральное «опрос завершён»). Ответы не
+/// принимаются ни там, ни там: сервер вернёт 400.
+class _ClosedScreen extends StatelessWidget {
+  const _ClosedScreen({
+    required this.formTitle,
+    required this.resultText,
+    this.expired = false,
+  });
+
+  final String formTitle;
+  final String? resultText;
+  final bool expired;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final result = (resultText ?? '').trim();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(formTitle),
+        titleTextStyle: AppText.headline,
+        leading: _BackButton(),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          Center(
+            child: Container(
+              width: 88,
+              height: 88,
+              decoration: BoxDecoration(
+                color: scheme.primary.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                expired
+                    ? Icons.event_busy_rounded
+                    : Icons.flag_circle_rounded,
+                size: 40,
+                color: scheme.primary,
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            expired ? 'Срок опроса истёк' : 'Опрос завершён',
+            textAlign: TextAlign.center,
+            style: AppText.title,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            expired
+                ? 'Отвечать больше нельзя — ответы не принимаются.'
+                : 'Приём ответов закрыт. Спасибо всем участникам!',
+            textAlign: TextAlign.center,
+            style:
+                AppText.footnote.copyWith(color: AppColors.secondaryLight),
+          ),
+          if (result.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            // Итог — текст автора в Markdown: тот же рендер, что у
+            // описаний постов и заметок анкеты.
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: scheme.surface,
+                borderRadius: BorderRadius.circular(AppRadius.card),
+                border: Border.all(color: AppColors.separator(context)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.emoji_events_rounded,
+                          size: 16, color: scheme.primary),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Итоги опроса',
+                        style: AppText.headline
+                            .copyWith(color: scheme.primary),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  MarkdownBody(text: result),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 28),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(52),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
+                ),
+              ),
+              child: const Text('Вернуться'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Кнопка «назад»: обычная, а не стеклянная — фон у шапки не картинка.

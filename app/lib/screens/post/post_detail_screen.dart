@@ -83,9 +83,16 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     // знает, что уже отправлено, и кнопка сразу показывает это.
     final filledForm =
         form != null && ref.watch(hasSubmittedProvider(post.id));
+    // Завершённый опрос (закрыт в консоли или срок вышел): кнопка зовёт
+    // посмотреть итог, а не пройти — FormScreen покажет result_text.
+    final formFinished = form?.isFinished ?? false;
     final applyLabel = isSurvey
-        ? (filledForm ? 'Опрос пройден' : 'Пройти опрос')
-        : (filledForm ? 'Анкета заполнена' : 'Заполнить анкету');
+        ? (formFinished
+            ? 'Опрос завершён'
+            : (filledForm ? 'Опрос пройден' : 'Пройти опрос'))
+        : (formFinished
+            ? 'Опрос завершён'
+            : (filledForm ? 'Анкета заполнена' : 'Заполнить анкету'));
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
 
     return Scaffold(

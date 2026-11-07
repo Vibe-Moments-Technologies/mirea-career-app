@@ -91,13 +91,13 @@ class _CachedRepo extends PostsRepo {
       FormSubmitResult.ok;
 
   /// Опросы раздела «Опросы»: тестовый «сервер» отдаёт фиксированный
-  /// список (не анонимный + анонимный).
+  /// список (не анонимный + анонимный + закрытый + просроченный).
   @override
   Future<List<FormDefinition>> fetchSurveyForms() async => [
-        const FormDefinition(
+        FormDefinition(
           id: 'srv1',
           title: 'Опрос о столовых',
-          definition: {
+          definition: const {
             'type': 'ordered',
             'steps': [
               {
@@ -111,6 +111,9 @@ class _CachedRepo extends PostsRepo {
             ],
           },
           kind: 'survey',
+          // Оформление карточки: автор и срок завершения (контракт 6.4).
+          authorName: 'Профком студентов',
+          endDate: DateTime.now().add(const Duration(days: 3)),
         ),
         const FormDefinition(
           id: 'srv2',
@@ -129,6 +132,48 @@ class _CachedRepo extends PostsRepo {
             ],
           },
           kind: 'anon_survey',
+        ),
+        // Закрыт вручную: в ленте виден с бейджем «Завершён»,
+        // тап открывает итог (result_text) вместо формы.
+        const FormDefinition(
+          id: 'srv3',
+          title: 'Закрытый опрос',
+          definition: {
+            'type': 'ordered',
+            'steps': [
+              {
+                'id': 'q1',
+                'isMandatory': true,
+                'content': [
+                  {'type': 'text', 'text': 'Вопрос закрытого опроса'}
+                ],
+                'answerFormat': {'type': 'bool'},
+              },
+            ],
+          },
+          kind: 'survey',
+          status: 'closed',
+          resultText: 'Победила столовая №2 — **62% голосов**.',
+        ),
+        // Срок вышел: из активной ленты убирается (архив).
+        FormDefinition(
+          id: 'srv4',
+          title: 'Просроченный опрос',
+          definition: const {
+            'type': 'ordered',
+            'steps': [
+              {
+                'id': 'q1',
+                'isMandatory': true,
+                'content': [
+                  {'type': 'text', 'text': 'Вопрос просроченного'}
+                ],
+                'answerFormat': {'type': 'bool'},
+              },
+            ],
+          },
+          kind: 'survey',
+          endDate: DateTime.now().subtract(const Duration(days: 2)),
         ),
       ];
 
@@ -685,7 +730,7 @@ void main() {
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
 
-    testWidgets('вкладка «Опросы» — формы из БД с метками анонимности',
+    testWidgets('вкладка «Опросы» — карточки с автором, сроком и метками',
         (tester) async {
       final c = await container(
         profile: const StudentProfile(completed: true),
@@ -704,11 +749,53 @@ void main() {
       // Формы из fetchSurveyForms тестового «сервера»: не посты.
       expect(find.text('Опрос о столовых'), findsOneWidget);
       expect(find.text('Анонимный опрос'), findsOneWidget);
-      // Метки анонимности — до входа в анкету.
+      // Метки анонимности — до входа в анкету. «Не анонимный» дважды:
+      // srv1 (открытый) и srv3 (закрытый) оба kind = survey.
       expect(find.text('Анонимный'), findsOneWidget);
-      expect(find.text('Не анонимный'), findsOneWidget);
+      expect(find.text('Не анонимный'), findsNWidgets(2));
+
+      // Автор опроса (forms.author_name) — подпись в карточке.
+      expect(find.text('Профком студентов'), findsOneWidget);
+      // Срок завершения: «до <дата>» у открытого опроса.
+      expect(find.textContaining('до '), findsOneWidget);
+
+      // Завершённый вручную опрос виден в ленте с бейджем «Завершён».
+      expect(find.text('Закрытый опрос'), findsOneWidget);
+      expect(find.text('Завершён'), findsOneWidget);
+
+      // Просроченный (end_date прошла) — убран из активной ленты (архив).
+      expect(find.text('Просроченный опрос'), findsNothing);
+
       // Посты ленты на этой вкладке не показываются.
       expect(find.text('Осенняя ярмарка вакансий'), findsNothing);
+      expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
+    });
+
+    testWidgets('завершённый опрос открывает итог вместо формы',
+        (tester) async {
+      // Жизненный цикл (контракт 6.4): status = 'closed' → вместо
+      // формы показываем result_text, ответы не принимаются.
+      final c = await container(
+        profile: const StudentProfile(completed: true),
+        cache: [samplePost()],
+      );
+      addTearDown(c.dispose);
+
+      await tester.pumpWidget(wrap(c, const RootShell()));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Опросы'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Закрытый опрос'));
+      await tester.pumpAndSettle();
+
+      // Итог вместо формы: заголовок + текст result_text, вопроса нет.
+      expect(find.text('Опрос завершён'), findsOneWidget);
+      expect(find.textContaining('Победила столовая №2'), findsOneWidget);
+      expect(find.text('Вопрос закрытого опроса'), findsNothing);
+      // Ответы не принимаются: кнопки отправки нет.
+      expect(find.text('Отправить анкету'), findsNothing);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
 

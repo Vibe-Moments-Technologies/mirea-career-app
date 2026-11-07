@@ -161,12 +161,6 @@ class Organization {
   }
 }
 
-/// Опросник, конфигурируемый в БД.
-///
-/// `definition` — JSON: `{type, id, steps: [{id, content, answerFormat,
-/// isMandatory}]}`. Формат совместим с прежним survey_kit-определением,
-/// но рендерится собственным [FormView] в стиле приложения.
-/// Хранится в отдельной коллекции `forms` и приходит в посте
 /// Чем закончилась отправка анкеты.
 enum FormSubmitResult {
   /// Ушло, сервер записал.
@@ -175,10 +169,20 @@ enum FormSubmitResult {
   /// Хук «один ответ с устройства» отклонил: 400 «Вы уже отвечали…».
   duplicate,
 
+  /// Опрос завершён (закрыт вручную или срок вышел): сервер вернул 400
+  /// «Опрос завершён — отвечать больше нельзя.» (контракт 6.4).
+  closed,
+
   /// Сети нет или сервер недоступен: повторить позже.
   networkError,
 }
 
+/// Опросник, конфигурируемый в БД.
+///
+/// `definition` — JSON: `{type, id, steps: [{id, content, answerFormat,
+/// isMandatory}]}`. Формат совместим с прежним survey_kit-определением,
+/// но рендерится собственным [FormView] в стиле приложения.
+/// Хранится в отдельной коллекции `forms` и приходит в посте
 /// через `expand.form`.
 class FormDefinition {
   const FormDefinition({
@@ -189,6 +193,11 @@ class FormDefinition {
     this.kind,
     this.formId,
     this.oneResponsePerDevice = false,
+    this.authorName,
+    this.imageUrl,
+    this.endDate,
+    this.status,
+    this.resultText,
   });
 
   final String id;
@@ -216,6 +225,27 @@ class FormDefinition {
   /// false — повторный проход разрешён (локальная блокировка НЕ нужна).
   final bool oneResponsePerDevice;
 
+  /// Автор/организатор опроса (forms.author_name): подпись в карточке
+  /// опроса в ленте — компания или человек, который составляет опрос
+  /// и отвечает за него.
+  final String? authorName;
+
+  /// Обложка опроса в ленте (forms.image) — ОДНА картинка, галереи у
+  /// опросов нет. Полный URL собирает репозиторий; пусто → заглушка.
+  final String? imageUrl;
+
+  /// Дата завершения опроса (forms.end_date, конец дня). Прошла →
+  /// опрос в архиве: отвечать нельзя, сервер отдаёт 400.
+  final DateTime? endDate;
+
+  /// Жизненный цикл (forms.status): 'active' | 'closed'.
+  /// ''/null трактуем как active (легаси-записи без поля).
+  final String? status;
+
+  /// Итог завершённого опроса (forms.result_text): показываем ВМЕСТО
+  /// формы, когда status = 'closed'.
+  final String? resultText;
+
   /// Анонимный опрос?
   bool get isAnonSurvey => kind == 'anon_survey';
 
@@ -223,13 +253,43 @@ class FormDefinition {
   bool get isSurveyKind =>
       kind == 'survey' || kind == 'anon_survey';
 
-  static FormDefinition? tryParse(Object? json) {
+  /// Завершён вручную в консоли («Завершить и подвести итог»):
+  /// вместо формы показываем [resultText], ответы не принимаются.
+  bool get isClosed => status == 'closed';
+
+  /// Срок вышел (end_date в прошлом) и опрос не закрыт вручную:
+  /// архив — из активной ленты опросов убирается, отвечать нельзя.
+  /// Конец дня: дата «5 ноября» действительна до 23:59:59 включительно.
+  bool get isExpired {
+    if (isClosed) return false;
+    final end = endDate;
+    if (end == null) return false;
+    final endOfDay = DateTime(end.year, end.month, end.day, 23, 59, 59);
+    return DateTime.now().isAfter(endOfDay);
+  }
+
+  /// Опрос закрыт (вручную или по сроку): форму не показываем.
+  bool get isFinished => isClosed || isExpired;
+
+  /// Идёт приём ответов.
+  bool get isOpen => !isFinished;
+
+  static FormDefinition? tryParse(Object? json, {String baseUrl = ''}) {
     if (json is! Map) return null;
     final id = json['id'];
     final title = json['title'];
     if (id is! String || title is! String) return null;
     final definition = json['definition'];
     if (definition is! Map) return null;
+
+    // Обложка: имя файла → полный URL (как у постов). Без baseUrl
+    // (expand.form у поста) картинка опроса не нужна — у поста своя.
+    String? imageUrl;
+    final imageField = json['image'];
+    if (imageField is String && imageField.isNotEmpty && baseUrl.isNotEmpty) {
+      imageUrl = '$baseUrl/api/files/forms/$id/$imageField';
+    }
+
     return FormDefinition(
       id: id,
       title: title,
@@ -238,6 +298,11 @@ class FormDefinition {
       kind: (json['kind'] as String?)?.trim(),
       formId: _nonEmptyString(json['form_id']),
       oneResponsePerDevice: json['one_response_per_device'] == true,
+      authorName: _nonEmptyString(json['author_name']),
+      imageUrl: _nonEmptyString(json['image_url']) ?? imageUrl,
+      endDate: _date(json['end_date']),
+      status: _nonEmptyString(json['status']),
+      resultText: _nonEmptyString(json['result_text']),
     );
   }
 
@@ -245,6 +310,9 @@ class FormDefinition {
     if (v is String && v.trim().isNotEmpty) return v.trim();
     return null;
   }
+
+  static DateTime? _date(Object? v) =>
+      v is String ? DateTime.tryParse(v) : null;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -254,6 +322,11 @@ class FormDefinition {
         'kind': kind,
         'form_id': formId,
         'one_response_per_device': oneResponsePerDevice,
+        'author_name': authorName,
+        'image_url': imageUrl,
+        'end_date': endDate?.toIso8601String(),
+        'status': status,
+        'result_text': resultText,
       };
 
   /// Текст вопроса шага: первый text-блок в content.
@@ -323,6 +396,10 @@ class Post {
     this.formKind,
     this.formPublicId,
     this.formOncePerDevice = false,
+    this.formAuthorName,
+    this.formEndDate,
+    this.formStatus,
+    this.formResultText,
   });
 
   final String id;
@@ -383,6 +460,12 @@ class Post {
   final String? formPublicId;
   final bool formOncePerDevice;
 
+  /// Жизненный цикл привязанной анкеты — из expand.form.
+  final String? formAuthorName;
+  final DateTime? formEndDate;
+  final String? formStatus;
+  final String? formResultText;
+
   bool get isPartner => organizationType == 'partner';
 
   /// Имя, которым подписываем автора поста: организация, иначе author_name.
@@ -394,6 +477,8 @@ class Post {
   /// kind/one_response_per_device/form_id переносятся из expand.form:
   /// без этого пост-анкеты теряли флаг «один ответ с устройства» и
   /// тип — блокировка повтора не срабатывала из карточки поста.
+  /// Жизненный цикл (status/end_date/result_text) — тоже: закрытый
+  /// опрос не должен открывать форму даже через пост.
   FormDefinition? get form => formId == null || formDefinition == null
       ? null
       : FormDefinition(
@@ -406,6 +491,10 @@ class Post {
               ? formPublicId!.trim()
               : null,
           oneResponsePerDevice: formOncePerDevice,
+          authorName: formAuthorName,
+          endDate: formEndDate,
+          status: formStatus,
+          resultText: formResultText,
         );
 
   /// Пост актуален если end_date ещё не наступил (или не указан).
@@ -501,6 +590,10 @@ class Post {
       formKind: form?.kind,
       formPublicId: form?.formId,
       formOncePerDevice: form?.oneResponsePerDevice ?? false,
+      formAuthorName: form?.authorName,
+      formEndDate: form?.endDate,
+      formStatus: form?.status,
+      formResultText: form?.resultText,
     );
   }
 
