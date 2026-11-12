@@ -272,12 +272,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             }
                             final postIndex =
                                 i - (!profile.hasAnswers && _tab == 'foryou' ? 1 : 0);
+                            final pItem = posts[postIndex];
+                            final formId = pItem.form?.id ?? pItem.formId;
+                            String? formStatus;
+                            if (formId != null && formId.isNotEmpty) {
+                              final submitted = ref.watch(hasSubmittedFormProvider(formId)) ||
+                                  ref.watch(formSubmissionsProvider).any((x) => x.formId == formId || x.postId == pItem.id);
+                              final opened = ref.watch(localStoreProvider).hasOpenedForm(formId);
+                              formStatus = submitted ? 'sent' : (opened ? 'opened' : null);
+                            }
                             return RevealOnMount(
                               child: PostCard(
-                                post: posts[postIndex],
-                                onTap: () => _open(posts[postIndex]),
-                                filledForm: ref.watch(
-                                    hasSubmittedProvider(posts[postIndex].id)),
+                                post: pItem,
+                                onTap: () => _open(pItem),
+                                filledForm: formStatus == 'sent',
+                                formStatus: formStatus,
                               ),
                             );
                           },
@@ -397,80 +406,102 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  void _open(Post post) {
-    FocusManager.instance.primaryFocus?.unfocus();
-    // Опрос в ленте (контракт 6.4): карточка выглядит как пост, но тап
-    // СРАЗУ открывает опросник — без экрана деталей поста.
-    if (post.type == 'survey' && post.form != null) {
-      Navigator.of(context).push(
-        appRoute(
-          context,
-          FormScreen(
-            form: post.form!,
-            postId: post.id,
-            postTitle: post.title,
+  bool _opening = false;
+
+  Future<void> _open(Post post) async {
+    if (_opening) return;
+    _opening = true;
+    try {
+      FocusManager.instance.primaryFocus?.unfocus();
+      if (post.type == 'survey' && post.form != null) {
+        await ref.read(localStoreProvider).markFormOpened(post.form!.id);
+        if (!mounted) return;
+        await Navigator.of(context).push(
+          appRoute(
+            context,
+            FormScreen(
+              form: post.form!,
+              postId: post.id,
+              postTitle: post.title,
+            ),
           ),
-        ),
+        );
+        if (mounted) setState(() {});
+        return;
+      }
+      await Navigator.of(context).push(
+        appRoute(context, PostDetailScreen(post: post)),
       );
-      return;
+      if (mounted) setState(() {});
+    } finally {
+      _opening = false;
     }
-    Navigator.of(context).push(
-      appRoute(context, PostDetailScreen(post: post)),
-    );
   }
 
   /// Баннер с пост-ссылкой (post:XXXXXX): пост ищется по публичному
   /// номеру и открывается стандартным экраном деталей.
   Future<void> _openByPublicId(String publicId) async {
-    FocusManager.instance.primaryFocus?.unfocus();
-
-    final repo = ref.read(postsRepoProvider);
-    final post = await repo.fetchPostByPublicId(publicId);
-    if (!mounted) return;
-    if (post == null) {
-      // Разные причины — разные сообщения: «нет сети» и «пост удалили»
-      // лечатся по-разному, а единое «недоступен» скрывало бы баг.
-      final offline = repo.isOffline;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            offline
-                ? 'Нет соединения — попробуйте ещё раз'
-                : 'Пост $publicId не найден',
+    if (_opening) return;
+    _opening = true;
+    try {
+      FocusManager.instance.primaryFocus?.unfocus();
+      final repo = ref.read(postsRepoProvider);
+      final post = await repo.fetchPostByPublicId(publicId);
+      if (!mounted) return;
+      if (post == null) {
+        final offline = repo.isOffline;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              offline
+                  ? 'Нет соединения — попробуйте ещё раз'
+                  : 'Пост $publicId не найден',
+            ),
           ),
-        ),
+        );
+        return;
+      }
+      await Navigator.of(context).push(
+        appRoute(context, PostDetailScreen(post: post)),
       );
-      return;
+      if (mounted) setState(() {});
+    } finally {
+      _opening = false;
     }
-    Navigator.of(context).push(
-      appRoute(context, PostDetailScreen(post: post)),
-    );
   }
 
   /// Баннер с анкетой-ссылкой (link_form = form_id): опросник ищется
   /// по публичному номеру и открывается СРАЗУ, без карточки поста.
   Future<void> _openFormById(String formId) async {
-    FocusManager.instance.primaryFocus?.unfocus();
-
-    final repo = ref.read(postsRepoProvider);
-    final form = await repo.fetchFormByPublicId(formId);
-    if (!mounted) return;
-    if (form == null) {
-      final offline = repo.isOffline;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            offline
-                ? 'Нет соединения — попробуйте ещё раз'
-                : 'Анкета $formId не найдена',
+    if (_opening) return;
+    _opening = true;
+    try {
+      FocusManager.instance.primaryFocus?.unfocus();
+      final repo = ref.read(postsRepoProvider);
+      final form = await repo.fetchFormByPublicId(formId);
+      if (!mounted) return;
+      if (form == null) {
+        final offline = repo.isOffline;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              offline
+                  ? 'Нет соединения — попробуйте ещё раз'
+                  : 'Анкета $formId не найдена',
+            ),
           ),
-        ),
+        );
+        return;
+      }
+      await ref.read(localStoreProvider).markFormOpened(form.id);
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        appRoute(context, FormScreen(form: form)),
       );
-      return;
+      if (mounted) setState(() {});
+    } finally {
+      _opening = false;
     }
-    Navigator.of(context).push(
-      appRoute(context, FormScreen(form: form)),
-    );
   }
 }
 
@@ -882,13 +913,21 @@ class _SurveyCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    // Чип «Отвечено» — только для одноразовых опросов: повторно
-    // проходимые показываются как доступные всегда.
-    final answered = form.oneResponsePerDevice &&
-        ref.watch(hasSubmittedFormProvider(form.id));
+    final store = ref.watch(localStoreProvider);
+    final submitted = ref.watch(hasSubmittedFormProvider(form.id)) ||
+        (store.profile.completed == false ? false : ref
+            .watch(formSubmissionsProvider)
+            .any((s) => s.formId == form.id));
+    // opened tracking is in LocalStore (not reactive provider), read directly
+    final opened = store.hasOpenedForm(form.id);
+    final status = submitted
+        ? _FormVisitStatus.sent
+        : opened
+            ? _FormVisitStatus.opened
+            : _FormVisitStatus.none;
     final anon = form.isAnonSurvey;
     final finished = form.isFinished;
-    final dim = answered || finished;
+    final dim = finished;
 
     return Material(
       color: scheme.surface,
@@ -898,9 +937,13 @@ class _SurveyCard extends ConsumerWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => Navigator.of(context).push(
-          appRoute(context, FormScreen(form: form)),
-        ),
+        onTap: () async {
+          await ref.read(localStoreProvider).markFormOpened(form.id);
+          if (!context.mounted) return;
+          await Navigator.of(context).push(
+            appRoute(context, FormScreen(form: form)),
+          );
+        },
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(
@@ -980,22 +1023,8 @@ class _SurveyCard extends ConsumerWidget {
                             Icons.event_rounded,
                             'до ${dateShort(form.endDate!)}',
                           ),
-                        if (answered)
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.check_circle_rounded,
-                                  size: 14, color: AppColors.success),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Отвечено',
-                                style: AppText.caption.copyWith(
-                                  color: AppColors.success,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
+                        if (status != _FormVisitStatus.none)
+                          _FormStatusLabel(status: status),
                       ],
                     ),
                   ],
@@ -1171,6 +1200,25 @@ class _SurveyUrgency extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+
+enum _FormVisitStatus { none, opened, sent }
+
+class _FormStatusLabel extends StatelessWidget {
+  const _FormStatusLabel({required this.status});
+  final _FormVisitStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final sent = status == _FormVisitStatus.sent;
+    final color = sent ? AppColors.success : AppColors.danger;
+    final text = sent ? 'отправлено' : 'не отправлено';
+    return Text(
+      text,
+      style: AppText.caption.copyWith(color: color, fontWeight: FontWeight.w600),
     );
   }
 }

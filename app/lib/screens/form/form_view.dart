@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/markdown_body.dart';
+import '../../data/catalogs.dart';
 import '../../data/models.dart';
 import '../../state/providers.dart';
 
@@ -344,13 +345,10 @@ class _FormViewState extends ConsumerState<FormView> {
     setState(() => _page++);
   }
 
-  /// Институты из справочника БД (коллекция institutes, запас офлайн).
-  /// Загружаются лениво: нужны только для student-поля «institute».
-  List<String> get _instituteTitles {
-    final list =
-        ref.watch(onboardingCatalogProvider).value?.institutes ?? const <InstituteRef>[];
-    return [for (final i in list) i.title];
-  }
+  /// Институты для student-поля «institute»: варианты из локального
+  /// справочника Catalogs, если профиль не подставил значение.
+  List<String> get _instituteTitles =>
+      [for (final i in Catalogs.institutes) i.title];
 
   /// Номер вопроса на странице: сквозная нумерация по анкете — вопросы
   /// на 2-й странице не начинаются с «1.» заново (контекст не теряется).
@@ -868,9 +866,17 @@ class _Question extends StatelessWidget {
     final label = _studentLabels[field] ?? field;
     final current = '${answers[field] ?? prefill[field] ?? ''}';
 
-    // Институт — ВЫБОР из коллекции institutes (не текст): опечатки и
-    // «ИТ»/«Институт информационных технологий» в ответах убивают
-    // аналитику. Список пуст (офлайн-холодный старт) — поле текстом.
+    // Институт берётся из профиля (prefill). Если в профиле не указан —
+    // даётся выбор из вариантов Catalogs.institutes.
+    final profileInstitute = (prefill['institute'] ?? '').toString().trim();
+    if (field == 'institute' && profileInstitute.isNotEmpty) {
+      return TextFormField(
+        key: ValueKey('student-$index-$field'),
+        initialValue: profileInstitute,
+        readOnly: true,
+        decoration: _fieldDecoration(context, label),
+      );
+    }
     if (field == 'institute' && institutes.isNotEmpty) {
       final items = [
         for (final t in institutes)

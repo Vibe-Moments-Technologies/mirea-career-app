@@ -34,14 +34,17 @@ class PostCard extends StatelessWidget {
     required this.post,
     required this.onTap,
     this.filledForm = false,
+    this.formStatus,
   });
 
   final Post post;
   final VoidCallback onTap;
 
-  /// Анкета поста уже заполнена (история на устройстве): на карточке
-  /// сразу виден статус, чтобы не открывать детали для проверки.
+  /// Анкета поста уже заполнена (история на устройстве).
   final bool filledForm;
+
+  /// Статус взаимодействия с формой/опросом: 'sent' | 'opened' | null.
+  final String? formStatus;
 
   @override
   Widget build(BuildContext context) {
@@ -58,9 +61,11 @@ class PostCard extends StatelessWidget {
         onTap: onTap,
         highlightColor: scheme.primary.withValues(alpha: 0.06),
         splashColor: scheme.primary.withValues(alpha: 0.08),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               PostCover(
@@ -104,35 +109,27 @@ class PostCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
-                    // Анкета уже отправлена: одна строка, не плашка.
-                    // Зелёная галочка читается как «сделано», не спорит
-                    // с плашкой срочности и не занимает место у заголовка.
-                    if (filledForm)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.check_circle_rounded,
-                              size: 14,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                            const SizedBox(width: 5),
-                            Text(
-                              'Анкета заполнена',
-                              style: AppText.caption.copyWith(
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+
                     _Facts(post: post),
                   ],
                 ),
               ),
             ],
           ),
+            ),
+            if (formStatus == 'sent' || formStatus == 'opened')
+              Positioned(
+                top: 10,
+                right: 10,
+                child: Text(
+                  formStatus == 'sent' ? 'отправлено' : 'не отправлено',
+                  style: AppText.caption.copyWith(
+                    color: formStatus == 'sent' ? AppColors.success : AppColors.danger,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

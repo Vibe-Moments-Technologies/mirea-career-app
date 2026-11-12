@@ -51,7 +51,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     // чтобы в профиле сразу стояло верное значение.
     final course =
         _p.course ?? StudentProfile.courseFromGroup(_p.group);
-    widget.onDone(_p.copyWith(completed: true, course: course));
+    final level = _p.level ?? StudentProfile.levelFromGroup(_p.group);
+    widget.onDone(
+        _p.copyWith(completed: true, course: course, level: level));
   }
 
   void _next() {
@@ -228,10 +230,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             ? _p.copyWith(clearDepartment: true)
                             : _p.copyWith(department: v)),
                   ),
-                4 => _StepGroup(
-                    profile: _p,
-                    onChanged: (p) => setState(() => _p = p),
-                  ),
+              4 => _StepGroup(
+                  profile: _p,
+                  onChanged: (p) => setState(() {
+                    final course =
+                        p.course ?? StudentProfile.courseFromGroup(p.group);
+                    final level =
+                        p.level ?? StudentProfile.levelFromGroup(p.group);
+                    _p = p.copyWith(course: course, level: level);
+                  }),
+                ),
                 5 => _StepLevelAndCourse(
                     profile: _p,
                     onChanged: (p) => setState(() => _p = p),
@@ -548,14 +556,16 @@ class _StepLevelAndCourse extends ConsumerWidget {
     // Вычисляем курс ЗАНОВО из группы: подпись «по группе выходит»
     // должна говорить про расчёт, а не про то, что человек уже выбрал.
     final fromGroup = StudentProfile.courseFromGroup(profile.group);
+    final fromLevel = StudentProfile.levelFromGroup(profile.group);
     final semester = _semesterLabel();
 
     return _StepScaffold(
       title: 'Уровень и курс',
-      subtitle: fromGroup != null
-          ? 'По вашей группе получается $fromGroup-й курс '
-              '($semester) — если что-то не так, поправьте.'
-          : 'Курс не удалось определить по группе — выберите вручную.',
+      subtitle: fromGroup != null || fromLevel != null
+          ? 'По вашей группе: ${fromLevel != null ? Catalogs.levelTitle(fromLevel) : 'уровень не определён'}, '
+              '${fromGroup != null ? '$fromGroup-й курс' : 'курс не определён'} ($semester). '
+              'Если что-то не так, поправьте.'
+          : 'Курс и уровень не удалось определить по группе — выберите вручную.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

@@ -1,12 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../data/app_http_client.dart';
 import '../../data/crash_reporting.dart';
 import '../../data/models.dart';
 import '../theme/app_theme.dart';
+import '../../state/providers.dart';
 
 /// Индекс слайда для физически бесконечного `PageView`.
 ///
@@ -30,7 +32,7 @@ int spotlightIndex(int page, int count) {
 ///
 /// Если слайдов нет, витрина не строится — пустой блок выше ленты только
 /// отнимал бы экран.
-class SpotlightGallery extends StatefulWidget {
+class SpotlightGallery extends ConsumerStatefulWidget {
   const SpotlightGallery({
     super.key,
     required this.banners,
@@ -39,20 +41,14 @@ class SpotlightGallery extends StatefulWidget {
   });
 
   final List<SpotlightBanner> banners;
-
-  /// Пост-ссылка баннера (link_post / "post:XXXXXX"): хост открывает
-  /// экран поста по публичному номеру.
   final void Function(String publicId)? onOpenPost;
-
-  /// Анкета-ссылка баннера (link_form, приоритет ниже поста): хост
-  /// открывает опросник СРАЗУ по form_id, без карточки поста.
   final void Function(String formId)? onOpenForm;
 
   @override
-  State<SpotlightGallery> createState() => _SpotlightGalleryState();
+  ConsumerState<SpotlightGallery> createState() => _SpotlightGalleryState();
 }
 
-class _SpotlightGalleryState extends State<SpotlightGallery> {
+class _SpotlightGalleryState extends ConsumerState<SpotlightGallery> {
   static const _period = Duration(seconds: 5);
   static const _height = 150.0;
 
@@ -267,13 +263,16 @@ class _Card extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (banner.linkFormId != null)
+                  Positioned(
+                    left: 10,
+                    top: 10,
+                    child: _FormStatusBadge(formId: banner.linkFormId!),
+                  ),
                 if (hasLink)
                   Positioned(
                     right: 10,
-                    top: 10,
-                    // Пост, анкета и внешний URL — разные значки: «карточка
-                    // поста» / «сразу опросник» / «уводит в браузер» —
-                    // по бейджу видно ДО тапа.
+                    bottom: 10,
                     child: _OpenBadge(
                       kind: banner.linkPostId != null
                           ? _BadgeKind.post
@@ -350,6 +349,34 @@ class _Cover extends StatelessWidget {
         );
         return place;
       }),
+    );
+  }
+}
+
+
+class _FormStatusBadge extends ConsumerWidget {
+  const _FormStatusBadge({required this.formId});
+  final String formId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final submitted = ref.watch(hasSubmittedFormProvider(formId)) ||
+        ref.watch(formSubmissionsProvider).any((s) => s.formId == formId);
+    final opened = ref.watch(localStoreProvider).hasOpenedForm(formId);
+    if (!submitted && !opened) return const SizedBox.shrink();
+    final sent = submitted;
+    final color = sent ? AppColors.success : AppColors.danger;
+    final text = sent ? 'отправлено' : 'не отправлено';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+      ),
+      child: Text(
+        text,
+        style: AppText.caption.copyWith(color: color, fontWeight: FontWeight.w700),
+      ),
     );
   }
 }

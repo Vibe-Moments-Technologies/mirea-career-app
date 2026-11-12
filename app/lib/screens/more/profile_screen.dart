@@ -66,10 +66,11 @@ class ProfileScreen extends ConsumerWidget {
                   hint: 'Например, ИКБО-01-23',
                   // Курс пересчитывается из года в номере группы.
                   apply: (v) => v.isEmpty
-                      ? profile.copyWith(clearGroup: true)
+                      ? profile.copyWith(clearGroup: true, clearCourse: true, clearLevel: true)
                       : profile.copyWith(
                           group: v,
                           course: StudentProfile.courseFromGroup(v),
+                          level: StudentProfile.levelFromGroup(v) ?? profile.level,
                         ),
                 ),
               ),
@@ -153,11 +154,11 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
-  /// Семестр по курсу: до января — осенний (1-й), после — весенний (2-й).
+  /// Семестр по курсу: до января — осенний, после — весенний.
   static String _semesterOf(int course) {
     final month = DateTime.now().month;
-    final sem = month >= 9 || month == 1 ? 1 : 2;
-    return ', $sem-й семестр';
+    final sem = month >= 9 || month == 1 ? 'осенний' : 'весенний';
+    return ', $sem семестр';
   }
 
   /// Выбор курса: шторка 1–6.

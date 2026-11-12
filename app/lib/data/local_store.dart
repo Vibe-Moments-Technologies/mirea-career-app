@@ -66,6 +66,30 @@ class StudentProfile {
     return elapsedYears;
   }
 
+  /// Уровень обучения из 3-й буквы номера группы:
+  /// Б — бакалавриат, С — специалитет, М — магистратура, А — аспирантура.
+  /// Абитуриента и выпускника по группе определить нельзя.
+  static String? levelFromGroup(String? group) {
+    final g = group?.trim();
+    if (g == null || g.length < 3) return null;
+    switch (g[2].toUpperCase()) {
+      case 'Б':
+      case 'B':
+        return 'bachelor';
+      case 'С':
+      case 'C':
+        return 'specialist';
+      case 'М':
+      case 'M':
+        return 'master';
+      case 'А':
+      case 'A':
+        return 'postgrad';
+      default:
+        return null;
+    }
+  }
+
   /// `copyWith` умеет и сбрасывать поле: передайте `null` явно через
   /// `clearCampus: true` (иначе, как обычно в Dart, null = «не менять»).
   StudentProfile copyWith({
@@ -159,6 +183,7 @@ class LocalStore {
   static const _kCatalog = 'catalog_state';
   static const _kSpotlight = 'spotlight_cache';
   static const _kDeviceId = 'device_id';
+  static const _kOpenedForms = 'opened_forms';
 
   // ---------- Устройство ----------
 
@@ -263,9 +288,22 @@ class LocalStore {
   Future<void> saveFeedCache(List<Map<String, dynamic>> posts) =>
       _prefs.setString(_kFeedCache, jsonEncode(posts));
 
+  // ---------- Открытые (но не обязательно отправленные) формы ----------
+  List<String> get openedForms => _prefs.getStringList(_kOpenedForms) ?? const [];
+
+  bool hasOpenedForm(String key) => openedForms.contains(key);
+
+  Future<void> markFormOpened(String key) async {
+    if (key.isEmpty) return;
+    final list = [...openedForms];
+    if (list.contains(key)) return;
+    list.add(key);
+    await _prefs.setStringList(_kOpenedForms, list);
+  }
+
   // ---------- Сброс ----------
   Future<void> reset() async {
-    for (final k in [_kProfile, _kFavorites, _kViewed, _kPending, _kFeedCache, _kCatalog, _kSpotlight]) {
+    for (final k in [_kProfile, _kFavorites, _kViewed, _kPending, _kFeedCache, _kCatalog, _kSpotlight, _kOpenedForms]) {
       await _prefs.remove(k);
     }
   }

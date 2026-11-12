@@ -263,28 +263,12 @@ class _FormScreenState extends ConsumerState<FormScreen> {
       );
     }
 
-    // Уже заполнено раньше (файл истории на устройстве): блокируем
-    // повтор — иначе админ увидит дубли ответов. Показываем снимок:
-    // когда отправлено и что ответили.
-    //
-    // Блокируем ТОЛЬКО при one_response_per_device (флаг формы в БД):
-    // повторные прохождения разрешены, если галочка снята в консоли.
-    // Остаётся страховка сервера: хук вернёт 400 на дубль, если флаг
-    // всё же стоит.
-    final onceOnly = form.oneResponsePerDevice;
-    final existing = _submitted ??
-        (onceOnly &&
-                widget.postId != null &&
-                ref.watch(hasSubmittedProvider(widget.postId!))
-            ? ref.read(formSubmissionsProvider.notifier).forPost(widget.postId!)
-            : onceOnly && ref.watch(hasSubmittedFormProvider(form.id))
-                ? ref.read(formSubmissionsProvider.notifier).forForm(form.id)
-                : null);
-
-    if (existing != null) {
+    // После успешной отправки в этой сессии показываем экран «готово».
+    // Повторное прохождение разрешено даже если форма уже отправлялась.
+    if (_submitted != null) {
       return _DoneScreen(
         formTitle: form.title,
-        submission: existing,
+        submission: _submitted!,
         responsesCount: _responsesCount,
       );
     }

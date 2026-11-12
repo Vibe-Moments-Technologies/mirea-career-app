@@ -40,6 +40,7 @@ class PostDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
+  bool _opening = false;
   @override
   void initState() {
     super.initState();
@@ -137,16 +138,26 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                             : (isSurvey
                                 ? Icons.poll_rounded
                                 : Icons.description_outlined),
-                        onTap: () => Navigator.of(context).push(
-                          appRoute(
-                            context,
-                            FormScreen(
-                              form: form,
-                              postId: post.id,
-                              postTitle: post.title,
-                            ),
-                          ),
-                        ),
+                        onTap: () async {
+                          if (_opening) return;
+                          _opening = true;
+                          try {
+                            await ref.read(localStoreProvider).markFormOpened(form.id);
+                            if (!context.mounted) return;
+                            await Navigator.of(context).push(
+                              appRoute(
+                                context,
+                                FormScreen(
+                                  form: form,
+                                  postId: post.id,
+                                  postTitle: post.title,
+                                ),
+                              ),
+                            );
+                          } finally {
+                            _opening = false;
+                          }
+                        },
                       )
                     else if (link.isNotEmpty)
                       _ApplyButton(
