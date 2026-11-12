@@ -265,7 +265,7 @@ class _Card extends StatelessWidget {
                 ),
                 if (banner.linkFormId != null)
                   Positioned(
-                    left: 10,
+                    right: 10,
                     top: 10,
                     child: _FormStatusBadge(formId: banner.linkFormId!),
                   ),

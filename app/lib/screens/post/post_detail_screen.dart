@@ -142,7 +142,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                           if (_opening) return;
                           _opening = true;
                           try {
-                            await ref.read(localStoreProvider).markFormOpened(form.id);
+                            ref.read(localStoreProvider).markFormOpened(form.id);
                             if (!context.mounted) return;
                             await Navigator.of(context).push(
                               appRoute(

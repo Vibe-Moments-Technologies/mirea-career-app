@@ -550,8 +550,12 @@ class _StepLevelAndCourse extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final catalog = ref.watch(onboardingCatalogProvider).value;
-    final levels = catalog?.levels ??
-        [for (final l in Catalogs.levels) LevelRef(code: l.id, title: l.title)];
+    final remote = catalog?.levels ?? const <LevelRef>[];
+    final byCode = {for (final l in remote) l.code: l};
+    for (final l in Catalogs.levels) {
+      byCode.putIfAbsent(l.id, () => LevelRef(code: l.id, title: l.title));
+    }
+    final levels = [for (final l in Catalogs.levels) byCode[l.id]!];
 
     // Вычисляем курс ЗАНОВО из группы: подпись «по группе выходит»
     // должна говорить про расчёт, а не про то, что человек уже выбрал.
@@ -618,7 +622,7 @@ class _StepLevelAndCourse extends ConsumerWidget {
   /// Осенний семестр — с 1 сентября по 31 января, весенний — с 1 февраля.
   static String _semesterLabel() {
     final m = DateTime.now().month;
-    return (m >= 9 || m == 1) ? '1-й семестр' : '2-й семестр';
+    return (m >= 9 || m == 1) ? 'осенний семестр' : 'весенний семестр';
   }
 }
 
@@ -630,13 +634,11 @@ class _StepInstitute extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final catalog = ref.watch(onboardingCatalogProvider).value;
-    final institutes = catalog?.institutes ??
-        [
-          // Запас до загрузки: как Catalogs, но через те же типы.
-          for (final i in Catalogs.institutes)
-            InstituteRef(code: i.id, title: i.title, short: i.short),
-        ];
+    // Институты — из актуального локального справочника.
+    final institutes = [
+      for (final i in Catalogs.institutes)
+        InstituteRef(code: i.id, title: i.title, short: i.short),
+    ];
 
     return _StepScaffold(
       title: 'Ваш институт',

@@ -414,7 +414,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     try {
       FocusManager.instance.primaryFocus?.unfocus();
       if (post.type == 'survey' && post.form != null) {
-        await ref.read(localStoreProvider).markFormOpened(post.form!.id);
+        ref.read(localStoreProvider).markFormOpened(post.form!.id);
         if (!mounted) return;
         await Navigator.of(context).push(
           appRoute(
@@ -493,7 +493,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         );
         return;
       }
-      await ref.read(localStoreProvider).markFormOpened(form.id);
+      ref.read(localStoreProvider).markFormOpened(form.id);
       if (!mounted) return;
       await Navigator.of(context).push(
         appRoute(context, FormScreen(form: form)),
@@ -937,10 +937,9 @@ class _SurveyCard extends ConsumerWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () async {
-          await ref.read(localStoreProvider).markFormOpened(form.id);
-          if (!context.mounted) return;
-          await Navigator.of(context).push(
+        onTap: () {
+          ref.read(localStoreProvider).markFormOpened(form.id);
+          Navigator.of(context).push(
             appRoute(context, FormScreen(form: form)),
           );
         },
