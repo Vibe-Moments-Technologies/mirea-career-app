@@ -880,9 +880,13 @@ class _Question extends StatelessWidget {
     if (field == 'institute' && institutes.isNotEmpty) {
       final items = [
         for (final t in institutes)
-          DropdownMenuItem<String>(value: t, child: Text(t)),
+          DropdownMenuItem<String>(
+            value: t,
+            child: Text(t, overflow: TextOverflow.ellipsis),
+          ),
       ];
       return DropdownButtonFormField<String>(
+        isExpanded: true,
         initialValue: items.any((i) => i.value == current) ? current : null,
         items: items,
         decoration: _fieldDecoration(context, label),

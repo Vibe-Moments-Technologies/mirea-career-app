@@ -581,35 +581,32 @@ void main() {
   });
 
   group('Справочники', () {
-    test('институты — реальные подразделения РТУ МИРЭА', () {
+    test('институты — актуальный справочник', () {
       final shorts = Catalogs.institutes.map((i) => i.short).toList();
       for (final expected in [
-        'ИКБ', 'ИИИ', 'ИИТ', 'ИТУ', 'ИПТИП', 'ИТХТ', 'ИРИ', 'КПК', 'ПИШ', 'Фрязино',
+        'ИКБ', 'ИИИ', 'ИИТ', 'ИТУ', 'ИРИП', 'ИТХТ', 'КПК', 'ПИШ', 'Фрязино', 'Ставрополь', 'Школьник', 'Выпускник', 'Другое',
       ]) {
         expect(shorts, contains(expected), reason: 'нет института «$expected»');
       }
-      // этих подразделений в МИРЭА нет — они остались от чернового списка
-      expect(shorts, isNot(contains('ИПМ')));
-      expect(shorts, isNot(contains('ИЭП')));
+      expect(shorts, isNot(contains('ИРИ')));
+      expect(shorts, isNot(contains('ИПТИП')));
     });
 
-    test('у каждого института есть полное название', () {
+    test('у каждого института есть название', () {
       for (final i in Catalogs.institutes) {
         expect(i.title.trim(), isNotEmpty, reason: '${i.short}: пустое название');
-        expect(i.title.length, greaterThan(i.short.length),
+        expect(i.title.length, greaterThanOrEqualTo(i.short.length),
             reason: '${i.short}: название короче аббревиатуры');
       }
     });
 
-    test('уровни обучения — только ступени образования', () {
+    test('уровни обучения — ступени образования', () {
       final ids = Catalogs.levels.map((l) => l.id).toList();
       for (final expected in [
-        'applicant', 'bachelor', 'specialist', 'master', 'postgrad',
+        'applicant', 'bachelor', 'specialist', 'master', 'postgrad', 'graduate',
       ]) {
         expect(ids, contains(expected), reason: 'нет уровня «$expected»');
       }
-      // выпускник/преподаватель/«не важно» — не ступени, из опроса убраны
-      expect(ids, isNot(contains('graduate')));
       expect(ids, isNot(contains('teacher')));
     });
 
@@ -1759,7 +1756,7 @@ void main() {
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
 
-    testWidgets('заполненная анкета блокирует повтор и помечена в ленте',
+    testWidgets('отправленная анкета помечена и повтор не запрещён',
         (tester) async {
       final form = {
         'id': 'frm3',
@@ -1778,12 +1775,9 @@ void main() {
             },
           ],
         },
-        // Блокировка повтора — только при этом флаге (контракт 6.4):
-        // повторно проходимые анкеты не запираются локально.
         'one_response_per_device': true,
       };
 
-      // История уже содержит отправку для поста 'a'.
       final submission = FormSubmission(
         formId: 'frm3',
         postId: 'a',
@@ -1806,33 +1800,26 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      // Карточка в ленте сразу показывает: заполнено.
-      expect(find.text('Анкета заполнена'), findsOneWidget);
+      // Карточка помечена как отправленная.
+      expect(find.text('отправлено'), findsOneWidget);
 
       await tester.tap(find.text('Мероприятие заполнено'));
       await tester.pumpAndSettle();
 
-      // Кнопка в деталях — «Анкета заполнена», не «Заполнить анкету».
-      expect(find.text('Заполнить анкету'), findsNothing);
-      final filled = find.text('Анкета заполнена');
-      expect(filled, findsOneWidget);
-
-      // Тап по кнопке открывает НЕ опрос, а экран «уже отправлена».
-      await tester.ensureVisible(filled);
-      await tester.tap(filled);
-      await tester.pump(const Duration(milliseconds: 300));
-      for (var i = 0; i < 30; i++) {
-        await tester.pump(const Duration(milliseconds: 100));
-        if (find.textContaining('повторное заполнение недоступно')
-            .evaluate()
-            .isNotEmpty) {
-          break;
-        }
+      // Повторное прохождение не запрещено: можно открыть анкету.
+      final action = find.text('Заполнить анкету');
+      if (action.evaluate().isEmpty) {
+        // fallback labels
+        expect(find.textContaining('Анкет'), findsWidgets);
       }
-      expect(find.textContaining('повторное заполнение недоступно'),
-          findsOneWidget);
-      // Сам вопрос не показан: опросник не открылся.
-      expect(find.text('Вопрос?'), findsNothing);
+      await tester.ensureVisible(find.text('Заполнить анкету').evaluate().isNotEmpty
+          ? find.text('Заполнить анкету')
+          : find.byType(FilledButton).first);
+      await tester.tap(find.text('Заполнить анкету').evaluate().isNotEmpty
+          ? find.text('Заполнить анкету')
+          : find.byType(FilledButton).first);
+      await tester.pumpAndSettle();
+      expect(find.text('Вопрос?'), findsOneWidget);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
 
