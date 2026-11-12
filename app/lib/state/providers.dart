@@ -344,14 +344,9 @@ final spotlightProvider =
 
 // ---------------- Интересы ----------------
 
-/// Теги для онбординга из БД (коллекция interests, настраивается панелью).
-///
-/// Пусто (нет сети/коллекция пуста) — встроенный набор из Catalogs:
-/// опрос не должен терять вопросы из-за недоступности БД.
+/// Теги для онбординга — только из встроенного справочника приложения.
 final interestsProvider = FutureProvider<List<String>>((ref) async {
-  final repo = ref.watch(postsRepoProvider);
-  final remote = await repo.fetchInterests();
-  return remote.isNotEmpty ? remote : Catalogs.interests.map((i) => i.title).toList();
+  return Catalogs.interests.map((i) => i.title).toList();
 });
 
 // ---------------- Справочники онбординга ----------------
