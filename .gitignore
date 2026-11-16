@@ -36,3 +36,6 @@ admin/
 .agent-docs/
 
 pb_hooks/read-logs.sh
+
+# Дизайн-скилл: временные артефакты (direction.json)
+.taste-skill/
