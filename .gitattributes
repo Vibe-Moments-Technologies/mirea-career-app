@@ -4,6 +4,17 @@
 # в CI (shell-скрипты, versioning.py), ломаются на "\r: command not found".
 * text=auto eol=lf
 
+# Кодировка исходников — UTF-8 без BOM. Кириллица в комментариях, сид-данных и
+# текстах интерфейса: если файл уедет в CP1251, в БД осядет «РљР°СЂСЊРµСЂР°»
+# (это уже случалось — 0005_org_contacts.sql залилась мимо UTF-8).
+*.sql   text working-tree-encoding=UTF-8
+*.ts    text working-tree-encoding=UTF-8
+*.dart  text working-tree-encoding=UTF-8
+*.md    text working-tree-encoding=UTF-8
+*.json  text working-tree-encoding=UTF-8
+*.js    text working-tree-encoding=UTF-8
+*.ps1   text eol=crlf working-tree-encoding=UTF-8
+
 # Бинарные файлы — не трогать
 *.png binary
 *.jpg binary
@@ -17,7 +28,6 @@
 
 # Эти форматы на Windows traditionally CRLF, но в CI не исполняются
 *.bat text eol=crlf
-*.ps1 text eol=crlf
 
 # Gradle wrapper должен остаться исполняемым
 gradlew text eol=lf

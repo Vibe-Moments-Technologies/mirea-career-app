@@ -21,6 +21,32 @@ onRecordCreateRequest((e) => {
   const formId = e.record.get('form') || '';
   const deviceId = e.record.get('device_id') || '';
 
+  // Закрытый или просроченный опрос: отвечать нельзя (проверяем всегда).
+  // status = 'closed' — завершён вручную (с итогом); end_date в прошлом —
+  // завершён по дате. Приложение показывает итог вместо формы.
+  if (formId) {
+    const meta = new DynamicModel({ st: '', end: '' });
+    try {
+      $app
+        .db()
+        .newQuery('SELECT status AS st, end_date AS end FROM forms WHERE id = {:id}')
+        .bind({ id: formId })
+        .one(meta);
+    } catch (err) {
+      meta.st = '';
+      meta.end = '';
+    }
+    if (meta.st === 'closed') {
+      throw new BadRequestError('Опрос завершён — отвечать больше нельзя.');
+    }
+    if (meta.end) {
+      const endMs = Date.parse(String(meta.end));
+      if (!isNaN(endMs) && endMs < Date.now()) {
+        throw new BadRequestError('Опрос завершён — отвечать больше нельзя.');
+      }
+    }
+  }
+
   if (formId && deviceId) {
     // включён ли режим «один ответ с устройства» на форме
     let once = false;
