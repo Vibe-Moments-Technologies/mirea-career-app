@@ -6,7 +6,6 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/markdown_body.dart';
 import '../../data/catalogs.dart';
 import '../../data/models.dart';
-import '../../state/providers.dart';
 
 /// Рендер анкеты в стиле приложения.
 ///

@@ -63,7 +63,6 @@ class Catalogs {
     Level('specialist', 'Специалитет'),
     Level('master', 'Магистратура'),
     Level('postgrad', 'Аспирантура'),
-    Level('graduate', 'Выпускник'),
   ];
 
   static const interests = <InterestTag>[

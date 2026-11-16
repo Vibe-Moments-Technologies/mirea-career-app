@@ -603,11 +603,14 @@ void main() {
     test('уровни обучения — ступени образования', () {
       final ids = Catalogs.levels.map((l) => l.id).toList();
       for (final expected in [
-        'applicant', 'bachelor', 'specialist', 'master', 'postgrad', 'graduate',
+        'applicant', 'bachelor', 'specialist', 'master', 'postgrad',
       ]) {
         expect(ids, contains(expected), reason: 'нет уровня «$expected»');
       }
       expect(ids, isNot(contains('teacher')));
+      // graduate есть в БД (для выгрузки профиля), но не в справочнике
+      // онбординга — студенту не нужно выбирать его при регистрации.
+      expect(ids, isNot(contains('graduate')));
     });
 
     test('подписи уровней не подставляют чужие значения', () {
