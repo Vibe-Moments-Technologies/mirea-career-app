@@ -290,26 +290,34 @@ class PostsRepo {
   /// Институты из БД (коллекция institutes): панель управляет составом
   /// и порядком. Пусто/офлайн — пустой список, вызывающий берёт запас
   /// из Catalogs.
+  ///
+  /// Код нормализуется в нижний регистр: панель пишет «IIT», посты и
+  /// профиль — «iit», а сравнение кодов в приложении строгое. Без
+  /// нормализации чистка профиля (i.code == institute) стирала бы
+  /// институт у всех живых пользователей.
   Future<List<InstituteRef>> fetchInstitutes() async {
     final rows = await _fetchCatalog('institutes');
     return [
       for (final r in rows)
         if (r['code'] is String && r['title'] is String)
           InstituteRef(
-            code: r['code'] as String,
+            code: (r['code'] as String).toLowerCase(),
             title: r['title'] as String,
             short: (r['short'] as String?) ?? r['code'] as String,
           ),
     ];
   }
 
-  /// Уровни обучения из БД (коллекция levels).
+  /// Уровни обучения из БД (коллекция levels). Код — в нижний регистр
+  /// по той же причине, что и институты (см. fetchInstitutes).
   Future<List<LevelRef>> fetchLevels() async {
     final rows = await _fetchCatalog('levels');
     return [
       for (final r in rows)
         if (r['code'] is String && r['title'] is String)
-          LevelRef(code: r['code'] as String, title: r['title'] as String),
+          LevelRef(
+              code: (r['code'] as String).toLowerCase(),
+              title: r['title'] as String),
     ];
   }
 
