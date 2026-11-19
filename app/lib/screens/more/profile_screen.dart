@@ -21,8 +21,8 @@ class ProfileScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Профиль'),
-        titleTextStyle: AppText.headline,
+        title: const ScreenTitle('Профиль'),
+        centerTitle: false,
         leading: const GlassBackButton(),
       ),
       body: ListView(

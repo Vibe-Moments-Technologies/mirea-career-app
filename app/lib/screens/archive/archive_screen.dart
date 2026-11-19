@@ -93,8 +93,8 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Архив'),
-        titleTextStyle: AppText.headline,
+        title: const ScreenTitle('Архив'),
+        centerTitle: false,
         actions: [
           IconButton(
             icon: const Icon(Icons.search_rounded),

@@ -21,8 +21,8 @@ class SettingsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Настройки'),
-        titleTextStyle: AppText.headline,
+        title: const ScreenTitle('Настройки'),
+        centerTitle: false,
         leading: const GlassBackButton(),
       ),
       body: ListView(

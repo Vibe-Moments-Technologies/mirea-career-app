@@ -27,8 +27,8 @@ class AboutScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('О приложении'),
-        titleTextStyle: AppText.headline,
+        title: const ScreenTitle('О приложении'),
+        centerTitle: false,
         leading: const GlassBackButton(),
       ),
       body: ListView(
