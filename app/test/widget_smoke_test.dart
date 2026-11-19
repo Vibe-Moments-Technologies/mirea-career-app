@@ -349,27 +349,21 @@ void main() {
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
 
-    testWidgets('док: «Сервисы» вместо «Календаря», заглушка на месте',
-        (tester) async {
-      // Календарь убран (запрос): вкладка дока — «Сервисы» с честной
-      // заглушкой. События с датами остаются в ленте и деталях.
+    testWidgets('док: вкладка «Сервисы» открывает календарь', (tester) async {
       final c = await container(profile: const StudentProfile(completed: true));
       addTearDown(c.dispose);
 
       await tester.pumpWidget(wrap(c, const RootShell()));
       await tester.pump();
 
-      // В доке нет календаря, есть сервисы.
-      expect(find.byIcon(Icons.calendar_month_rounded), findsNothing);
       await tester.tap(find.byIcon(Icons.widgets_rounded).last);
       await tester.pumpAndSettle();
 
-      // Заглушка по центру: заголовок-обещание и значок вкладки дока.
-      expect(find.textContaining('Сервисов пока нет'), findsOneWidget);
-      expect(find.byIcon(Icons.widgets_rounded), findsWidgets);
-      // Строка «Статус:» и блок команд убраны (запрос владельца).
-      expect(find.textContaining('Статус'), findsNothing);
-      expect(find.textContaining('services --'), findsNothing);
+      expect(find.text('Календарь'), findsOneWidget);
+      expect(find.text('Избранные'), findsOneWidget);
+      expect(find.text('Все'), findsOneWidget);
+      expect(find.text('Университет'), findsOneWidget);
+      expect(find.text('Партнёры'), findsOneWidget);
       expect(frameworkErrors, isEmpty, reason: '$frameworkErrors');
     });
 
