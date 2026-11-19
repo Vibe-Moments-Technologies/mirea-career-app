@@ -206,6 +206,7 @@ class _CalendarServiceScreenState extends ConsumerState<CalendarServiceScreen> {
                   final p = posts[i];
                   return _EventTile(
                     post: p,
+                    selectedDay: day,
                     onTap: () {
                       Navigator.of(ctx).pop();
                       Navigator.of(context).push(
@@ -497,9 +498,14 @@ class _Legend extends StatelessWidget {
 }
 
 class _EventTile extends StatelessWidget {
-  const _EventTile({required this.post, required this.onTap});
+  const _EventTile({
+    required this.post,
+    required this.onTap,
+    this.selectedDay,
+  });
   final Post post;
   final VoidCallback onTap;
+  final DateTime? selectedDay;
 
   @override
   Widget build(BuildContext context) {
@@ -507,12 +513,23 @@ class _EventTile extends StatelessWidget {
     final start = post.startDate;
     final end = post.endDate ?? post.startDate;
     String dateText = '';
+    Color? dateColor;
     if (start != null) {
       final s = _fmt(start);
       if (end != null && !_sameDay(start, end)) {
         dateText = '$s — ${_fmt(end)}';
       } else {
         dateText = s;
+      }
+      if (selectedDay != null) {
+        final sel = _dayOnly(selectedDay!);
+        final sDay = _dayOnly(start);
+        final eDay = _dayOnly(end ?? start);
+        if (_sameDay(sel, sDay)) {
+          dateColor = const Color(0xFF34C759);
+        } else if (!_sameDay(sDay, eDay) && _sameDay(sel, eDay)) {
+          dateColor = const Color(0xFFFF3B30);
+        }
       }
     }
 
@@ -543,8 +560,9 @@ class _EventTile extends StatelessWidget {
                       const SizedBox(height: 4),
                       Text(
                         dateText,
-                        style: AppText.caption
-                            .copyWith(color: AppColors.secondaryLight),
+                        style: AppText.caption.copyWith(
+                          color: dateColor ?? AppColors.secondaryLight,
+                        ),
                       ),
                     ],
                   ],
@@ -560,6 +578,8 @@ class _EventTile extends StatelessWidget {
       ),
     );
   }
+
+  static DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
   static bool _sameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
