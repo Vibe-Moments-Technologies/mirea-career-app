@@ -48,20 +48,14 @@ class _CalendarServiceScreenState extends ConsumerState<CalendarServiceScreen> {
     final events = _filterForTab(allEvents, favSet);
     final eventsByDay = _eventsByDay(events);
 
-    return SafeArea(
-      bottom: false,
-      child: Column(
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Календарь'),
+      ),
+      body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              AppInsets.horizontal(MediaQuery.sizeOf(context).width),
-              12,
-              AppInsets.horizontal(MediaQuery.sizeOf(context).width),
-              4,
-            ),
-            child: Text('Календарь', style: AppText.largeTitle),
-          ),
+          const SizedBox(height: 8),
           _TabsBar(
             tabs: _tabs,
             selected: _tabIndex,

@@ -359,7 +359,12 @@ void main() {
       await tester.tap(find.byIcon(Icons.widgets_rounded).last);
       await tester.pumpAndSettle();
 
+      expect(find.text('Сервисы'), findsOneWidget);
       expect(find.text('Календарь'), findsOneWidget);
+
+      await tester.tap(find.text('Календарь'));
+      await tester.pumpAndSettle();
+
       expect(find.text('Избранные'), findsOneWidget);
       expect(find.text('Все'), findsOneWidget);
       expect(find.text('Университет'), findsOneWidget);
