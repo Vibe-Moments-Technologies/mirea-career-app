@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -405,8 +407,8 @@ class _MonthCalendar extends StatelessWidget {
     final key = DateTime(day.year, day.month, day.day);
     final markers = eventsByDay[key] ?? const <_DayEvent>[];
     final hasEvents = markers.isNotEmpty;
-    final hasStart = markers.any((m) => m.showStart || m.singleDay);
-    final hasEnd = markers.any((m) => m.showEnd);
+    final startCount = markers.where((m) => m.showStart || m.singleDay).length;
+    final endCount = markers.where((m) => m.showEnd).length;
     final isSelected = selectedDay != null &&
         selectedDay!.year == day.year &&
         selectedDay!.month == day.month &&
@@ -441,17 +443,35 @@ class _MonthCalendar extends StatelessWidget {
             const SizedBox(height: 4),
             SizedBox(
               height: 6,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (hasStart) _dot(const Color(0xFF34C759)),
-                  if (hasStart && hasEnd) const SizedBox(width: 3),
-                  if (hasEnd) _dot(const Color(0xFFFF3B30)),
-                  if (!hasStart && !hasEnd) const SizedBox(width: 6),
-                ],
+              child: Center(
+                child: (startCount + endCount == 0)
+                    ? const SizedBox(width: 6)
+                    : _boundaryDot(startCount, endCount),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  static Widget _boundaryDot(int startCount, int endCount) {
+    const startColor = Color(0xFF34C759);
+    const endColor = Color(0xFFFF3B30);
+    final total = startCount + endCount;
+    if (total <= 0) return const SizedBox(width: 6, height: 6);
+    if (endCount <= 0) return _dot(startColor);
+    if (startCount <= 0) return _dot(endColor);
+    final startFrac = startCount / total;
+    return Container(
+      width: 6,
+      height: 6,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: SweepGradient(
+          transform: const GradientRotation(-math.pi / 2),
+          colors: const [startColor, startColor, endColor, endColor],
+          stops: [0.0, startFrac, startFrac, 1.0],
         ),
       ),
     );
