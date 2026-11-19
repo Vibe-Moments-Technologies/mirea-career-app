@@ -21,7 +21,7 @@ class ServicesScreen extends StatelessWidget {
           AppInsets.scrollBottom(context),
         ),
         children: [
-          Text('Сервисы', style: AppText.largeTitle),
+          const ScreenTitle('Сервисы'),
           const SizedBox(height: 16),
           _ServiceTile(
             icon: Icons.calendar_month_rounded,

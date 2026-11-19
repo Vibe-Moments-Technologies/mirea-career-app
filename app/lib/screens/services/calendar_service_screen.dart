@@ -52,7 +52,7 @@ class _CalendarServiceScreenState extends ConsumerState<CalendarServiceScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Календарь'),
+        title: const ScreenTitle('Календарь'),
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -325,7 +325,17 @@ class _MonthCalendar extends StatelessWidget {
     final rows = (totalCells / 7).ceil();
     final scheme = Theme.of(context).colorScheme;
 
-    return Container(
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onHorizontalDragEnd: (details) {
+        final v = details.primaryVelocity ?? 0;
+        if (v < -250) {
+          onNext();
+        } else if (v > 250) {
+          onPrev();
+        }
+      },
+      child: Container(
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
@@ -389,6 +399,7 @@ class _MonthCalendar extends StatelessWidget {
               ],
             ),
         ],
+      ),
       ),
     );
   }
