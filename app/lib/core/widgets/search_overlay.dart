@@ -35,6 +35,7 @@ class SearchOverlay extends StatefulWidget {
     required this.onChanged,
     required this.onClose,
     this.onSubmitted,
+    this.topInset,
   });
 
   final bool open;
@@ -45,6 +46,10 @@ class SearchOverlay extends StatefulWidget {
   /// Сабмит (кнопка «Поиск» на клавиатуре): клавиатура гаснет,
   /// запрос уходит наверх.
   final ValueChanged<String>? onSubmitted;
+
+  /// Отступ поля сверху. По умолчанию — safe area экрана; для body под
+  /// AppBar передать небольшой отступ (например 8).
+  final double? topInset;
 
   @override
   State<SearchOverlay> createState() => _SearchOverlayState();
@@ -113,7 +118,7 @@ class _SearchOverlayState extends State<SearchOverlay> {
               padding: EdgeInsets.only(
                 left: AppInsets.horizontal(MediaQuery.sizeOf(context).width),
                 right: AppInsets.horizontal(MediaQuery.sizeOf(context).width),
-                top: AppInsets.top(context),
+                top: widget.topInset ?? AppInsets.top(context),
               ),
               child: AnimatedSlide(
                 duration: const Duration(milliseconds: 220),

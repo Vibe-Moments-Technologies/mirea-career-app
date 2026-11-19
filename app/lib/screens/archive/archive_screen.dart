@@ -110,8 +110,12 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
           RefreshIndicator(
             onRefresh: _load,
             child: ListView(
-              padding:
-                  EdgeInsets.fromLTRB(pad, 8, pad, AppInsets.screenBottom(context)),
+              padding: EdgeInsets.fromLTRB(
+                pad,
+                _searchOpen ? 72 : 8,
+                pad,
+                AppInsets.screenBottom(context),
+              ),
               children: [
                 if (_offline)
                   Padding(
@@ -160,6 +164,7 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
           SearchOverlay(
             open: _searchOpen,
             controller: _search,
+            topInset: 8,
             onChanged: (v) => setState(() => _query = v),
             onClose: _closeSearch,
             onSubmitted: (v) {
