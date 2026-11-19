@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../core/app_route.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/pinned_header_screen.dart';
+import '../archive/archive_screen.dart';
+import '../org/organizations_screen.dart';
 import 'calendar_service_screen.dart';
 
 /// Вкладка «Сервисы»: список доступных сервисов.
@@ -11,28 +14,43 @@ class ServicesScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pad = AppInsets.horizontal(MediaQuery.sizeOf(context).width);
-    return SafeArea(
-      bottom: false,
-      child: ListView(
-        padding: EdgeInsets.fromLTRB(
-          pad,
-          12,
-          pad,
-          AppInsets.scrollBottom(context),
-        ),
-        children: [
-          const ScreenTitle('Сервисы'),
-          const SizedBox(height: 16),
-          _ServiceTile(
-            icon: Icons.calendar_month_rounded,
-            title: 'Календарь',
-            subtitle: 'События и важные даты',
-            onTap: () => Navigator.of(context).push(
-              appRoute(context, const CalendarServiceScreen()),
-            ),
+    return PinnedHeaderScreen(
+      title: 'Сервисы',
+      slivers: [
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(pad, 8, pad, AppInsets.scrollBottom(context)),
+          sliver: SliverList.list(
+            children: [
+              _ServiceTile(
+                icon: Icons.calendar_month_rounded,
+                title: 'Календарь',
+                subtitle: 'События и важные даты',
+                onTap: () => Navigator.of(context).push(
+                  appRoute(context, const CalendarServiceScreen()),
+                ),
+              ),
+              const SizedBox(height: 10),
+              _ServiceTile(
+                icon: Icons.history_rounded,
+                title: 'Архив',
+                subtitle: 'Завершённые вакансии, события и стажировки',
+                onTap: () => Navigator.of(context).push(
+                  appRoute(context, const ArchiveScreen()),
+                ),
+              ),
+              const SizedBox(height: 10),
+              _ServiceTile(
+                icon: Icons.apartment_rounded,
+                title: 'Организации',
+                subtitle: 'Компании-партнёры и подразделения вуза',
+                onTap: () => Navigator.of(context).push(
+                  appRoute(context, const OrganizationsScreen()),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

@@ -8,8 +8,6 @@ import '../../core/widgets/settings_list.dart';
 import '../../data/catalogs.dart';
 import '../../data/models.dart';
 import '../../state/providers.dart';
-import '../archive/archive_screen.dart';
-import '../org/organizations_screen.dart';
 import 'about_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart';
@@ -55,22 +53,6 @@ class MoreScreen extends ConsumerWidget {
                 subtitle: profileSummary(profile, institutes, levels),
                 onTap: () => Navigator.of(context).push(
                   appRoute(context, const ProfileScreen()),
-                ),
-              ),
-              SettingsTile(
-                icon: Icons.history_rounded,
-                title: 'Архив',
-                subtitle: 'Завершённые вакансии, события и стажировки',
-                onTap: () => Navigator.of(context).push(
-                  appRoute(context, const ArchiveScreen()),
-                ),
-              ),
-              SettingsTile(
-                icon: Icons.apartment_rounded,
-                title: 'Организации',
-                subtitle: 'Компании-партнёры и подразделения вуза',
-                onTap: () => Navigator.of(context).push(
-                  appRoute(context, const OrganizationsScreen()),
                 ),
               ),
             ],
