@@ -2504,7 +2504,7 @@ void main() {
   });
 
   group('Архив', () {
-    testWidgets('открывается из «Ещё» отдельной страницей', (tester) async {
+    testWidgets('открывается из «Сервисов» отдельной страницей', (tester) async {
       final c = await container(
         profile: const StudentProfile(completed: true),
         cache: [samplePost()],
@@ -2514,7 +2514,7 @@ void main() {
       await tester.pumpWidget(wrap(c, const RootShell()));
       await tester.pump();
 
-      await tester.tap(find.byIcon(Icons.person_rounded).last);
+      await tester.tap(find.byIcon(Icons.widgets_rounded).last);
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Архив'));
@@ -2543,8 +2543,8 @@ void main() {
       // На главной лента построилась.
       expect(find.text('Осенняя ярмарка вакансий'), findsOneWidget);
 
-      // Уходим в «Ещё» → Архив.
-      await tester.tap(find.byIcon(Icons.person_rounded).last);
+      // Уходим в «Сервисы» → Архив.
+      await tester.tap(find.byIcon(Icons.widgets_rounded).last);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Архив'));
       await tester.pumpAndSettle();
